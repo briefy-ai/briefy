@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${DB_NAME:-briefy}
+      POSTGRES_USER: ${DB_USER:-briefy}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-briefy}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: ./apps/api
+    depends_on:
+      - db
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-briefy}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-briefy}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-briefy}
+      SPRING_AI_OPENAI_API_KEY: ${LLM_API_KEY:-}
+    ports:
+      - "8080:8080"
+
+  web:
+    build:
+      context: ./apps/web
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  pgdata:

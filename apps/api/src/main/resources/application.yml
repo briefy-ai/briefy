@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: briefy-api
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/briefy}
+    username: ${DB_USER:briefy}
+    password: ${DB_PASSWORD:briefy}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+
+  ai:
+    openai:
+      api-key: ${LLM_API_KEY:}
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
