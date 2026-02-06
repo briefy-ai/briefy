@@ -18,13 +18,8 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('apps/api/**/*.gradle.kts') }}
-          restore-keys: gradle-
+          cache: gradle
+          cache-dependency-path: apps/api/**/*.gradle.kts
       - name: Run tests
         run: ./gradlew test -Dorg.gradle.java.home=$JAVA_HOME
       - name: Upload test results
