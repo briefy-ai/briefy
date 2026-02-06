@@ -8,7 +8,7 @@ import java.util.UUID
 @Table(name = "sources")
 class Source(
     @Id
-    val id: UUID = UUID.randomUUID(),
+    val id: UUID,
 
     @Embedded
     val url: Url,
@@ -23,8 +23,8 @@ class Source(
     @Embedded
     var metadata: Metadata? = null,
 
-    @Column(name = "owner_id")
-    val ownerId: UUID? = null,
+    @Column(name = "user_id", nullable = false)
+    val userId: UUID,
 
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant = Instant.now(),
@@ -63,10 +63,11 @@ class Source(
     }
 
     companion object {
-        fun create(rawUrl: String, ownerId: UUID? = null): Source {
+        fun create(id: UUID, rawUrl: String, userId: UUID): Source {
             return Source(
+                id = id,
                 url = Url.from(rawUrl),
-                ownerId = ownerId
+                userId = userId
             )
         }
     }

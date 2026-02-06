@@ -24,6 +24,23 @@ spring:
 server:
   port: ${SERVER_PORT:8081}
 
+auth:
+  jwt:
+    secret: ${JWT_SECRET:dev-secret-change-me-dev-secret-change-me}
+    access-token-minutes: ${JWT_ACCESS_TOKEN_MINUTES:15}
+  refresh-token:
+    days: ${JWT_REFRESH_TOKEN_DAYS:30}
+  cookie:
+    secure: ${AUTH_COOKIE_SECURE:false}
+    same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
+
+google:
+  auth:
+    enabled: ${GOOGLE_AUTH_ENABLED:false}
+    client-id: ${GOOGLE_CLIENT_ID:}
+    client-secret: ${GOOGLE_CLIENT_SECRET:}
+    redirect-uri: ${GOOGLE_REDIRECT_URI:}
+
 management:
   endpoints:
     web:

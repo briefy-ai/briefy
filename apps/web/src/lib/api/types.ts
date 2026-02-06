@@ -37,3 +37,21 @@ export interface ApiError {
 export interface CreateSourceRequest {
   url: string
 }
+
+export interface AuthUser {
+  id: string
+  email: string
+  role: 'USER' | 'ADMIN'
+  displayName: string | null
+}
+
+export interface SignUpRequest {
+  email: string
+  password: string
+  displayName?: string
+}
+
+export interface LoginRequest {
+  email: string
+  password: string
+}

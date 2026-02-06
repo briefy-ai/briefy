@@ -1,6 +1,8 @@
 package com.briefy.api.application.source
 
 import com.briefy.api.domain.knowledgegraph.source.*
+import com.briefy.api.infrastructure.id.IdGenerator
+import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.briefy.api.infrastructure.extraction.ContentExtractor
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -10,21 +12,24 @@ import java.util.UUID
 @Service
 class SourceService(
     private val sourceRepository: SourceRepository,
-    private val contentExtractor: ContentExtractor
+    private val contentExtractor: ContentExtractor,
+    private val currentUserProvider: CurrentUserProvider,
+    private val idGenerator: IdGenerator
 ) {
     private val logger = LoggerFactory.getLogger(SourceService::class.java)
 
     @Transactional
     fun submitSource(command: CreateSourceCommand): SourceResponse {
+        val userId = currentUserProvider.requireUserId()
         val normalizedUrl = Url.normalize(command.url)
 
         // Check for duplicate
-        sourceRepository.findByUrlNormalized(normalizedUrl)?.let {
+        sourceRepository.findByUserIdAndUrlNormalized(userId, normalizedUrl)?.let {
             throw SourceAlreadyExistsException(normalizedUrl)
         }
 
         // Create source
-        val source = Source.create(command.url)
+        val source = Source.create(idGenerator.newId(), command.url, userId)
         sourceRepository.save(source)
 
         // Perform synchronous extraction
@@ -33,25 +38,28 @@ class SourceService(
 
     @Transactional(readOnly = true)
     fun listSources(status: SourceStatus? = null): List<SourceResponse> {
+        val userId = currentUserProvider.requireUserId()
         val sources = if (status != null) {
-            sourceRepository.findByStatus(status)
+            sourceRepository.findByUserIdAndStatus(userId, status)
         } else {
-            sourceRepository.findAll()
+            sourceRepository.findByUserId(userId)
         }
         return sources.map { it.toResponse() }
     }
 
     @Transactional(readOnly = true)
     fun getSource(id: UUID): SourceResponse {
-        val source = sourceRepository.findById(id)
-            .orElseThrow { SourceNotFoundException(id) }
+        val userId = currentUserProvider.requireUserId()
+        val source = sourceRepository.findByIdAndUserId(id, userId)
+            ?: throw SourceNotFoundException(id)
         return source.toResponse()
     }
 
     @Transactional
     fun retryExtraction(id: UUID): SourceResponse {
-        val source = sourceRepository.findById(id)
-            .orElseThrow { SourceNotFoundException(id) }
+        val userId = currentUserProvider.requireUserId()
+        val source = sourceRepository.findByIdAndUserId(id, userId)
+            ?: throw SourceNotFoundException(id)
 
         if (source.status != SourceStatus.FAILED) {
             throw InvalidSourceStateException("Can only retry extraction for failed sources. Current status: ${source.status}")
