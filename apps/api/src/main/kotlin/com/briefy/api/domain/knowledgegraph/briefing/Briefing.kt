@@ -7,5 +7,7 @@ import java.util.UUID
 @Table(name = "briefings")
 class Briefing(
     @Id
-    val id: UUID = UUID.randomUUID(),
+    val id: UUID,
+    @Column(name = "user_id", nullable = false)
+    val userId: UUID,
 )

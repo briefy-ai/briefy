@@ -4,12 +4,13 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.Instant
+import java.util.UUID
 
 class SourceTest {
 
     @Test
     fun `create initializes source with SUBMITTED status`() {
-        val source = Source.create("https://example.com")
+        val source = createSource()
         assertEquals(SourceStatus.SUBMITTED, source.status)
         assertEquals("https://example.com", source.url.normalized)
         assertNull(source.content)
@@ -18,14 +19,14 @@ class SourceTest {
 
     @Test
     fun `startExtraction transitions from SUBMITTED to EXTRACTING`() {
-        val source = Source.create("https://example.com")
+        val source = createSource()
         source.startExtraction()
         assertEquals(SourceStatus.EXTRACTING, source.status)
     }
 
     @Test
     fun `completeExtraction transitions from EXTRACTING to ACTIVE`() {
-        val source = Source.create("https://example.com")
+        val source = createSource()
         source.startExtraction()
 
         val content = Content.from("Some article content here")
@@ -47,7 +48,7 @@ class SourceTest {
 
     @Test
     fun `failExtraction transitions from EXTRACTING to FAILED`() {
-        val source = Source.create("https://example.com")
+        val source = createSource()
         source.startExtraction()
         source.failExtraction()
         assertEquals(SourceStatus.FAILED, source.status)
@@ -55,7 +56,7 @@ class SourceTest {
 
     @Test
     fun `retry transitions from FAILED to SUBMITTED`() {
-        val source = Source.create("https://example.com")
+        val source = createSource()
         source.startExtraction()
         source.failExtraction()
         source.retry()
@@ -64,7 +65,7 @@ class SourceTest {
 
     @Test
     fun `archive transitions from ACTIVE to ARCHIVED`() {
-        val source = Source.create("https://example.com")
+        val source = createSource()
         source.startExtraction()
         source.completeExtraction(Content.from("text"), Metadata())
         source.archive()
@@ -73,7 +74,7 @@ class SourceTest {
 
     @Test
     fun `invalid transition from SUBMITTED to ACTIVE throws`() {
-        val source = Source.create("https://example.com")
+        val source = createSource()
         assertThrows<IllegalArgumentException> {
             source.completeExtraction(Content.from("text"), Metadata())
         }
@@ -81,7 +82,7 @@ class SourceTest {
 
     @Test
     fun `invalid transition from ACTIVE to SUBMITTED throws`() {
-        val source = Source.create("https://example.com")
+        val source = createSource()
         source.startExtraction()
         source.completeExtraction(Content.from("text"), Metadata())
         assertThrows<IllegalArgumentException> {
@@ -91,7 +92,7 @@ class SourceTest {
 
     @Test
     fun `invalid transition from SUBMITTED to FAILED throws`() {
-        val source = Source.create("https://example.com")
+        val source = createSource()
         assertThrows<IllegalArgumentException> {
             source.failExtraction()
         }
@@ -99,7 +100,7 @@ class SourceTest {
 
     @Test
     fun `updatedAt changes on status transition`() {
-        val source = Source.create("https://example.com")
+        val source = createSource()
         val initialUpdatedAt = source.updatedAt
         // Small delay to ensure timestamp changes
         Thread.sleep(10)
@@ -141,5 +142,13 @@ class SourceTest {
             wordCount = 0
         )
         assertNull(metadata.estimatedReadingTime)
+    }
+
+    private fun createSource(): Source {
+        return Source.create(
+            id = UUID.randomUUID(),
+            rawUrl = "https://example.com",
+            userId = UUID.randomUUID()
+        )
     }
 }

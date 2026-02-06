@@ -2,9 +2,11 @@ package com.briefy.api.api
 
 import com.briefy.api.infrastructure.extraction.ContentExtractor
 import com.briefy.api.infrastructure.extraction.ExtractionResult
+import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.BeforeEach
 import org.mockito.Mockito.`when`
 import org.mockito.kotlin.any
 import org.springframework.beans.factory.annotation.Autowired
@@ -17,9 +19,10 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
 import java.time.Instant
+import java.util.UUID
 
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
 class SourceControllerTest {
 
@@ -29,7 +32,11 @@ class SourceControllerTest {
     @MockitoBean
     lateinit var contentExtractor: ContentExtractor
 
+    @MockitoBean
+    lateinit var currentUserProvider: CurrentUserProvider
+
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
+    private val testUserId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
 
     private val sampleExtractionResult = ExtractionResult(
         text = "This is the extracted article content with enough words to test",
@@ -37,6 +44,11 @@ class SourceControllerTest {
         author = "Test Author",
         publishedDate = Instant.parse("2024-01-15T10:00:00Z")
     )
+
+    @BeforeEach
+    fun setupCurrentUser() {
+        `when`(currentUserProvider.requireUserId()).thenReturn(testUserId)
+    }
 
     @Test
     fun `POST creates source and extracts content`() {

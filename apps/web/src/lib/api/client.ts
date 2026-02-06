@@ -21,17 +21,33 @@ async function handleResponse<T>(response: Response): Promise<T> {
     }
     throw new ApiClientError(response.status, apiError)
   }
+
+  if (response.status === 204) {
+    return undefined as T
+  }
+
+  const contentLength = response.headers.get('content-length')
+  if (contentLength === '0') {
+    return undefined as T
+  }
+
+  const contentType = response.headers.get('content-type')
+  if (!contentType?.includes('application/json')) {
+    return undefined as T
+  }
+
   return response.json()
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(path)
+  const response = await fetch(path, { credentials: 'include' })
   return handleResponse<T>(response)
 }
 
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
     method: 'POST',
+    credentials: 'include',
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   })

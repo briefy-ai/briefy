@@ -8,9 +8,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { createSource, listSources } from '@/lib/api/sources'
 import { ApiClientError } from '@/lib/api/client'
+import { requireAuth } from '@/lib/auth/requireAuth'
 import type { Source } from '@/lib/api/types'
 
 export const Route = createFileRoute('/sources/')({
+  beforeLoad: async () => {
+    await requireAuth()
+  },
   component: SourcesPage,
 })
 
