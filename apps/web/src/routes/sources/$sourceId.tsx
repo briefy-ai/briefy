@@ -1,11 +1,21 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { MarkdownContent } from '@/components/content/MarkdownContent'
-import { getSource, retryExtraction } from '@/lib/api/sources'
+import { deleteSource, getSource, retryExtraction } from '@/lib/api/sources'
 import { ApiClientError } from '@/lib/api/client'
 import { requireAuth } from '@/lib/auth/requireAuth'
 import type { Source } from '@/lib/api/types'
@@ -29,11 +39,14 @@ const STATUS_CONFIG: Record<
 }
 
 function SourceDetailPage() {
+  const navigate = useNavigate()
   const { sourceId } = Route.useParams()
   const [source, setSource] = useState<Source | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [retrying, setRetrying] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   const fetchSource = useCallback(async () => {
     try {
@@ -68,6 +81,21 @@ function SourceDetailPage() {
       }
     } finally {
       setRetrying(false)
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await deleteSource(sourceId)
+      await navigate({ to: '/sources' })
+    } catch (e) {
+      if (e instanceof ApiClientError) {
+        setError(e.apiError?.message ?? e.message)
+      } else {
+        setError(e instanceof Error ? e.message : 'Failed to delete source')
+      }
+      setDeleting(false)
     }
   }
 
@@ -129,24 +157,37 @@ function SourceDetailPage() {
 
       {/* Article header */}
       <header className="mt-6 mb-8 animate-slide-up" style={{ animationDelay: '50ms', animationFillMode: 'backwards' }}>
-        <div className="flex items-center gap-3 mb-4">
-          <Badge variant={status.variant}>
-            {source.status === 'extracting' && (
-              <span className="mr-1 size-1.5 rounded-full bg-current animate-pulse" />
-            )}
-            {status.label}
-          </Badge>
-          <a
-            href={source.url.raw}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-muted-foreground hover:text-primary transition-colors truncate"
-          >
-            {domain}
-            <svg className="inline-block ml-1 size-2.5 -translate-y-px" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-            </svg>
-          </a>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Badge variant={status.variant}>
+              {source.status === 'extracting' && (
+                <span className="mr-1 size-1.5 rounded-full bg-current animate-pulse" />
+              )}
+              {status.label}
+            </Badge>
+            <a
+              href={source.url.raw}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-muted-foreground hover:text-primary transition-colors truncate"
+            >
+              {domain}
+              <svg className="inline-block ml-1 size-2.5 -translate-y-px" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+              </svg>
+            </a>
+          </div>
+          {source.status !== 'archived' && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmDeleteOpen(true)}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          )}
         </div>
 
         <h1 className="text-2xl font-bold tracking-tight leading-snug font-sans">
@@ -209,6 +250,27 @@ function SourceDetailPage() {
           </div>
         </article>
       )}
+
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete source?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the source from your active library and archive it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={() => void handleDelete()}
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

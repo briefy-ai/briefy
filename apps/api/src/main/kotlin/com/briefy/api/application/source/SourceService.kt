@@ -90,12 +90,9 @@ class SourceService(
     @Transactional(readOnly = true)
     fun listSources(status: SourceStatus? = null): List<SourceResponse> {
         val userId = currentUserProvider.requireUserId()
-        logger.info("[service] Listing sources userId={} status={}", userId, status ?: "all")
-        val sources = if (status != null) {
-            sourceRepository.findByUserIdAndStatus(userId, status)
-        } else {
-            sourceRepository.findByUserId(userId)
-        }
+        val effectiveStatus = status ?: SourceStatus.ACTIVE
+        logger.info("[service] Listing sources userId={} status={}", userId, effectiveStatus)
+        val sources = sourceRepository.findByUserIdAndStatus(userId, effectiveStatus)
         logger.info("[service] Listed sources userId={} count={}", userId, sources.size)
         return sources.map { it.toResponse() }
     }
@@ -125,6 +122,52 @@ class SourceService(
         sourceRepository.save(source)
 
         return extractContent(source).toResponse()
+    }
+
+    @Transactional
+    fun deleteSource(id: UUID) {
+        val userId = currentUserProvider.requireUserId()
+        logger.info("[service] Deleting source userId={} sourceId={}", userId, id)
+        val source = sourceRepository.findByIdAndUserId(id, userId)
+            ?: throw SourceNotFoundException(id)
+
+        if (source.status != SourceStatus.ARCHIVED) {
+            source.archive()
+            sourceRepository.save(source)
+        }
+    }
+
+    @Transactional
+    fun archiveSourcesBatch(sourceIds: List<UUID>) {
+        val userId = currentUserProvider.requireUserId()
+        val dedupedIds = sourceIds.distinct()
+        require(dedupedIds.isNotEmpty()) { "sourceIds must not be empty" }
+        require(dedupedIds.size <= MAX_BATCH_ARCHIVE_SOURCE_IDS) {
+            "sourceIds must contain at most $MAX_BATCH_ARCHIVE_SOURCE_IDS ids"
+        }
+
+        logger.info(
+            "[service] Batch archive sources userId={} requestedCount={} dedupedCount={}",
+            userId,
+            sourceIds.size,
+            dedupedIds.size
+        )
+
+        val sources = sourceRepository.findAllByUserIdAndIdIn(userId, dedupedIds)
+        if (sources.size != dedupedIds.size) {
+            throw BatchSourceNotFoundException()
+        }
+
+        sources.forEach { source ->
+            if (source.status != SourceStatus.ARCHIVED) {
+                source.archive()
+            }
+        }
+        sourceRepository.saveAll(sources)
+    }
+
+    companion object {
+        private const val MAX_BATCH_ARCHIVE_SOURCE_IDS = 100
     }
 
     private fun extractContent(source: Source): Source {

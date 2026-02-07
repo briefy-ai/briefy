@@ -21,6 +21,7 @@ export interface Source {
   id: string
   url: SourceUrl
   status: 'submitted' | 'extracting' | 'active' | 'failed' | 'archived'
+  sourceType: 'news' | 'blog' | 'research'
   content: SourceContent | null
   metadata: SourceMetadata | null
   createdAt: string

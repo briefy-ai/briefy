@@ -155,12 +155,7 @@ class SourceControllerTest {
         `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
 
         // Create a source
-        mockMvc.perform(
-            post("/api/sources")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"url": "https://list-test.com/article"}""")
-        )
-            .andExpect(status().isCreated)
+        createSource("https://list-test.com/article")
 
         // List all
         mockMvc.perform(get("/api/sources"))
@@ -173,6 +168,12 @@ class SourceControllerTest {
         mockMvc.perform(get("/api/sources").param("status", "active"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$").isArray)
+    }
+
+    @Test
+    fun `GET list returns bad request for invalid status`() {
+        mockMvc.perform(get("/api/sources").param("status", "unknown"))
+            .andExpect(status().isBadRequest)
     }
 
     @Test
@@ -215,18 +216,160 @@ class SourceControllerTest {
         `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
 
         // Create a source (will be ACTIVE)
-        val result = mockMvc.perform(
-            post("/api/sources")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"url": "https://retry-test.com/article"}""")
-        )
-            .andExpect(status().isCreated)
-            .andReturn()
-
-        val id = objectMapper.readTree(result.response.contentAsString).get("id").asText()
+        val id = createSource("https://retry-test.com/article")
 
         // Try to retry an active source
         mockMvc.perform(post("/api/sources/$id/retry"))
             .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `DELETE archives source and hides it from default list`() {
+        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        val id = createSource("https://delete-test.com/article")
+
+        mockMvc.perform(delete("/api/sources/$id"))
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(get("/api/sources"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$").isArray)
+            .andExpect(jsonPath("$[?(@.id=='$id')]").isEmpty)
+
+        mockMvc.perform(get("/api/sources").param("status", "archived"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[?(@.id=='$id')]").isNotEmpty)
+
+        mockMvc.perform(get("/api/sources/$id"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("archived"))
+    }
+
+    @Test
+    fun `DELETE is idempotent for already archived source`() {
+        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        val id = createSource("https://delete-idempotent-test.com/article")
+
+        mockMvc.perform(delete("/api/sources/$id"))
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(delete("/api/sources/$id"))
+            .andExpect(status().isNoContent)
+    }
+
+    @Test
+    fun `DELETE returns 404 for unknown id`() {
+        mockMvc.perform(delete("/api/sources/00000000-0000-0000-0000-000000000000"))
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `POST archive-batch archives all owned sources atomically`() {
+        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        val idA = createSource("https://batch-archive-a.com/article")
+        val idB = createSource("https://batch-archive-b.com/article")
+
+        mockMvc.perform(
+            post("/api/sources/archive-batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"sourceIds":["$idA","$idB"]}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(get("/api/sources/$idA"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("archived"))
+        mockMvc.perform(get("/api/sources/$idB"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("archived"))
+    }
+
+    @Test
+    fun `POST archive-batch returns 404 and archives none when one id is unknown`() {
+        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        val idA = createSource("https://batch-archive-unknown-a.com/article")
+        val unknownId = UUID.fromString("00000000-0000-0000-0000-000000000000")
+
+        mockMvc.perform(
+            post("/api/sources/archive-batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"sourceIds":["$idA","$unknownId"]}""")
+        )
+            .andExpect(status().isNotFound)
+
+        mockMvc.perform(get("/api/sources/$idA"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("active"))
+    }
+
+    @Test
+    fun `POST archive-batch returns 404 when any source is not owned by user`() {
+        val userA = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        val userB = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+        `when`(currentUserProvider.requireUserId()).thenReturn(userA, userB, userA)
+        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+
+        val ownedByA = createSource("https://batch-owned-a.com/article")
+        val ownedByB = createSource("https://batch-owned-b.com/article")
+
+        mockMvc.perform(
+            post("/api/sources/archive-batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"sourceIds":["$ownedByA","$ownedByB"]}""")
+        )
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `POST archive-batch dedupes ids and succeeds`() {
+        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        val idA = createSource("https://batch-dedupe.com/article")
+
+        mockMvc.perform(
+            post("/api/sources/archive-batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"sourceIds":["$idA","$idA"]}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(get("/api/sources/$idA"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("archived"))
+    }
+
+    @Test
+    fun `POST archive-batch returns bad request for empty sourceIds`() {
+        mockMvc.perform(
+            post("/api/sources/archive-batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"sourceIds":[]}""")
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `POST archive-batch returns bad request when sourceIds exceed limit`() {
+        val ids = (1..101)
+            .map { UUID.randomUUID().toString() }
+            .joinToString(separator = "\",\"", prefix = "\"", postfix = "\"")
+
+        mockMvc.perform(
+            post("/api/sources/archive-batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"sourceIds":[$ids]}""")
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    private fun createSource(url: String): String {
+        val result = mockMvc.perform(
+            post("/api/sources")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"url": "$url"}""")
+        )
+            .andExpect(status().isCreated)
+            .andReturn()
+
+        return objectMapper.readTree(result.response.contentAsString).get("id").asText()
     }
 }
