@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { MarkdownContent } from '@/components/content/MarkdownContent'
 import { getSource, retryExtraction } from '@/lib/api/sources'
 import { ApiClientError } from '@/lib/api/client'
 import { requireAuth } from '@/lib/auth/requireAuth'
@@ -16,15 +17,15 @@ export const Route = createFileRoute('/sources/$sourceId')({
   component: SourceDetailPage,
 })
 
-const STATUS_VARIANTS: Record<
+const STATUS_CONFIG: Record<
   Source['status'],
-  'default' | 'secondary' | 'destructive' | 'outline'
+  { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }
 > = {
-  submitted: 'outline',
-  extracting: 'secondary',
-  active: 'default',
-  failed: 'destructive',
-  archived: 'secondary',
+  submitted: { variant: 'outline', label: 'Submitted' },
+  extracting: { variant: 'secondary', label: 'Extracting' },
+  active: { variant: 'default', label: 'Active' },
+  failed: { variant: 'destructive', label: 'Failed' },
+  archived: { variant: 'secondary', label: 'Archived' },
 }
 
 function SourceDetailPage() {
@@ -72,24 +73,31 @@ function SourceDetailPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-6 w-32" />
-        <Skeleton className="h-10 w-3/4" />
-        <Skeleton className="h-4 w-1/2" />
-        <Skeleton className="mt-8 h-64 w-full" />
+      <div className="max-w-xl mx-auto animate-fade-in">
+        <Skeleton className="h-4 w-24 mb-8" />
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-3/4" />
+          <div className="flex gap-3">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+        </div>
+        <div className="mt-10 space-y-3">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
       </div>
     )
   }
 
   if (error && !source) {
     return (
-      <div className="space-y-4">
-        <Link
-          to="/sources"
-          className="text-muted-foreground hover:text-foreground text-sm"
-        >
-          &larr; Back to Library
-        </Link>
+      <div className="max-w-xl mx-auto space-y-4 animate-fade-in">
+        <BackLink />
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -99,81 +107,131 @@ function SourceDetailPage() {
 
   if (!source) return null
 
+  const status = STATUS_CONFIG[source.status]
+  const domain = extractDomain(source.url.normalized)
+  const meta = [
+    source.metadata?.author,
+    source.metadata?.publishedDate &&
+      new Date(source.metadata.publishedDate).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }),
+    source.metadata?.estimatedReadingTime &&
+      `${source.metadata.estimatedReadingTime} min read`,
+    source.content?.wordCount &&
+      `${source.content.wordCount.toLocaleString()} words`,
+  ].filter(Boolean)
+
   return (
-    <div className="space-y-6">
-      <Link
-        to="/sources"
-        className="text-muted-foreground hover:text-foreground inline-block text-sm"
-      >
-        &larr; Back to Library
-      </Link>
+    <div className="max-w-2xl mx-auto animate-fade-in">
+      <BackLink />
 
-      <div className="space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <h1 className="text-3xl font-bold tracking-tight">
-            {source.metadata?.title ?? source.url.normalized}
-          </h1>
-          <Badge variant={STATUS_VARIANTS[source.status]}>
-            {source.status}
+      {/* Article header */}
+      <header className="mt-6 mb-8 animate-slide-up" style={{ animationDelay: '50ms', animationFillMode: 'backwards' }}>
+        <div className="flex items-center gap-3 mb-4">
+          <Badge variant={status.variant}>
+            {source.status === 'extracting' && (
+              <span className="mr-1 size-1.5 rounded-full bg-current animate-pulse" />
+            )}
+            {status.label}
           </Badge>
+          <a
+            href={source.url.raw}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-muted-foreground hover:text-primary transition-colors truncate"
+          >
+            {domain}
+            <svg className="inline-block ml-1 size-2.5 -translate-y-px" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+            </svg>
+          </a>
         </div>
 
-        <div className="text-muted-foreground flex flex-wrap gap-4 text-sm">
-          {source.metadata?.author && (
-            <span>By {source.metadata.author}</span>
-          )}
-          {source.metadata?.publishedDate && (
-            <span>
-              {new Date(source.metadata.publishedDate).toLocaleDateString()}
-            </span>
-          )}
-          {source.metadata?.estimatedReadingTime && (
-            <span>{source.metadata.estimatedReadingTime} min read</span>
-          )}
-          {source.content?.wordCount && (
-            <span>{source.content.wordCount.toLocaleString()} words</span>
-          )}
-        </div>
+        <h1 className="text-2xl font-bold tracking-tight leading-snug font-sans">
+          {source.metadata?.title ?? source.url.normalized}
+        </h1>
 
-        <a
-          href={source.url.raw}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm text-blue-600 hover:underline dark:text-blue-400"
-        >
-          View original &rarr;
-        </a>
-      </div>
+        {meta.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+            {meta.map((item, i) => (
+              <span key={i}>
+                {i > 0 && <span className="mx-1 text-border/60">·</span>}
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
+      </header>
 
       {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+        <div className="mb-6">
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        </div>
       )}
 
       {source.status === 'failed' && (
-        <Alert variant="destructive">
-          <AlertDescription className="flex items-center justify-between">
-            <span>Content extraction failed for this source.</span>
+        <div className="mb-6 animate-scale-in">
+          <div className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3">
+            <p className="text-sm text-destructive">
+              Content extraction failed.
+            </p>
             <Button
               variant="outline"
               size="sm"
               onClick={handleRetry}
               disabled={retrying}
+              className="shrink-0 ml-4"
             >
-              {retrying ? 'Retrying...' : 'Retry'}
+              {retrying ? (
+                <span className="flex items-center gap-2">
+                  <span className="size-3 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
+                  Retrying...
+                </span>
+              ) : (
+                'Retry extraction'
+              )}
             </Button>
-          </AlertDescription>
-        </Alert>
+          </div>
+        </div>
       )}
 
       {source.content?.text && (
-        <article className="prose dark:prose-invert max-w-none">
-          <p className="whitespace-pre-line leading-relaxed">
-            {source.content.text}
-          </p>
+        <article
+          className="animate-slide-up"
+          style={{ animationDelay: '100ms', animationFillMode: 'backwards' }}
+        >
+          <div className="border-t border-border/40 pt-8">
+            <MarkdownContent content={source.content.text} variant="article" />
+          </div>
         </article>
       )}
     </div>
   )
+}
+
+function BackLink() {
+  return (
+    <Link
+      to="/sources"
+      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+    >
+      <svg className="size-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
+      </svg>
+      Back to Library
+    </Link>
+  )
+}
+
+function extractDomain(url: string): string {
+  try {
+    const hostname = new URL(url.startsWith('http') ? url : `https://${url}`).hostname
+    return hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
 }
