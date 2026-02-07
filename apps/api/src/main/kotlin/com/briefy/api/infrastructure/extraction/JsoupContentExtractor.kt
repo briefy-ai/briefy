@@ -3,6 +3,9 @@ package com.briefy.api.infrastructure.extraction
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.springframework.stereotype.Component
+import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.URI
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -22,11 +25,14 @@ class JsoupContentExtractor : ContentExtractor {
     }
 
     override fun extract(url: String): ExtractionResult {
+        validateFetchableUrl(url)
+
         val document = Jsoup.connect(url)
             .userAgent(USER_AGENT)
             .timeout(TIMEOUT_MS)
             .followRedirects(true)
             .get()
+        validateFetchableUrl(document.location())
 
         return ExtractionResult(
             text = extractContent(document),
@@ -134,5 +140,46 @@ class JsoupContentExtractor : ContentExtractor {
             ?.replace(Regex("\\s+"), " ")
             ?.trim()
             ?: ""
+    }
+
+    private fun validateFetchableUrl(url: String) {
+        val uri = URI.create(url)
+        val scheme = uri.scheme?.lowercase()
+        require(scheme == "http" || scheme == "https") { "Unsupported URL scheme" }
+
+        val host = uri.host ?: throw IllegalArgumentException("Invalid URL host")
+        require(!host.equals("localhost", ignoreCase = true)) { "Host is not allowed" }
+
+        val addresses = InetAddress.getAllByName(host)
+        require(addresses.isNotEmpty()) { "Host resolution failed" }
+        for (address in addresses) {
+            require(!isBlockedAddress(address)) { "Host resolves to a private or unsafe network" }
+        }
+    }
+
+    private fun isBlockedAddress(address: InetAddress): Boolean {
+        if (address.isAnyLocalAddress || address.isLoopbackAddress || address.isSiteLocalAddress ||
+            address.isLinkLocalAddress || address.isMulticastAddress
+        ) {
+            return true
+        }
+
+        val bytes = address.address
+        if (address is Inet4Address) {
+            // Carrier-grade NAT: 100.64.0.0/10
+            if (bytes.size == 4) {
+                val first = bytes[0].toInt() and 0xFF
+                val second = bytes[1].toInt() and 0xFF
+                if (first == 100 && second in 64..127) return true
+            }
+        } else if (bytes.isNotEmpty()) {
+            // IPv6 unique local (fc00::/7) and link-local (fe80::/10).
+            val first = bytes[0].toInt() and 0xFF
+            val second = if (bytes.size > 1) bytes[1].toInt() and 0xFF else 0
+            if ((first and 0xFE) == 0xFC) return true
+            if (first == 0xFE && (second and 0xC0) == 0x80) return true
+        }
+
+        return false
     }
 }

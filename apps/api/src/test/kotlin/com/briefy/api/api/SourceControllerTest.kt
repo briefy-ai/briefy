@@ -8,6 +8,8 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.BeforeEach
 import org.mockito.Mockito.`when`
+import org.mockito.Mockito.times
+import org.mockito.Mockito.verify
 import org.mockito.kotlin.any
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -63,13 +65,41 @@ class SourceControllerTest {
             .andExpect(jsonPath("$.url.normalized").value("https://example.com/article"))
             .andExpect(jsonPath("$.url.platform").value("web"))
             .andExpect(jsonPath("$.status").value("active"))
+            .andExpect(jsonPath("$.sourceType").value("blog"))
             .andExpect(jsonPath("$.content.text").value(sampleExtractionResult.text))
             .andExpect(jsonPath("$.content.wordCount").isNumber)
             .andExpect(jsonPath("$.metadata.title").value("Test Article Title"))
             .andExpect(jsonPath("$.metadata.author").value("Test Author"))
             .andExpect(jsonPath("$.metadata.estimatedReadingTime").isNumber)
+            .andExpect(jsonPath("$.reuse.usedCache").value(false))
             .andExpect(jsonPath("$.id").isString)
             .andExpect(jsonPath("$.createdAt").isString)
+    }
+
+    @Test
+    fun `POST reuses fresh cached snapshot across users for same URL`() {
+        val userA = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        val userB = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+        `when`(currentUserProvider.requireUserId()).thenReturn(userA, userB)
+        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+
+        mockMvc.perform(
+            post("/api/sources")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"url": "https://shared-cache-test.com/article"}""")
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.reuse.usedCache").value(false))
+
+        mockMvc.perform(
+            post("/api/sources")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"url": "https://shared-cache-test.com/article"}""")
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.reuse.usedCache").value(true))
+
+        verify(contentExtractor, times(1)).extract(any())
     }
 
     @Test

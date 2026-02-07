@@ -3,6 +3,8 @@ package com.briefy.api.domain.knowledgegraph.source
 import jakarta.persistence.Column
 import jakarta.persistence.Embeddable
 import java.net.URI
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 
 @Embeddable
 data class Url(
@@ -51,15 +53,19 @@ data class Url(
             }
 
             val uri = URI.create(withProtocol)
+            val scheme = uri.scheme?.lowercase()
+            require(scheme == "http" || scheme == "https") { "Only http/https URLs are supported" }
 
             // Normalize: lowercase host, remove www., remove trailing slash, remove fragment
             val host = uri.host?.lowercase()?.removePrefix("www.")
                 ?: throw IllegalArgumentException("Invalid URL: no host")
 
+            val port = if (uri.port == -1 || uri.port == 80 || uri.port == 443) "" else ":${uri.port}"
             val path = uri.path?.trimEnd('/') ?: ""
-            val query = uri.query?.let { "?$it" } ?: ""
+            val canonicalQuery = canonicalizeQuery(uri.rawQuery)
+            val query = canonicalQuery?.let { "?$it" } ?: ""
 
-            return "https://$host$path$query"
+            return "https://$host$port$path$query"
         }
 
         fun detectPlatform(normalizedUrl: String): String {
@@ -81,6 +87,58 @@ data class Url(
                 true
             } catch (e: Exception) {
                 false
+            }
+        }
+
+        private val DROP_QUERY_PARAMS = setOf(
+            "fbclid",
+            "gclid",
+            "dclid",
+            "msclkid",
+            "mc_cid",
+            "mc_eid",
+            "igshid",
+            "si",
+            "access_token",
+            "id_token",
+            "token",
+            "auth",
+            "authorization",
+            "jwt",
+            "signature",
+            "sig",
+            "x-amz-signature",
+            "x-amz-security-token",
+            "x-goog-signature"
+        )
+
+        private fun canonicalizeQuery(rawQuery: String?): String? {
+            if (rawQuery.isNullOrBlank()) return null
+
+            val canonical = rawQuery.split("&")
+                .asSequence()
+                .filter { it.isNotBlank() }
+                .mapNotNull { entry ->
+                    val parts = entry.split("=", limit = 2)
+                    val key = parts[0].trim()
+                    if (key.isBlank()) {
+                        null
+                    } else {
+                        val decodedKey = URLDecoder.decode(key, StandardCharsets.UTF_8).lowercase()
+                        if (decodedKey.startsWith("utm_") || decodedKey in DROP_QUERY_PARAMS) {
+                            null
+                        } else {
+                            val value = if (parts.size == 2) parts[1] else ""
+                            key to value
+                        }
+                    }
+                }
+                .sortedWith(compareBy<Pair<String, String>> { it.first }.thenBy { it.second })
+                .toList()
+
+            if (canonical.isEmpty()) return null
+            return canonical.joinToString("&") { (key, value) ->
+                if (value.isBlank()) key else "$key=$value"
             }
         }
     }
