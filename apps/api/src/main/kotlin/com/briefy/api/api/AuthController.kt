@@ -8,6 +8,7 @@ import jakarta.validation.Valid
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -26,9 +27,11 @@ class AuthController(
     private val authCookieService: AuthCookieService,
     private val currentUserProvider: CurrentUserProvider
 ) {
+    private val logger = LoggerFactory.getLogger(AuthController::class.java)
 
     @PostMapping("/signup")
     fun signUp(@Valid @RequestBody request: SignUpRequest): ResponseEntity<AuthUserResponse> {
+        logger.info("[controller] Sign up request received")
         val result = authService.signUp(
             SignUpCommand(
                 email = request.email,
@@ -37,6 +40,7 @@ class AuthController(
             )
         )
 
+        logger.info("[controller] Sign up request completed userId={}", result.user.id)
         return ResponseEntity.status(HttpStatus.CREATED)
             .header(HttpHeaders.SET_COOKIE, accessCookie(result.accessToken))
             .header(HttpHeaders.SET_COOKIE, refreshCookie(result.refreshToken))
@@ -45,7 +49,9 @@ class AuthController(
 
     @PostMapping("/login")
     fun login(@Valid @RequestBody request: LoginRequest): ResponseEntity<AuthUserResponse> {
+        logger.info("[controller] Login request received")
         val result = authService.login(LoginCommand(email = request.email, password = request.password))
+        logger.info("[controller] Login request completed userId={}", result.user.id)
         return ResponseEntity.ok()
             .header(HttpHeaders.SET_COOKIE, accessCookie(result.accessToken))
             .header(HttpHeaders.SET_COOKIE, refreshCookie(result.refreshToken))
@@ -56,7 +62,9 @@ class AuthController(
     fun refresh(
         @CookieValue(name = AuthCookieService.REFRESH_TOKEN_COOKIE, required = false) refreshToken: String?
     ): ResponseEntity<Map<String, Boolean>> {
+        logger.info("[controller] Refresh token request received hasToken={}", !refreshToken.isNullOrBlank())
         val refreshed = authService.refresh(refreshToken)
+        logger.info("[controller] Refresh token request completed")
         return ResponseEntity.ok()
             .header(HttpHeaders.SET_COOKIE, accessCookie(refreshed.accessToken))
             .body(mapOf("ok" to true))
@@ -66,7 +74,9 @@ class AuthController(
     fun logout(
         @CookieValue(name = AuthCookieService.REFRESH_TOKEN_COOKIE, required = false) refreshToken: String?
     ): ResponseEntity<Void> {
+        logger.info("[controller] Logout request received hasToken={}", !refreshToken.isNullOrBlank())
         authService.logout(refreshToken)
+        logger.info("[controller] Logout request completed")
         return ResponseEntity.noContent()
             .header(HttpHeaders.SET_COOKIE, authCookieService.clearAccessTokenCookie().toString())
             .header(HttpHeaders.SET_COOKIE, authCookieService.clearRefreshTokenCookie().toString())
@@ -75,8 +85,11 @@ class AuthController(
 
     @GetMapping("/me")
     fun me(): ResponseEntity<AuthUserResponse> {
+        logger.info("[controller] Current user request received")
         val userId = currentUserProvider.requireUserId()
-        return ResponseEntity.ok(authService.me(userId))
+        val user = authService.me(userId)
+        logger.info("[controller] Current user request completed userId={}", user.id)
+        return ResponseEntity.ok(user)
     }
 
     private fun accessCookie(accessToken: String): String {

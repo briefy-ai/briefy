@@ -42,6 +42,9 @@ google:
     redirect-uri: ${GOOGLE_REDIRECT_URI:}
 
 management:
+  tracing:
+    sampling:
+      probability: 1.0
   endpoints:
     web:
       exposure:

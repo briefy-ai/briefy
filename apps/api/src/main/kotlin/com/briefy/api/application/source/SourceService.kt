@@ -28,8 +28,8 @@ class SourceService(
         val userId = currentUserProvider.requireUserId()
         val normalizedUrl = Url.normalize(command.url)
         val sharedUrlSourceCount = sourceRepository.countByUrlNormalized(normalizedUrl)
+        logger.info("[service] Submitting source userId={} url={}", userId, normalizedUrl)
 
-        // Check for duplicate
         sourceRepository.findByUserIdAndUrlNormalized(userId, normalizedUrl)?.let {
             throw SourceAlreadyExistsException(normalizedUrl)
         }
@@ -41,7 +41,7 @@ class SourceService(
         val snapshotCacheAge = latestSnapshot?.let { cacheAgeSeconds(it.fetchedAt, now) }
 
         logger.info(
-            "Source submit received url={} userId={} sourceType={} sharedUrlSourceCount={}",
+            "[service] Source submit received url={} userId={} sourceType={} sharedUrlSourceCount={}",
             normalizedUrl,
             userId,
             sourceType,
@@ -59,10 +59,10 @@ class SourceService(
         }
 
         if (latestSnapshot == null) {
-            logger.info("Cache miss url={} reason=no_snapshot fetching_fresh=true", normalizedUrl)
+            logger.info("[service] Cache miss url={} reason=no_snapshot fetching_fresh=true", normalizedUrl)
         } else {
             logger.info(
-                "Cache miss url={} reason=stale_or_invalid snapshotId={} snapshotVersion={} snapshotStatus={} expiresAt={} now={} fetching_fresh=true",
+                "[service] Cache miss url={} reason=stale_or_invalid snapshotId={} snapshotVersion={} snapshotStatus={} expiresAt={} now={} fetching_fresh=true",
                 normalizedUrl,
                 latestSnapshot.id,
                 latestSnapshot.version,
@@ -90,25 +90,30 @@ class SourceService(
     @Transactional(readOnly = true)
     fun listSources(status: SourceStatus? = null): List<SourceResponse> {
         val userId = currentUserProvider.requireUserId()
+        logger.info("[service] Listing sources userId={} status={}", userId, status ?: "all")
         val sources = if (status != null) {
             sourceRepository.findByUserIdAndStatus(userId, status)
         } else {
             sourceRepository.findByUserId(userId)
         }
+        logger.info("[service] Listed sources userId={} count={}", userId, sources.size)
         return sources.map { it.toResponse() }
     }
 
     @Transactional(readOnly = true)
     fun getSource(id: UUID): SourceResponse {
         val userId = currentUserProvider.requireUserId()
+        logger.info("[service] Getting source userId={} sourceId={}", userId, id)
         val source = sourceRepository.findByIdAndUserId(id, userId)
             ?: throw SourceNotFoundException(id)
+        logger.info("[service] Fetched source userId={} sourceId={} status={}", userId, source.id, source.status)
         return source.toResponse()
     }
 
     @Transactional
     fun retryExtraction(id: UUID): SourceResponse {
         val userId = currentUserProvider.requireUserId()
+        logger.info("[service] Retrying extraction userId={} sourceId={}", userId, id)
         val source = sourceRepository.findByIdAndUserId(id, userId)
             ?: throw SourceNotFoundException(id)
 
@@ -141,10 +146,10 @@ class SourceService(
             source.completeExtraction(content, metadata)
             sourceRepository.save(source)
 
-            logger.info("Successfully extracted content from ${source.url.normalized}")
+            logger.info("[service] Successfully extracted content url={}", source.url.normalized)
             return source
         } catch (e: Exception) {
-            logger.error("Failed to extract content from ${source.url.normalized}", e)
+            logger.error("[service] Failed to extract content url={}", source.url.normalized, e)
             source.failExtraction()
             sourceRepository.save(source)
             throw ExtractionFailedException(source.url.normalized, e)
@@ -174,7 +179,7 @@ class SourceService(
         )
         sharedSourceSnapshotRepository.save(snapshot)
         logger.info(
-            "Shared snapshot stored url={} snapshotId={} snapshotVersion={} sourceType={} fetchedAt={} expiresAt={}",
+            "[service] Shared snapshot stored url={} snapshotId={} snapshotVersion={} sourceType={} fetchedAt={} expiresAt={}",
             url,
             snapshot.id,
             snapshot.version,
@@ -223,7 +228,7 @@ class SourceService(
 
         val ttlSeconds = freshnessPolicy.ttlSeconds(latestSnapshot.sourceType)
         logger.info(
-            "Cache hit url={} snapshotId={} snapshotVersion={} sourceId={} cacheAgeSeconds={} freshnessTtlSeconds={}",
+            "[service] Cache hit url={} snapshotId={} snapshotVersion={} sourceId={} cacheAgeSeconds={} freshnessTtlSeconds={}",
             normalizedUrl,
             latestSnapshot.id,
             latestSnapshot.version,

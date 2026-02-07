@@ -1,6 +1,7 @@
 package com.briefy.api.config
 
 import com.briefy.api.api.ErrorResponse
+import com.briefy.api.infrastructure.logging.RequestMdcFilter
 import com.briefy.api.infrastructure.security.JwtAuthenticationFilter
 import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.servlet.http.HttpServletResponse
@@ -22,6 +23,7 @@ import java.time.Instant
 @EnableWebSecurity
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
+    private val requestMdcFilter: RequestMdcFilter,
     private val objectMapper: ObjectMapper
 ) {
 
@@ -49,6 +51,7 @@ class SecurityConfig(
                 }
             }
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
+            .addFilterAfter(requestMdcFilter, JwtAuthenticationFilter::class.java)
 
         return http.build()
     }
