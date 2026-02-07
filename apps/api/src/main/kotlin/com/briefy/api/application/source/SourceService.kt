@@ -48,37 +48,13 @@ class SourceService(
             sharedUrlSourceCount
         )
 
-        if (latestSnapshot != null &&
-            latestSnapshot.status == SharedSourceSnapshotStatus.ACTIVE &&
-            latestSnapshot.content != null &&
-            latestSnapshot.metadata != null &&
-            freshnessPolicy.isFresh(latestSnapshot.expiresAt, now)
-        ) {
-            val source = Source(
-                id = idGenerator.newId(),
-                url = Url.from(command.url),
-                status = SourceStatus.ACTIVE,
-                content = latestSnapshot.content,
-                metadata = latestSnapshot.metadata,
-                sourceType = latestSnapshot.sourceType,
-                userId = userId
-            )
-            sourceRepository.save(source)
-            logger.info(
-                "Cache hit url={} snapshotId={} snapshotVersion={} sourceId={} cacheAgeSeconds={} freshnessTtlSeconds={}",
-                normalizedUrl,
-                latestSnapshot.id,
-                latestSnapshot.version,
-                source.id,
-                snapshotCacheAge,
-                freshnessPolicy.ttlSeconds(latestSnapshot.sourceType)
-            )
-            return source.toResponse(
-                reuseInfo = ReuseInfoDto(
-                    usedCache = true,
-                    cacheAgeSeconds = snapshotCacheAge,
-                    freshnessTtlSeconds = freshnessPolicy.ttlSeconds(latestSnapshot.sourceType)
-                )
+        if (isReusableSnapshot(latestSnapshot, now)) {
+            return buildCacheHitResponse(
+                command = command,
+                userId = userId,
+                normalizedUrl = normalizedUrl,
+                latestSnapshot = latestSnapshot,
+                snapshotCacheAge = snapshotCacheAge
             )
         }
 
@@ -210,5 +186,58 @@ class SourceService(
 
     private fun cacheAgeSeconds(from: Instant, to: Instant): Long {
         return Duration.between(from, to).seconds.coerceAtLeast(0)
+    }
+
+    private fun isReusableSnapshot(
+        latestSnapshot: SharedSourceSnapshot?,
+        now: Instant
+    ): Boolean {
+        return latestSnapshot != null &&
+            latestSnapshot.status == SharedSourceSnapshotStatus.ACTIVE &&
+            latestSnapshot.content != null &&
+            latestSnapshot.metadata != null &&
+            freshnessPolicy.isFresh(latestSnapshot.expiresAt, now)
+    }
+
+    private fun buildCacheHitResponse(
+        command: CreateSourceCommand,
+        userId: UUID,
+        normalizedUrl: String,
+        latestSnapshot: SharedSourceSnapshot?,
+        snapshotCacheAge: Long?
+    ): SourceResponse {
+        requireNotNull(latestSnapshot)
+        requireNotNull(latestSnapshot.content)
+        requireNotNull(latestSnapshot.metadata)
+
+        val source = Source(
+            id = idGenerator.newId(),
+            url = Url.from(command.url),
+            status = SourceStatus.ACTIVE,
+            content = latestSnapshot.content,
+            metadata = latestSnapshot.metadata,
+            sourceType = latestSnapshot.sourceType,
+            userId = userId
+        )
+        sourceRepository.save(source)
+
+        val ttlSeconds = freshnessPolicy.ttlSeconds(latestSnapshot.sourceType)
+        logger.info(
+            "Cache hit url={} snapshotId={} snapshotVersion={} sourceId={} cacheAgeSeconds={} freshnessTtlSeconds={}",
+            normalizedUrl,
+            latestSnapshot.id,
+            latestSnapshot.version,
+            source.id,
+            snapshotCacheAge,
+            ttlSeconds
+        )
+
+        return source.toResponse(
+            reuseInfo = ReuseInfoDto(
+                usedCache = true,
+                cacheAgeSeconds = snapshotCacheAge,
+                freshnessTtlSeconds = ttlSeconds
+            )
+        )
     }
 }
