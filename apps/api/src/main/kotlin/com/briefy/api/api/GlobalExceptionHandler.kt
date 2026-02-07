@@ -98,7 +98,7 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(ExtractionFailedException::class)
     fun handleExtractionFailed(ex: ExtractionFailedException): ResponseEntity<ErrorResponse> {
-        logger.error("Extraction failed", ex)
+        logger.error("[exception] Extraction failed", ex)
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
             .body(ErrorResponse(
                 status = HttpStatus.UNPROCESSABLE_ENTITY.value(),
@@ -140,7 +140,7 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception::class)
     fun handleGenericException(ex: Exception): ResponseEntity<ErrorResponse> {
-        logger.error("Unexpected error", ex)
+        logger.error("[exception] Unexpected error", ex)
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(ErrorResponse(
                 status = HttpStatus.INTERNAL_SERVER_ERROR.value(),
