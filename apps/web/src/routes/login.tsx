@@ -3,7 +3,6 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { login } from '@/lib/api/auth'
 import { ApiClientError } from '@/lib/api/client'
@@ -46,50 +45,89 @@ function LoginPage() {
   }
 
   return (
-    <div className="mx-auto max-w-md">
-      <Card>
-        <CardHeader>
-          <CardTitle>Log in to Briefy</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <Input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={submitting}
-            />
-            <Input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={submitting}
-            />
+    <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center -mt-8 px-4">
+      <div className="w-full max-w-sm">
+        {/* Header */}
+        <div className="mb-8 text-center animate-fade-in">
+          <div className="mx-auto mb-5 flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground text-base font-bold shadow-lg shadow-primary/20">
+            B
+          </div>
+          <h1 className="text-xl font-semibold tracking-tight">
+            Welcome back
+          </h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Sign in to your Briefy account
+          </p>
+        </div>
+
+        {/* Form */}
+        <div className="animate-slide-up rounded-xl border border-border/50 bg-card/50 p-6" style={{ animationDelay: '50ms', animationFillMode: 'backwards' }}>
+          <form className="space-y-3.5" onSubmit={handleSubmit}>
+            <div className="space-y-1.5">
+              <label htmlFor="email" className="text-xs font-medium text-muted-foreground">
+                Email
+              </label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={submitting}
+                autoComplete="email"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="text-xs font-medium text-muted-foreground">
+                Password
+              </label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={submitting}
+                autoComplete="current-password"
+              />
+            </div>
             <Button
               type="submit"
-              className="w-full"
+              className="w-full mt-1"
               disabled={submitting || !email.trim() || !password}
             >
-              {submitting ? 'Logging in...' : 'Log in'}
+              {submitting ? (
+                <span className="flex items-center gap-2">
+                  <span className="size-3.5 rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground animate-spin" />
+                  Signing in...
+                </span>
+              ) : (
+                'Sign in'
+              )}
             </Button>
           </form>
 
           {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
+            <div className="mt-4 animate-scale-in">
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            </div>
           )}
+        </div>
 
-          <p className="text-muted-foreground text-sm">
-            No account yet?{' '}
-            <Link className="text-foreground underline" to="/signup">
-              Sign up
+        <div className="mt-5 text-center animate-fade-in" style={{ animationDelay: '150ms', animationFillMode: 'backwards' }}>
+          <p className="text-muted-foreground text-xs">
+            Don't have an account?{' '}
+            <Link
+              className="text-primary font-medium hover:underline underline-offset-2"
+              to="/signup"
+            >
+              Create one
             </Link>
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
