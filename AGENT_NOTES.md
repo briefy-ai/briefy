@@ -18,6 +18,7 @@ Purpose: persistent notes for agent behavior and repo-specific learnings.
 
 ## Non-Obvious Code Findings
 - [2026-02-07 20:19] Multi-select delete in `apps/web/src/routes/sources/index.tsx` was implemented as N single `DELETE /api/sources/{id}` calls via `Promise.all`, which allowed partial archive on failures. Introduced atomic batch archive endpoint planning/implementation to enforce all-or-nothing behavior.
+- [2026-02-07 22:46] Prefer named constants over magic numbers in domain/application logic (for example, batch limits in `SourceService`) to keep constraints explicit and easier to change safely.
 
 ## User Preferences (Likes / Dislikes)
 - [2026-02-07 20:19] User confirmed that "delete" semantics for Sources must mean archive (DEC-012 behavior), including batch flows -> keep UI copy and API naming explicit about archive semantics behind delete actions.

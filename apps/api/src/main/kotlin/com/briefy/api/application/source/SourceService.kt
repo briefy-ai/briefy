@@ -142,7 +142,9 @@ class SourceService(
         val userId = currentUserProvider.requireUserId()
         val dedupedIds = sourceIds.distinct()
         require(dedupedIds.isNotEmpty()) { "sourceIds must not be empty" }
-        require(dedupedIds.size <= 100) { "sourceIds must contain at most 100 ids" }
+        require(dedupedIds.size <= MAX_BATCH_ARCHIVE_SOURCE_IDS) {
+            "sourceIds must contain at most $MAX_BATCH_ARCHIVE_SOURCE_IDS ids"
+        }
 
         logger.info(
             "[service] Batch archive sources userId={} requestedCount={} dedupedCount={}",
@@ -162,6 +164,10 @@ class SourceService(
             }
         }
         sourceRepository.saveAll(sources)
+    }
+
+    companion object {
+        private const val MAX_BATCH_ARCHIVE_SOURCE_IDS = 100
     }
 
     private fun extractContent(source: Source): Source {
