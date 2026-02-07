@@ -225,6 +225,9 @@
 }
 
 @layer components {
+    .briefy-markdown {
+        @apply font-thin
+    }
   .briefy-markdown > :first-child {
     margin-top: 0;
   }

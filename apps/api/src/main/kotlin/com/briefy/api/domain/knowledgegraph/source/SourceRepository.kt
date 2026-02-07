@@ -10,4 +10,5 @@ interface SourceRepository : JpaRepository<Source, UUID> {
     fun findByUserIdAndStatus(userId: UUID, status: SourceStatus): List<Source>
     fun findByUserId(userId: UUID): List<Source>
     fun findByIdAndUserId(id: UUID, userId: UUID): Source?
+    fun countByUrlNormalized(normalizedUrl: String): Long
 }

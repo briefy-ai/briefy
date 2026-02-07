@@ -1,5 +1,6 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link as RouterLink } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
+import { Link2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -77,19 +78,7 @@ function SourcesPage() {
       <form onSubmit={handleSubmit} className="flex gap-2">
         <div className="relative flex-1">
           <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
-            <svg
-              className="size-4 text-muted-foreground/50"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m9.86-4.061a4.5 4.5 0 0 0-1.242-7.244l4.5-4.5a4.5 4.5 0 0 1 6.364 6.364l-1.757 1.757"
-              />
-            </svg>
+            <Link2 className="size-4 text-muted-foreground/50" strokeWidth={1.8} />
           </div>
           <Input
             type="url"
@@ -207,7 +196,7 @@ function SourceCard({ source }: { source: Source }) {
   const domain = extractDomain(source.url.normalized)
 
   return (
-    <Link
+    <RouterLink
       to="/sources/$sourceId"
       params={{ sourceId: source.id }}
       className="group block"
@@ -253,7 +242,7 @@ function SourceCard({ source }: { source: Source }) {
           </div>
         )}
       </div>
-    </Link>
+    </RouterLink>
   )
 }
 

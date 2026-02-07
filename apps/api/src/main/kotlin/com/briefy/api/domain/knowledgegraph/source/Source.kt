@@ -23,6 +23,10 @@ class Source(
     @Embedded
     var metadata: Metadata? = null,
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source_type", nullable = false, length = 20)
+    val sourceType: SourceType = SourceType.BLOG,
+
     @Column(name = "user_id", nullable = false)
     val userId: UUID,
 
@@ -63,11 +67,12 @@ class Source(
     }
 
     companion object {
-        fun create(id: UUID, rawUrl: String, userId: UUID): Source {
+        fun create(id: UUID, rawUrl: String, userId: UUID, sourceType: SourceType = SourceType.BLOG): Source {
             return Source(
                 id = id,
                 url = Url.from(rawUrl),
-                userId = userId
+                userId = userId,
+                sourceType = sourceType
             )
         }
     }

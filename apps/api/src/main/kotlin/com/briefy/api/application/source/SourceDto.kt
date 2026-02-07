@@ -12,10 +12,18 @@ data class SourceResponse(
     val id: UUID,
     val url: UrlDto,
     val status: String,
+    val sourceType: String,
     val content: ContentDto?,
     val metadata: MetadataDto?,
+    val reuse: ReuseInfoDto?,
     val createdAt: Instant,
     val updatedAt: Instant
+)
+
+data class ReuseInfoDto(
+    val usedCache: Boolean,
+    val cacheAgeSeconds: Long?,
+    val freshnessTtlSeconds: Long
 )
 
 data class UrlDto(
@@ -37,12 +45,14 @@ data class MetadataDto(
     val estimatedReadingTime: Int?
 )
 
-fun Source.toResponse(): SourceResponse = SourceResponse(
+fun Source.toResponse(reuseInfo: ReuseInfoDto? = null): SourceResponse = SourceResponse(
     id = id,
     url = url.toDto(),
     status = status.name.lowercase(),
+    sourceType = sourceType.name.lowercase(),
     content = content?.toDto(),
     metadata = metadata?.toDto(),
+    reuse = reuseInfo,
     createdAt = createdAt,
     updatedAt = updatedAt
 )
