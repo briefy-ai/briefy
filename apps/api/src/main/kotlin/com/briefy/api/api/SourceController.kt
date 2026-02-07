@@ -4,6 +4,7 @@ import com.briefy.api.application.source.*
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotEmpty
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -27,15 +28,9 @@ class SourceController(
     }
 
     @GetMapping
-    fun listSources(@RequestParam status: String?): ResponseEntity<List<SourceResponse>> {
+    fun listSources(@RequestParam(required = false) status: String?): ResponseEntity<List<SourceResponse>> {
         logger.info("[controller] List sources request received status={}", status ?: "all")
-        val statusEnum = status?.let {
-            try {
-                SourceStatus.valueOf(it.uppercase())
-            } catch (e: IllegalArgumentException) {
-                null
-            }
-        }
+        val statusEnum = status?.let { SourceStatus.valueOf(it.uppercase()) }
         val sources = sourceService.listSources(statusEnum)
         logger.info("[controller] List sources request completed count={}", sources.size)
         return ResponseEntity.ok(sources)
@@ -56,9 +51,30 @@ class SourceController(
         logger.info("[controller] Retry extraction request completed sourceId={} status={}", source.id, source.status)
         return ResponseEntity.ok(source)
     }
+
+    @DeleteMapping("/{id}")
+    fun deleteSource(@PathVariable id: UUID): ResponseEntity<Unit> {
+        logger.info("[controller] Delete source request received sourceId={}", id)
+        sourceService.deleteSource(id)
+        logger.info("[controller] Delete source request completed sourceId={}", id)
+        return ResponseEntity.noContent().build()
+    }
+
+    @PostMapping("/archive-batch")
+    fun archiveSourcesBatch(@Valid @RequestBody request: ArchiveSourcesBatchRequest): ResponseEntity<Unit> {
+        logger.info("[controller] Batch archive request received count={}", request.sourceIds.size)
+        sourceService.archiveSourcesBatch(request.sourceIds)
+        logger.info("[controller] Batch archive request completed count={}", request.sourceIds.size)
+        return ResponseEntity.noContent().build()
+    }
 }
 
 data class CreateSourceRequest(
     @field:NotBlank(message = "URL is required")
     val url: String
+)
+
+data class ArchiveSourcesBatchRequest(
+    @field:NotEmpty(message = "sourceIds must not be empty")
+    val sourceIds: List<UUID>
 )

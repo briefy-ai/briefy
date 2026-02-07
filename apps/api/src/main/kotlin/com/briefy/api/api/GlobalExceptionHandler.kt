@@ -26,6 +26,16 @@ class GlobalExceptionHandler {
             ))
     }
 
+    @ExceptionHandler(BatchSourceNotFoundException::class)
+    fun handleBatchSourceNotFound(ex: BatchSourceNotFoundException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(
+                status = HttpStatus.NOT_FOUND.value(),
+                error = "Not Found",
+                message = ex.message ?: "One or more sources not found"
+            ))
+    }
+
     @ExceptionHandler(SourceAlreadyExistsException::class)
     fun handleSourceAlreadyExists(ex: SourceAlreadyExistsException): ResponseEntity<ErrorResponse> {
         return ResponseEntity.status(HttpStatus.CONFLICT)

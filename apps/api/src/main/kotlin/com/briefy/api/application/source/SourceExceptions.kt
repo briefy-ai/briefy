@@ -3,6 +3,7 @@ package com.briefy.api.application.source
 import java.util.UUID
 
 class SourceNotFoundException(id: UUID) : RuntimeException("Source not found: $id")
+class BatchSourceNotFoundException : RuntimeException("One or more sources not found")
 
 class SourceAlreadyExistsException(normalizedUrl: String) : RuntimeException("Source already exists for URL: $normalizedUrl")
 
