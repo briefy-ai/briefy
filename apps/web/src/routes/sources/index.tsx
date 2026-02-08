@@ -1,6 +1,6 @@
 import { createFileRoute, Link as RouterLink } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
-import { CheckSquare, Link2, MoreHorizontal, Trash2 } from 'lucide-react'
+import { BookOpen, CheckSquare, Clock3, Link2, MoreHorizontal, Trash2, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -334,19 +334,7 @@ function SourcesPage() {
       ) : sources.length === 0 ? (
         <div className="py-16 text-center animate-fade-in">
           <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-card border border-border/50">
-            <svg
-              className="size-6 text-muted-foreground"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"
-              />
-            </svg>
+            <BookOpen className="size-6 text-muted-foreground" strokeWidth={1.5} />
           </div>
           <p className="text-sm font-medium text-foreground">
             {filter === 'active' ? 'No active sources' : 'No archived sources'}
@@ -371,13 +359,7 @@ function SourcesPage() {
               <SourceCard
                 source={source}
                 selected={selectedSourceIds.includes(source.id)}
-                deleting={deletingSourceIds.includes(source.id)}
                 onCardClick={(event) => handleSourceCardClick(event, index, source.id)}
-                onDelete={
-                  filter === 'active'
-                    ? () => requestDelete([source.id])
-                    : undefined
-                }
               />
             </div>
           ))}
@@ -401,15 +383,11 @@ const STATUS_CONFIG: Record<
 function SourceCard({
   source,
   selected,
-  deleting,
   onCardClick,
-  onDelete,
 }: {
   source: Source
   selected: boolean
-  deleting: boolean
   onCardClick: (event: React.MouseEvent<HTMLAnchorElement>) => void
-  onDelete?: () => void
 }) {
   const status = STATUS_CONFIG[source.status]
   const domain = extractDomain(source.url.normalized)
@@ -445,52 +423,19 @@ function SourceCard({
               )}
               {status.label}
             </Badge>
-            {onDelete && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    disabled={deleting}
-                    onClick={(event) => {
-                      event.preventDefault()
-                      event.stopPropagation()
-                    }}
-                    className="text-muted-foreground hover:text-foreground"
-                    aria-label="Open source actions"
-                  >
-                    <MoreHorizontal className="size-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    onSelect={onDelete}
-                    className="text-destructive focus:text-destructive"
-                  >
-                    <Trash2 className="size-4" />
-                    Delete source
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
           </div>
         </div>
         {(source.metadata?.author || source.content?.wordCount) && (
           <div className="mt-2.5 flex items-center gap-3 text-xs text-muted-foreground">
             {source.metadata?.author && (
               <span className="flex items-center gap-1">
-                <svg className="size-3 opacity-40" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0" />
-                </svg>
+                <User className="size-3 opacity-40" strokeWidth={1.5} />
                 {source.metadata.author}
               </span>
             )}
             {source.metadata?.estimatedReadingTime && (
               <span className="flex items-center gap-1">
-                <svg className="size-3 opacity-40" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                </svg>
+                <Clock3 className="size-3 opacity-40" strokeWidth={1.5} />
                 {source.metadata.estimatedReadingTime} min
               </span>
             )}
