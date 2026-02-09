@@ -13,7 +13,7 @@ enum class SourceStatus {
             EXTRACTING -> target == ACTIVE || target == FAILED
             ACTIVE -> target == ARCHIVED
             FAILED -> target == SUBMITTED // retry
-            ARCHIVED -> false
+            ARCHIVED -> target == ACTIVE
         }
     }
 }

@@ -1,6 +1,6 @@
 import { createFileRoute, Link as RouterLink } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
-import { BookOpen, CheckSquare, Clock3, Link2, MoreHorizontal, Trash2, User } from 'lucide-react'
+import { BookOpen, CheckSquare, Clock3, Link2, MoreHorizontal, RotateCcw, Trash2, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -22,7 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { archiveSourcesBatch, createSource, deleteSource, listSources } from '@/lib/api/sources'
+import { archiveSourcesBatch, createSource, deleteSource, listSources, restoreSource } from '@/lib/api/sources'
 import { ApiClientError } from '@/lib/api/client'
 import { requireAuth } from '@/lib/auth/requireAuth'
 import { cn } from '@/lib/utils'
@@ -44,6 +44,7 @@ function SourcesPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [deletingSourceIds, setDeletingSourceIds] = useState<string[]>([])
+  const [restoringSourceIds, setRestoringSourceIds] = useState<string[]>([])
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([])
   const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number | null>(null)
   const [confirmDeleteIds, setConfirmDeleteIds] = useState<string[]>([])
@@ -122,6 +123,23 @@ function SourcesPage() {
       }
     } finally {
       setDeletingSourceIds((prev) => prev.filter((id) => !uniqueIds.includes(id)))
+    }
+  }
+
+  async function handleRestore(sourceId: string) {
+    setRestoringSourceIds((prev) => Array.from(new Set([...prev, sourceId])))
+    setSubmitError(null)
+    try {
+      await restoreSource(sourceId)
+      setSources((prev) => prev.filter((source) => source.id !== sourceId))
+    } catch (e) {
+      if (e instanceof ApiClientError) {
+        setSubmitError(e.apiError?.message ?? e.message)
+      } else {
+        setSubmitError(e instanceof Error ? e.message : 'Failed to restore source')
+      }
+    } finally {
+      setRestoringSourceIds((prev) => prev.filter((id) => id !== sourceId))
     }
   }
 
@@ -360,6 +378,9 @@ function SourcesPage() {
                 source={source}
                 selected={selectedSourceIds.includes(source.id)}
                 onCardClick={(event) => handleSourceCardClick(event, index, source.id)}
+                showRestoreAction={filter === 'archived'}
+                restoring={restoringSourceIds.includes(source.id)}
+                onRestore={() => void handleRestore(source.id)}
               />
             </div>
           ))}
@@ -384,10 +405,16 @@ function SourceCard({
   source,
   selected,
   onCardClick,
+  showRestoreAction,
+  restoring,
+  onRestore,
 }: {
   source: Source
   selected: boolean
   onCardClick: (event: React.MouseEvent<HTMLAnchorElement>) => void
+  showRestoreAction: boolean
+  restoring: boolean
+  onRestore: () => void
 }) {
   const status = STATUS_CONFIG[source.status]
   const domain = extractDomain(source.url.normalized)
@@ -423,6 +450,23 @@ function SourceCard({
               )}
               {status.label}
             </Badge>
+            {showRestoreAction && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onRestore()
+                }}
+                disabled={restoring}
+              >
+                <RotateCcw className="size-3.5" />
+                {restoring ? 'Restoring...' : 'Restore'}
+              </Button>
+            )}
           </div>
         </div>
         {(source.metadata?.author || source.content?.wordCount) && (

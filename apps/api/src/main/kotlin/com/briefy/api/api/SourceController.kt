@@ -60,6 +60,14 @@ class SourceController(
         return ResponseEntity.noContent().build()
     }
 
+    @PostMapping("/{id}/restore")
+    fun restoreSource(@PathVariable id: UUID): ResponseEntity<Unit> {
+        logger.info("[controller] Restore source request received sourceId={}", id)
+        sourceService.restoreSource(id)
+        logger.info("[controller] Restore source request completed sourceId={}", id)
+        return ResponseEntity.noContent().build()
+    }
+
     @PostMapping("/archive-batch")
     fun archiveSourcesBatch(@Valid @RequestBody request: ArchiveSourcesBatchRequest): ResponseEntity<Unit> {
         logger.info("[controller] Batch archive request received count={}", request.sourceIds.size)

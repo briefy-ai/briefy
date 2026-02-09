@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, ExternalLink } from 'lucide-react'
+import { ArrowLeft, ExternalLink, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { MarkdownContent } from '@/components/content/MarkdownContent'
-import { deleteSource, getSource, retryExtraction } from '@/lib/api/sources'
+import { deleteSource, getSource, restoreSource, retryExtraction } from '@/lib/api/sources'
 import { ApiClientError } from '@/lib/api/client'
 import { requireAuth } from '@/lib/auth/requireAuth'
 import type { Source } from '@/lib/api/types'
@@ -47,6 +47,7 @@ function SourceDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [retrying, setRetrying] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [restoring, setRestoring] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   const fetchSource = useCallback(async () => {
@@ -97,6 +98,21 @@ function SourceDetailPage() {
         setError(e instanceof Error ? e.message : 'Failed to delete source')
       }
       setDeleting(false)
+    }
+  }
+
+  async function handleRestore() {
+    setRestoring(true)
+    try {
+      await restoreSource(sourceId)
+      await navigate({ to: '/sources' })
+    } catch (e) {
+      if (e instanceof ApiClientError) {
+        setError(e.apiError?.message ?? e.message)
+      } else {
+        setError(e instanceof Error ? e.message : 'Failed to restore source')
+      }
+      setRestoring(false)
     }
   }
 
@@ -185,6 +201,18 @@ function SourceDetailPage() {
               disabled={deleting}
             >
               {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          )}
+          {source.status === 'archived' && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void handleRestore()}
+              disabled={restoring}
+            >
+              <RotateCcw className="size-4" />
+              {restoring ? 'Restoring...' : 'Restore'}
             </Button>
           )}
         </div>

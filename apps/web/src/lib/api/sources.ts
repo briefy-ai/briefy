@@ -22,6 +22,10 @@ export async function deleteSource(id: string): Promise<void> {
   await apiDelete(`/api/sources/${id}`)
 }
 
+export async function restoreSource(id: string): Promise<void> {
+  await apiPost(`/api/sources/${id}/restore`)
+}
+
 export async function archiveSourcesBatch(sourceIds: string[]): Promise<void> {
   await apiPost('/api/sources/archive-batch', { sourceIds })
 }
