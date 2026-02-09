@@ -25,3 +25,8 @@ Purpose: persistent notes for agent behavior and repo-specific learnings.
 
 ## Mistakes Log
 - [2026-02-07 20:20] Wrote a brittle archive list assertion that depended on result ordering in `SourceControllerTest` -> changed to ID-presence assertion (`$[?(@.id=='...')]`) -> avoid index-based JSON assertions when endpoint order is not guaranteed.
+- [2026-02-09 08:35] Tried verifying event publication through `@MockitoBean ApplicationEventPublisher` in controller integration tests -> mock wasn’t reliably intercepting Spring's publisher wiring -> moved publication verification to focused service unit tests (`SourceServiceEventTest`) and kept controller tests on HTTP/state behavior -> for event assertions prefer unit/service tests over full-context controller tests.
+
+## Non-Obvious Code Findings
+- [2026-02-09 08:35] Source restore aligns with domain model/events as `ARCHIVED -> ACTIVE` only; no re-extraction and no status memory. Implemented via `Source.restore()` + `SourceStatus.canTransitionTo` update and idempotent service behavior in `restoreSource` (`apps/api/src/main/kotlin/com/briefy/api/domain/knowledgegraph/source/Source.kt`, `apps/api/src/main/kotlin/com/briefy/api/domain/knowledgegraph/source/SourceStatus.kt`, `apps/api/src/main/kotlin/com/briefy/api/application/source/SourceService.kt`).
+- [2026-02-09 08:35] Domain events were added as plain data events (`SourceArchivedEvent`, `SourceRestoredEvent`) and logged via `@EventListener` in `EventsConfig`; this gives event visibility now without introducing downstream coupling yet (`apps/api/src/main/kotlin/com/briefy/api/domain/knowledgegraph/source/event`, `apps/api/src/main/kotlin/com/briefy/api/infrastructure/events/EventsConfig.kt`).

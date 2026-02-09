@@ -264,6 +264,64 @@ class SourceControllerTest {
     }
 
     @Test
+    fun `POST restore returns 204 and makes archived source active`() {
+        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        val id = createSource("https://restore-test.com/article")
+
+        mockMvc.perform(delete("/api/sources/$id"))
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(post("/api/sources/$id/restore"))
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(get("/api/sources"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[?(@.id=='$id')]").isNotEmpty)
+
+        mockMvc.perform(get("/api/sources").param("status", "archived"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[?(@.id=='$id')]").isEmpty)
+
+        mockMvc.perform(get("/api/sources/$id"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("active"))
+    }
+
+    @Test
+    fun `POST restore is idempotent for active source`() {
+        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        val id = createSource("https://restore-idempotent-active.com/article")
+
+        mockMvc.perform(post("/api/sources/$id/restore"))
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(get("/api/sources/$id"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("active"))
+    }
+
+    @Test
+    fun `POST restore returns 404 for unknown id`() {
+        mockMvc.perform(post("/api/sources/00000000-0000-0000-0000-000000000000/restore"))
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `POST restore returns 404 for source not owned by user`() {
+        val userA = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        val userB = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+        `when`(currentUserProvider.requireUserId()).thenReturn(userB, userB, userA)
+        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+
+        val sourceId = createSource("https://restore-ownership-test.com/article")
+        mockMvc.perform(delete("/api/sources/$sourceId"))
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(post("/api/sources/$sourceId/restore"))
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
     fun `POST archive-batch archives all owned sources atomically`() {
         `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
         val idA = createSource("https://batch-archive-a.com/article")

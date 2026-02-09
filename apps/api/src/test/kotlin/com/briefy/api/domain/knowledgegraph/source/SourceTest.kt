@@ -73,6 +73,18 @@ class SourceTest {
     }
 
     @Test
+    fun `restore transitions from ARCHIVED to ACTIVE`() {
+        val source = createSource()
+        source.startExtraction()
+        source.completeExtraction(Content.from("text"), Metadata())
+        source.archive()
+
+        source.restore()
+
+        assertEquals(SourceStatus.ACTIVE, source.status)
+    }
+
+    @Test
     fun `invalid transition from SUBMITTED to ACTIVE throws`() {
         val source = createSource()
         assertThrows<IllegalArgumentException> {
@@ -87,6 +99,16 @@ class SourceTest {
         source.completeExtraction(Content.from("text"), Metadata())
         assertThrows<IllegalArgumentException> {
             source.retry()
+        }
+    }
+
+    @Test
+    fun `invalid transition from ACTIVE to ACTIVE throws`() {
+        val source = createSource()
+        source.startExtraction()
+        source.completeExtraction(Content.from("text"), Metadata())
+        assertThrows<IllegalArgumentException> {
+            source.restore()
         }
     }
 

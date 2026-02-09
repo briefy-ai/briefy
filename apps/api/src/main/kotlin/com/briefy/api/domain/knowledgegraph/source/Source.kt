@@ -58,6 +58,10 @@ class Source(
         transitionTo(SourceStatus.ARCHIVED)
     }
 
+    fun restore() {
+        transitionTo(SourceStatus.ACTIVE)
+    }
+
     private fun transitionTo(newStatus: SourceStatus) {
         require(status.canTransitionTo(newStatus)) {
             "Cannot transition from $status to $newStatus"

@@ -1,10 +1,13 @@
 package com.briefy.api.application.source
 
 import com.briefy.api.domain.knowledgegraph.source.*
+import com.briefy.api.domain.knowledgegraph.source.event.SourceArchivedEvent
+import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
 import com.briefy.api.infrastructure.extraction.ContentExtractor
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
@@ -19,7 +22,8 @@ class SourceService(
     private val sourceTypeClassifier: SourceTypeClassifier,
     private val freshnessPolicy: FreshnessPolicy,
     private val currentUserProvider: CurrentUserProvider,
-    private val idGenerator: IdGenerator
+    private val idGenerator: IdGenerator,
+    private val eventPublisher: ApplicationEventPublisher
 ) {
     private val logger = LoggerFactory.getLogger(SourceService::class.java)
 
@@ -134,6 +138,21 @@ class SourceService(
         if (source.status != SourceStatus.ARCHIVED) {
             source.archive()
             sourceRepository.save(source)
+            eventPublisher.publishEvent(SourceArchivedEvent(sourceId = source.id, userId = userId))
+        }
+    }
+
+    @Transactional
+    fun restoreSource(id: UUID) {
+        val userId = currentUserProvider.requireUserId()
+        logger.info("[service] Restoring source userId={} sourceId={}", userId, id)
+        val source = sourceRepository.findByIdAndUserId(id, userId)
+            ?: throw SourceNotFoundException(id)
+
+        if (source.status == SourceStatus.ARCHIVED) {
+            source.restore()
+            sourceRepository.save(source)
+            eventPublisher.publishEvent(SourceRestoredEvent(sourceId = source.id, userId = userId))
         }
     }
 
