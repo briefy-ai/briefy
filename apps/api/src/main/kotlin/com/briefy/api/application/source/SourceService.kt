@@ -2,6 +2,8 @@ package com.briefy.api.application.source
 
 import com.briefy.api.domain.knowledgegraph.source.*
 import com.briefy.api.domain.knowledgegraph.source.event.SourceArchivedEvent
+import com.briefy.api.domain.knowledgegraph.source.event.SourceActivatedEvent
+import com.briefy.api.domain.knowledgegraph.source.event.SourceActivationReason
 import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
 import com.briefy.api.infrastructure.extraction.ContentExtractor
 import com.briefy.api.infrastructure.id.IdGenerator
@@ -207,6 +209,13 @@ class SourceService(
 
             source.completeExtraction(content, metadata)
             sourceRepository.save(source)
+            eventPublisher.publishEvent(
+                SourceActivatedEvent(
+                    sourceId = source.id,
+                    userId = source.userId,
+                    activationReason = SourceActivationReason.FRESH_EXTRACTION
+                )
+            )
 
             logger.info("[service] Successfully extracted content url={}", source.url.normalized)
             return source
@@ -287,6 +296,13 @@ class SourceService(
             userId = userId
         )
         sourceRepository.save(source)
+        eventPublisher.publishEvent(
+            SourceActivatedEvent(
+                sourceId = source.id,
+                userId = userId,
+                activationReason = SourceActivationReason.CACHE_REUSE
+            )
+        )
 
         val ttlSeconds = freshnessPolicy.ttlSeconds(latestSnapshot.sourceType)
         logger.info(

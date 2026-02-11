@@ -28,6 +28,52 @@ export interface Source {
   updatedAt: string
 }
 
+export interface TopicSuggestion {
+  topicLinkId: string
+  topicId: string
+  topicName: string
+  topicStatus: 'suggested' | 'active' | 'archived'
+  confidence: number | null
+  createdAt: string
+}
+
+export interface SourceActiveTopic {
+  topicId: string
+  topicName: string
+  topicStatus: 'suggested' | 'active' | 'archived'
+  origin: 'system' | 'user'
+  linkedAt: string
+}
+
+export interface TopicSummary {
+  id: string
+  name: string
+  status: 'suggested' | 'active' | 'archived'
+  origin: 'system' | 'user'
+  linkedSourcesCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface TopicLinkedSource {
+  id: string
+  normalizedUrl: string
+  title: string | null
+  sourceType: 'news' | 'blog' | 'research'
+  status: 'submitted' | 'extracting' | 'active' | 'failed' | 'archived'
+  createdAt: string
+}
+
+export interface TopicDetail {
+  id: string
+  name: string
+  status: 'suggested' | 'active' | 'archived'
+  origin: 'system' | 'user'
+  createdAt: string
+  updatedAt: string
+  linkedSources: TopicLinkedSource[]
+}
+
 export interface ApiError {
   status: number
   error: string

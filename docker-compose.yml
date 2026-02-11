@@ -19,7 +19,11 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${DB_NAME:-briefy}
       SPRING_DATASOURCE_USERNAME: ${DB_USER:-briefy}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-briefy}
-      SPRING_AI_OPENAI_API_KEY: ${LLM_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-none}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      ZHIPUAI_API_KEY: ${ZHIPUAI_API_KEY:-}
+      ZHIPUAI_BASE_URL: ${ZHIPUAI_BASE_URL:-https://api.z.ai/api/paas}
+      ZHIPUAI_CHAT_MODEL: ${ZHIPUAI_CHAT_MODEL:-glm-4.7}
     ports:
       - "8080:8080"
 

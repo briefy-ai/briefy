@@ -24,8 +24,10 @@ spring:
       image: none
     zhipuai:
       api-key: ${ZHIPUAI_API_KEY:${LLM_API_KEY:}}
-      base-url: ${ZHIPUAI_BASE_URL:https://open.bigmodel.cn/api/paas}
+      base-url: ${ZHIPUAI_BASE_URL:https://api.z.ai/api/paas}
       chat:
+        api-key: ${ZHIPUAI_CHAT_API_KEY:${ZHIPUAI_API_KEY:${LLM_API_KEY:}}}
+        base-url: ${ZHIPUAI_CHAT_BASE_URL:${ZHIPUAI_BASE_URL:https://api.z.ai/api/paas}}
         options:
           model: ${ZHIPUAI_CHAT_MODEL:glm-4.7}
 

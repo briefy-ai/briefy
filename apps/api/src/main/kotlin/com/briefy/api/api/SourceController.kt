@@ -1,6 +1,9 @@
 package com.briefy.api.api
 
 import com.briefy.api.application.source.*
+import com.briefy.api.application.topic.SourceActiveTopicResponse
+import com.briefy.api.application.topic.SourceTopicSuggestionResponse
+import com.briefy.api.application.topic.TopicService
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -14,7 +17,8 @@ import java.util.UUID
 @RestController
 @RequestMapping("/api/sources")
 class SourceController(
-    private val sourceService: SourceService
+    private val sourceService: SourceService,
+    private val topicService: TopicService
 ) {
     private val logger = LoggerFactory.getLogger(SourceController::class.java)
 
@@ -68,6 +72,65 @@ class SourceController(
         return ResponseEntity.noContent().build()
     }
 
+    @GetMapping("/{id}/topics/suggestions")
+    fun listTopicSuggestions(@PathVariable id: UUID): ResponseEntity<List<SourceTopicSuggestionResponse>> {
+        logger.info("[controller] List topic suggestions request received sourceId={}", id)
+        val suggestions = topicService.listSourceTopicSuggestions(id)
+        logger.info(
+            "[controller] List topic suggestions request completed sourceId={} count={}",
+            id,
+            suggestions.size
+        )
+        return ResponseEntity.ok(suggestions)
+    }
+
+    @GetMapping("/{id}/topics/active")
+    fun listActiveTopics(@PathVariable id: UUID): ResponseEntity<List<SourceActiveTopicResponse>> {
+        logger.info("[controller] List source active topics request received sourceId={}", id)
+        val topics = topicService.listSourceActiveTopics(id)
+        logger.info(
+            "[controller] List source active topics request completed sourceId={} count={}",
+            id,
+            topics.size
+        )
+        return ResponseEntity.ok(topics)
+    }
+
+    @PostMapping("/{id}/topics/apply")
+    fun applyTopicSuggestions(
+        @PathVariable id: UUID,
+        @RequestBody(required = false) request: TopicSuggestionApplyRequest?
+    ): ResponseEntity<Unit> {
+        val keepCount = request?.keepTopicLinkIds?.size ?: 0
+        logger.info(
+            "[controller] Apply topic suggestions request received sourceId={} keepCount={}",
+            id,
+            keepCount
+        )
+        topicService.applySourceTopicSuggestions(id, request?.keepTopicLinkIds ?: emptyList())
+        logger.info("[controller] Apply topic suggestions request completed sourceId={}", id)
+        return ResponseEntity.noContent().build()
+    }
+
+    @PostMapping("/{id}/topics/manual")
+    fun addManualTopicSuggestion(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: CreateManualTopicRequest
+    ): ResponseEntity<SourceTopicSuggestionResponse> {
+        logger.info(
+            "[controller] Add manual topic suggestion request received sourceId={} name={}",
+            id,
+            request.name
+        )
+        val suggestion = topicService.addManualTopicSuggestionToSource(id, request.name)
+        logger.info(
+            "[controller] Add manual topic suggestion request completed sourceId={} topicLinkId={}",
+            id,
+            suggestion.topicLinkId
+        )
+        return ResponseEntity.status(HttpStatus.CREATED).body(suggestion)
+    }
+
     @PostMapping("/archive-batch")
     fun archiveSourcesBatch(@Valid @RequestBody request: ArchiveSourcesBatchRequest): ResponseEntity<Unit> {
         logger.info("[controller] Batch archive request received count={}", request.sourceIds.size)
@@ -85,4 +148,13 @@ data class CreateSourceRequest(
 data class ArchiveSourcesBatchRequest(
     @field:NotEmpty(message = "sourceIds must not be empty")
     val sourceIds: List<UUID>
+)
+
+data class TopicSuggestionApplyRequest(
+    val keepTopicLinkIds: List<UUID> = emptyList()
+)
+
+data class CreateManualTopicRequest(
+    @field:NotBlank(message = "name must not be blank")
+    val name: String
 )

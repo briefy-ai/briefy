@@ -2,6 +2,11 @@ package com.briefy.api.api
 
 import com.briefy.api.application.auth.*
 import com.briefy.api.application.source.*
+import com.briefy.api.application.topic.InvalidTopicLinkStateException
+import com.briefy.api.application.topic.TopicAlreadyExistsException
+import com.briefy.api.application.topic.TopicAlreadyLinkedToSourceException
+import com.briefy.api.application.topic.TopicLinkNotFoundException
+import com.briefy.api.application.topic.TopicNotFoundException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -34,6 +39,54 @@ class GlobalExceptionHandler {
                 error = "Not Found",
                 message = ex.message ?: "One or more sources not found"
             ))
+    }
+
+    @ExceptionHandler(TopicNotFoundException::class)
+    fun handleTopicNotFound(ex: TopicNotFoundException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.NOT_FOUND.value(),
+                    error = "Not Found",
+                    message = ex.message ?: "Topic not found"
+                )
+            )
+    }
+
+    @ExceptionHandler(TopicLinkNotFoundException::class)
+    fun handleTopicLinkNotFound(ex: TopicLinkNotFoundException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.NOT_FOUND.value(),
+                    error = "Not Found",
+                    message = ex.message ?: "Topic suggestion not found"
+                )
+            )
+    }
+
+    @ExceptionHandler(TopicAlreadyExistsException::class)
+    fun handleTopicAlreadyExists(ex: TopicAlreadyExistsException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.CONFLICT.value(),
+                    error = "Conflict",
+                    message = ex.message ?: "Topic already exists"
+                )
+            )
+    }
+
+    @ExceptionHandler(TopicAlreadyLinkedToSourceException::class)
+    fun handleTopicAlreadyLinkedToSource(ex: TopicAlreadyLinkedToSourceException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.CONFLICT.value(),
+                    error = "Conflict",
+                    message = ex.message ?: "Topic already linked to source"
+                )
+            )
     }
 
     @ExceptionHandler(SourceAlreadyExistsException::class)
@@ -104,6 +157,18 @@ class GlobalExceptionHandler {
                 error = "Bad Request",
                 message = ex.message ?: "Invalid source state"
             ))
+    }
+
+    @ExceptionHandler(InvalidTopicLinkStateException::class)
+    fun handleInvalidTopicLinkState(ex: InvalidTopicLinkStateException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.BAD_REQUEST.value(),
+                    error = "Bad Request",
+                    message = ex.message ?: "Invalid topic link state"
+                )
+            )
     }
 
     @ExceptionHandler(ExtractionFailedException::class)

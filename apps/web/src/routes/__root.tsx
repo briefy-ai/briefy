@@ -24,6 +24,18 @@ function RootLayout() {
           </Link>
           {!isLoading && user && (
             <div className="flex items-center gap-3">
+              <Link
+                to="/topics"
+                className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Topics
+              </Link>
+              <Link
+                to="/sources"
+                className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Library
+              </Link>
               <span className="text-muted-foreground text-xs">{user.email}</span>
               <Button
                 variant="ghost"
