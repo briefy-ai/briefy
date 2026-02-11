@@ -12,7 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TopicsIndexRouteImport } from './routes/topics/index'
 import { Route as SourcesIndexRouteImport } from './routes/sources/index'
+import { Route as TopicsTopicIdRouteImport } from './routes/topics/$topicId'
 import { Route as SourcesSourceIdRouteImport } from './routes/sources/$sourceId'
 
 const SignupRoute = SignupRouteImport.update({
@@ -30,9 +32,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TopicsIndexRoute = TopicsIndexRouteImport.update({
+  id: '/topics/',
+  path: '/topics/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SourcesIndexRoute = SourcesIndexRouteImport.update({
   id: '/sources/',
   path: '/sources/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TopicsTopicIdRoute = TopicsTopicIdRouteImport.update({
+  id: '/topics/$topicId',
+  path: '/topics/$topicId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SourcesSourceIdRoute = SourcesSourceIdRouteImport.update({
@@ -46,14 +58,18 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
+  '/topics/$topicId': typeof TopicsTopicIdRoute
   '/sources/': typeof SourcesIndexRoute
+  '/topics/': typeof TopicsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
+  '/topics/$topicId': typeof TopicsTopicIdRoute
   '/sources': typeof SourcesIndexRoute
+  '/topics': typeof TopicsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -61,20 +77,38 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
+  '/topics/$topicId': typeof TopicsTopicIdRoute
   '/sources/': typeof SourcesIndexRoute
+  '/topics/': typeof TopicsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/signup' | '/sources/$sourceId' | '/sources/'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/sources/$sourceId'
+    | '/topics/$topicId'
+    | '/sources/'
+    | '/topics/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/signup' | '/sources/$sourceId' | '/sources'
+  to:
+    | '/'
+    | '/login'
+    | '/signup'
+    | '/sources/$sourceId'
+    | '/topics/$topicId'
+    | '/sources'
+    | '/topics'
   id:
     | '__root__'
     | '/'
     | '/login'
     | '/signup'
     | '/sources/$sourceId'
+    | '/topics/$topicId'
     | '/sources/'
+    | '/topics/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -82,7 +116,9 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   SourcesSourceIdRoute: typeof SourcesSourceIdRoute
+  TopicsTopicIdRoute: typeof TopicsTopicIdRoute
   SourcesIndexRoute: typeof SourcesIndexRoute
+  TopicsIndexRoute: typeof TopicsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -108,11 +144,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/topics/': {
+      id: '/topics/'
+      path: '/topics'
+      fullPath: '/topics/'
+      preLoaderRoute: typeof TopicsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/sources/': {
       id: '/sources/'
       path: '/sources'
       fullPath: '/sources/'
       preLoaderRoute: typeof SourcesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/topics/$topicId': {
+      id: '/topics/$topicId'
+      path: '/topics/$topicId'
+      fullPath: '/topics/$topicId'
+      preLoaderRoute: typeof TopicsTopicIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sources/$sourceId': {
@@ -130,7 +180,9 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   SourcesSourceIdRoute: SourcesSourceIdRoute,
+  TopicsTopicIdRoute: TopicsTopicIdRoute,
   SourcesIndexRoute: SourcesIndexRoute,
+  TopicsIndexRoute: TopicsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
