@@ -43,7 +43,7 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-flyway")
 	implementation("org.flywaydb:flyway-database-postgresql")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
-	implementation("org.springframework.ai:spring-ai-openai")
+	implementation("org.springframework.ai:spring-ai-starter-model-zhipuai")
 	implementation("org.jsoup:jsoup:1.17.2")
 	implementation("com.github.f4b6a3:uuid-creator:6.1.1")
 	runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")

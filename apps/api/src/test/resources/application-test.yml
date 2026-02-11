@@ -14,5 +14,7 @@ spring:
     enabled: false
 
   ai:
-    openai:
-      api-key: test-key
+    model:
+      chat: none
+      embedding: none
+      image: none

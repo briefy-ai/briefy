@@ -18,8 +18,16 @@ spring:
     baseline-on-migrate: true
 
   ai:
-    openai:
-      api-key: ${LLM_API_KEY:}
+    model:
+      chat: ${LLM_PROVIDER:none}
+      embedding: none
+      image: none
+    zhipuai:
+      api-key: ${ZHIPUAI_API_KEY:${LLM_API_KEY:}}
+      base-url: ${ZHIPUAI_BASE_URL:https://open.bigmodel.cn/api/paas}
+      chat:
+        options:
+          model: ${ZHIPUAI_CHAT_MODEL:glm-4.7}
 
 server:
   port: ${SERVER_PORT:8081}
