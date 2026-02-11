@@ -200,6 +200,25 @@ class TopicControllerTest {
     }
 
     @Test
+    fun `POST apply deletes orphan suggested topics`() {
+        val sourceId = createSource("https://topic-orphan-delete-test.com/article")
+        createSuggestedTopicForSource(sourceId, "Temporary Suggestion")
+
+        mockMvc.perform(
+            post("/api/sources/$sourceId/topics/apply")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"keepTopicLinkIds":[]}""")
+        )
+            .andExpect(status().isNoContent)
+
+        val topic = topicRepository.findByUserIdAndNameNormalized(
+            testUserId,
+            Topic.normalizeName("Temporary Suggestion")
+        )
+        org.junit.jupiter.api.Assertions.assertNull(topic)
+    }
+
+    @Test
     fun `topic list and detail exclude archived sources from active topic links`() {
         val sourceId = createSource("https://topic-archive-filter-test.com/article")
         val suggestionId = createSuggestedTopicForSource(sourceId, "Elections")

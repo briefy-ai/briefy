@@ -122,7 +122,7 @@ class TopicService(
 
         topicLinkRepository.saveAll(pendingLinks)
         topicRepository.saveAll(topicsById.values)
-        archiveOrphanSuggestedTopics(userId, candidateTopicIds)
+        deleteOrphanSuggestedTopics(userId, candidateTopicIds)
 
         logger.info(
             "[topic] applied suggestions sourceId={} userId={} kept={} dismissed={}",
@@ -265,25 +265,27 @@ class TopicService(
         return source
     }
 
-    private fun archiveOrphanSuggestedTopics(userId: UUID, topicIds: Set<UUID>) {
+    private fun deleteOrphanSuggestedTopics(userId: UUID, topicIds: Set<UUID>) {
         if (topicIds.isEmpty()) {
             return
         }
 
         val topics = topicRepository.findAllByIdInAndUserId(topicIds, userId)
-        topics.forEach { topic ->
+        val topicsToDelete = topics.filter { topic ->
             if (topic.status == TopicStatus.SUGGESTED) {
                 val liveLinks = topicLinkRepository.countByUserIdAndTopicIdAndStatusIn(
                     userId = userId,
                     topicId = topic.id,
                     statuses = listOf(TopicLinkStatus.SUGGESTED, TopicLinkStatus.ACTIVE)
                 )
-                if (liveLinks == 0L) {
-                    topic.archive()
-                }
+                liveLinks == 0L
+            } else {
+                false
             }
         }
-        topicRepository.saveAll(topics)
+        if (topicsToDelete.isNotEmpty()) {
+            topicRepository.deleteAll(topicsToDelete)
+        }
     }
 
     private fun resolveOrCreateTopic(userId: UUID, topicName: String, failIfActiveExists: Boolean): Topic {
