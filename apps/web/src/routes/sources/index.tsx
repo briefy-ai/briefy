@@ -188,7 +188,15 @@ function SourcesPage() {
     <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
+            <RouterLink
+              to="/topics"
+              className="rounded-md border border-border/60 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Topics
+            </RouterLink>
+          </div>
           <div className="inline-flex rounded-md border border-border/60 bg-card/50 p-1">
             <button
               type="button"

@@ -225,9 +225,37 @@
 }
 
 @layer components {
-    .briefy-markdown {
-        @apply font-thin
-    }
+  .briefy-markdown {
+    @apply font-thin;
+  }
+
+  .briefy-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color:
+      color-mix(in oklch, var(--primary) 72%, transparent)
+      color-mix(in oklch, var(--card) 88%, transparent);
+  }
+
+  .briefy-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .briefy-scrollbar::-webkit-scrollbar-track {
+    background: color-mix(in oklch, var(--card) 88%, transparent);
+    border-radius: 9999px;
+  }
+
+  .briefy-scrollbar::-webkit-scrollbar-thumb {
+    background: color-mix(in oklch, var(--primary) 72%, transparent);
+    border: 2px solid color-mix(in oklch, var(--card) 88%, transparent);
+    border-radius: 9999px;
+  }
+
+  .briefy-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--primary) 86%, transparent);
+  }
+
   .briefy-markdown > :first-child {
     margin-top: 0;
   }
