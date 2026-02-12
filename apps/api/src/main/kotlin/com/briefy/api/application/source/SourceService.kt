@@ -4,8 +4,10 @@ import com.briefy.api.domain.knowledgegraph.source.*
 import com.briefy.api.domain.knowledgegraph.source.event.SourceArchivedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivatedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivationReason
+import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFormattingRequestedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
-import com.briefy.api.infrastructure.extraction.ContentExtractor
+import com.briefy.api.infrastructure.extraction.ExtractionProviderId
+import com.briefy.api.infrastructure.extraction.ExtractionProviderResolver
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import org.slf4j.LoggerFactory
@@ -20,7 +22,7 @@ import java.util.UUID
 class SourceService(
     private val sourceRepository: SourceRepository,
     private val sharedSourceSnapshotRepository: SharedSourceSnapshotRepository,
-    private val contentExtractor: ContentExtractor,
+    private val extractionProviderResolver: ExtractionProviderResolver,
     private val sourceTypeClassifier: SourceTypeClassifier,
     private val freshnessPolicy: FreshnessPolicy,
     private val currentUserProvider: CurrentUserProvider,
@@ -196,7 +198,9 @@ class SourceService(
         sourceRepository.save(source)
 
         try {
-            val result = contentExtractor.extract(source.url.normalized)
+            val provider = extractionProviderResolver.resolveProvider(source.userId, source.url.platform)
+            val result = provider.extract(source.url.normalized)
+            val resolvedProvider = provider.id.name.lowercase()
 
             val content = Content.from(result.text)
             val metadata = Metadata.from(
@@ -204,7 +208,9 @@ class SourceService(
                 author = result.author,
                 publishedDate = result.publishedDate,
                 platform = source.url.platform,
-                wordCount = content.wordCount
+                wordCount = content.wordCount,
+                aiFormatted = result.aiFormatted,
+                extractionProvider = resolvedProvider
             )
 
             source.completeExtraction(content, metadata)
@@ -216,8 +222,22 @@ class SourceService(
                     activationReason = SourceActivationReason.FRESH_EXTRACTION
                 )
             )
+            if (!result.aiFormatted) {
+                eventPublisher.publishEvent(
+                    SourceContentFormattingRequestedEvent(
+                        sourceId = source.id,
+                        userId = source.userId,
+                        extractorId = provider.id
+                    )
+                )
+            }
 
-            logger.info("[service] Successfully extracted content url={}", source.url.normalized)
+            logger.info(
+                "[service] Successfully extracted content url={} provider={} aiFormatted={}",
+                source.url.normalized,
+                resolvedProvider,
+                result.aiFormatted
+            )
             return source
         } catch (e: Exception) {
             logger.error("[service] Failed to extract content url={}", source.url.normalized, e)
@@ -303,6 +323,7 @@ class SourceService(
                 activationReason = SourceActivationReason.CACHE_REUSE
             )
         )
+        maybeRequestAsyncFormatting(source)
 
         val ttlSeconds = freshnessPolicy.ttlSeconds(latestSnapshot.sourceType)
         logger.info(
@@ -322,5 +343,47 @@ class SourceService(
                 freshnessTtlSeconds = ttlSeconds
             )
         )
+    }
+
+    private fun maybeRequestAsyncFormatting(source: Source) {
+        val metadata = source.metadata ?: return
+        if (metadata.aiFormatted) {
+            return
+        }
+
+        val provider = parseExtractionProvider(metadata.extractionProvider)
+        if (provider == null) {
+            logger.info(
+                "[service] Skip formatting request sourceId={} reason=unknown_or_missing_provider provider={}",
+                source.id,
+                metadata.extractionProvider
+            )
+            return
+        }
+
+        eventPublisher.publishEvent(
+            SourceContentFormattingRequestedEvent(
+                sourceId = source.id,
+                userId = source.userId,
+                extractorId = provider
+            )
+        )
+        logger.info(
+            "[service] Published formatting request sourceId={} userId={} extractorId={}",
+            source.id,
+            source.userId,
+            provider
+        )
+    }
+
+    private fun parseExtractionProvider(rawProvider: String?): ExtractionProviderId? {
+        if (rawProvider.isNullOrBlank()) {
+            return null
+        }
+        return try {
+            ExtractionProviderId.valueOf(rawProvider.trim().uppercase())
+        } catch (_: IllegalArgumentException) {
+            null
+        }
     }
 }

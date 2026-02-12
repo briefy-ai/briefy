@@ -15,6 +15,7 @@ export interface SourceMetadata {
   publishedDate: string | null
   platform: string | null
   estimatedReadingTime: number | null
+  aiFormatted: boolean
 }
 
 export interface Source {
@@ -101,4 +102,54 @@ export interface SignUpRequest {
 export interface LoginRequest {
   email: string
   password: string
+}
+
+export type ExtractionProviderType = 'firecrawl' | 'jsoup'
+
+export interface ProviderSettingDto {
+  type: ExtractionProviderType
+  enabled: boolean
+  configured: boolean
+  platforms: string[]
+  description: string
+}
+
+export interface ExtractionSettingsResponse {
+  providers: ProviderSettingDto[]
+}
+
+export interface UpdateProviderRequest {
+  enabled: boolean
+  apiKey?: string
+}
+
+export type AiProviderId = 'zhipuai' | 'google_genai'
+export type AiUseCaseId = 'topic_extraction' | 'source_formatting'
+
+export interface AiModelDto {
+  id: string
+  label: string
+}
+
+export interface AiProviderDto {
+  id: AiProviderId
+  label: string
+  configured: boolean
+  models: AiModelDto[]
+}
+
+export interface AiUseCaseSettingDto {
+  id: AiUseCaseId
+  provider: AiProviderId
+  model: string
+}
+
+export interface AiSettingsResponse {
+  providers: AiProviderDto[]
+  useCases: AiUseCaseSettingDto[]
+}
+
+export interface UpdateAiUseCaseRequest {
+  provider: AiProviderId
+  model: string
 }

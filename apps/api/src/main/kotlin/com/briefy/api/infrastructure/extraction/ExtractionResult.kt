@@ -6,5 +6,6 @@ data class ExtractionResult(
     val text: String,
     val title: String?,
     val author: String?,
-    val publishedDate: Instant?
+    val publishedDate: Instant?,
+    val aiFormatted: Boolean = false
 )

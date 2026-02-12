@@ -11,8 +11,11 @@ import com.briefy.api.domain.knowledgegraph.source.SourceType
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivatedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivationReason
 import com.briefy.api.domain.knowledgegraph.source.event.SourceArchivedEvent
+import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFormattingRequestedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
-import com.briefy.api.infrastructure.extraction.ContentExtractor
+import com.briefy.api.infrastructure.extraction.ExtractionProvider
+import com.briefy.api.infrastructure.extraction.ExtractionProviderId
+import com.briefy.api.infrastructure.extraction.ExtractionProviderResolver
 import com.briefy.api.infrastructure.extraction.ExtractionResult
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.security.CurrentUserProvider
@@ -21,6 +24,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
@@ -33,17 +37,22 @@ import java.util.UUID
 class SourceServiceEventTest {
     private val sourceRepository: SourceRepository = mock()
     private val sharedSourceSnapshotRepository: SharedSourceSnapshotRepository = mock()
-    private val contentExtractor: ContentExtractor = mock()
+    private val extractionProviderResolver: ExtractionProviderResolver = mock()
+    private val extractionProvider: ExtractionProvider = mock()
     private val sourceTypeClassifier: SourceTypeClassifier = mock()
     private val freshnessPolicy: FreshnessPolicy = mock()
     private val currentUserProvider: CurrentUserProvider = mock()
     private val idGenerator: IdGenerator = mock()
     private val eventPublisher: ApplicationEventPublisher = mock()
 
+    init {
+        whenever(extractionProvider.id).thenReturn(ExtractionProviderId.JSOUP)
+    }
+
     private val service = SourceService(
         sourceRepository = sourceRepository,
         sharedSourceSnapshotRepository = sharedSourceSnapshotRepository,
-        contentExtractor = contentExtractor,
+        extractionProviderResolver = extractionProviderResolver,
         sourceTypeClassifier = sourceTypeClassifier,
         freshnessPolicy = freshnessPolicy,
         currentUserProvider = currentUserProvider,
@@ -135,7 +144,8 @@ class SourceServiceEventTest {
         whenever(idGenerator.newId()).thenReturn(sourceId, snapshotId)
         whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
         whenever(sharedSourceSnapshotRepository.findMaxVersionByUrlNormalized(normalizedUrl)).thenReturn(0)
-        whenever(contentExtractor.extract(normalizedUrl)).thenReturn(
+        whenever(extractionProviderResolver.resolveProvider(userId, "web")).thenReturn(extractionProvider)
+        whenever(extractionProvider.extract(normalizedUrl)).thenReturn(
             ExtractionResult(
                 text = "Fresh extraction content",
                 title = "Fresh Article",
@@ -147,11 +157,14 @@ class SourceServiceEventTest {
         service.submitSource(CreateSourceCommand(url = url))
 
         val eventCaptor = argumentCaptor<Any>()
-        verify(eventPublisher, times(1)).publishEvent(eventCaptor.capture())
+        verify(eventPublisher, atLeastOnce()).publishEvent(eventCaptor.capture())
         val activatedEvent = eventCaptor.allValues.filterIsInstance<SourceActivatedEvent>().single()
         assertEquals(sourceId, activatedEvent.sourceId)
         assertEquals(userId, activatedEvent.userId)
         assertEquals(SourceActivationReason.FRESH_EXTRACTION, activatedEvent.activationReason)
+        val formattingEvent = eventCaptor.allValues.filterIsInstance<SourceContentFormattingRequestedEvent>().single()
+        assertEquals(sourceId, formattingEvent.sourceId)
+        assertEquals(userId, formattingEvent.userId)
     }
 
     @Test

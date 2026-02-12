@@ -54,7 +54,7 @@ function SourcesPage() {
       setLoading(true)
       setError(null)
       const data = await listSources(filter)
-      setSources(data)
+      setSources(sortSourcesByMostRecent(data))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load sources')
     } finally {
@@ -86,7 +86,7 @@ function SourcesPage() {
     try {
       const source = await createSource({ url: url.trim() })
       if (filter === 'active') {
-        setSources((prev) => [source, ...prev])
+        setSources((prev) => sortSourcesByMostRecent([source, ...prev]))
       }
       setUrl('')
     } catch (e) {
@@ -508,4 +508,19 @@ function extractDomain(url: string): string {
   } catch {
     return url
   }
+}
+
+function sortSourcesByMostRecent(items: Source[]): Source[] {
+  return [...items].sort((a, b) => {
+    const recencyDiff = getSourceRecencyTimestamp(b) - getSourceRecencyTimestamp(a)
+    if (recencyDiff !== 0) return recencyDiff
+    return b.createdAt.localeCompare(a.createdAt)
+  })
+}
+
+function getSourceRecencyTimestamp(source: Source): number {
+  const updatedAtTs = Date.parse(source.updatedAt)
+  if (!Number.isNaN(updatedAtTs)) return updatedAtTs
+  const createdAtTs = Date.parse(source.createdAt)
+  return Number.isNaN(createdAtTs) ? 0 : createdAtTs
 }

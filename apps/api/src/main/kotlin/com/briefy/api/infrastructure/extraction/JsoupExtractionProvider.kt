@@ -2,6 +2,7 @@ package com.briefy.api.infrastructure.extraction
 
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -11,7 +12,8 @@ import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 
 @Component
-class JsoupContentExtractor : ContentExtractor {
+class JsoupExtractionProvider : ExtractionProvider {
+    private val logger = LoggerFactory.getLogger(JsoupExtractionProvider::class.java)
 
     companion object {
         private const val TIMEOUT_MS = 10_000
@@ -24,22 +26,51 @@ class JsoupContentExtractor : ContentExtractor {
         )
     }
 
+    override val id: ExtractionProviderId = ExtractionProviderId.JSOUP
+
     override fun extract(url: String): ExtractionResult {
-        validateFetchableUrl(url)
+        logger.info("[extractor:jsoup] extraction_started url={}", url)
+        return try {
+            validateFetchableUrl(url)
 
-        val document = Jsoup.connect(url)
-            .userAgent(USER_AGENT)
-            .timeout(TIMEOUT_MS)
-            .followRedirects(true)
-            .get()
-        validateFetchableUrl(document.location())
+            val document = Jsoup.connect(url)
+                .userAgent(USER_AGENT)
+                .timeout(TIMEOUT_MS)
+                .followRedirects(true)
+                .get()
+            validateFetchableUrl(document.location())
 
-        return ExtractionResult(
-            text = extractContent(document),
-            title = extractTitle(document),
-            author = extractAuthor(document),
-            publishedDate = extractPublishedDate(document)
-        )
+            val extractedText = extractContent(document)
+            if (extractedText.isBlank()) {
+                logger.warn("[extractor:jsoup] extraction_empty_content url={} finalUrl={}", url, document.location())
+            }
+
+            val result = ExtractionResult(
+                text = extractedText,
+                title = extractTitle(document),
+                author = extractAuthor(document),
+                publishedDate = extractPublishedDate(document),
+                aiFormatted = false
+            )
+            logger.info(
+                "[extractor:jsoup] extraction_succeeded url={} finalUrl={} textLength={}",
+                url,
+                document.location(),
+                result.text.length
+            )
+            result
+        } catch (e: IllegalArgumentException) {
+            logger.warn("[extractor:jsoup] extraction_blocked url={} reason={}", url, e.message)
+            throw e
+        } catch (e: Exception) {
+            logger.error("[extractor:jsoup] extraction_failed url={}", url, e)
+            throw ExtractionProviderException(
+                providerId = id,
+                reason = ExtractionFailureReason.UNKNOWN,
+                message = "Jsoup extraction failed for URL: $url",
+                cause = e
+            )
+        }
     }
 
     private fun extractTitle(doc: Document): String? {

@@ -5,7 +5,9 @@ import com.briefy.api.domain.knowledgegraph.topic.Topic
 import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
 import com.briefy.api.domain.knowledgegraph.topiclink.TopicLink
 import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkRepository
-import com.briefy.api.infrastructure.extraction.ContentExtractor
+import com.briefy.api.infrastructure.extraction.ExtractionProvider
+import com.briefy.api.infrastructure.extraction.ExtractionProviderId
+import com.briefy.api.infrastructure.extraction.ExtractionProviderResolver
 import com.briefy.api.infrastructure.extraction.ExtractionResult
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.security.CurrentUserProvider
@@ -16,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
 import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
@@ -52,18 +55,21 @@ class TopicControllerTest {
     lateinit var idGenerator: IdGenerator
 
     @MockitoBean
-    lateinit var contentExtractor: ContentExtractor
+    lateinit var extractionProviderResolver: ExtractionProviderResolver
 
     @MockitoBean
     lateinit var currentUserProvider: CurrentUserProvider
 
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
     private val testUserId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
+    private val extractionProvider: ExtractionProvider = mock()
 
     @BeforeEach
     fun setupCurrentUser() {
         `when`(currentUserProvider.requireUserId()).thenReturn(testUserId)
-        `when`(contentExtractor.extract(any())).thenReturn(
+        `when`(extractionProviderResolver.resolveProvider(any(), any())).thenReturn(extractionProvider)
+        `when`(extractionProvider.id).thenReturn(ExtractionProviderId.JSOUP)
+        `when`(extractionProvider.extract(any())).thenReturn(
             ExtractionResult(
                 text = "Topic test content with enough words to produce deterministic extraction output.",
                 title = "Topic Test",

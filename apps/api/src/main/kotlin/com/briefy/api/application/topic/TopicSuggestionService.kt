@@ -1,5 +1,6 @@
 package com.briefy.api.application.topic
 
+import com.briefy.api.application.settings.UserAiSettingsService
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
@@ -27,6 +28,7 @@ class TopicSuggestionService(
     private val topicRepository: TopicRepository,
     private val topicLinkRepository: TopicLinkRepository,
     private val aiAdapter: AiAdapter,
+    private val userAiSettingsService: UserAiSettingsService,
     private val objectMapper: ObjectMapper,
     private val idGenerator: IdGenerator
 ) {
@@ -46,7 +48,7 @@ class TopicSuggestionService(
         val existingTopicsById = existingActiveTopics.associateBy { it.id }
 
         val candidates = try {
-            generateCandidates(source, existingActiveTopics)
+            generateCandidates(source, userId, existingActiveTopics)
         } catch (e: IllegalStateException) {
             logger.info(
                 "[topic-suggestions] skipped sourceId={} userId={} reason={}",
@@ -109,7 +111,7 @@ class TopicSuggestionService(
         )
     }
 
-    private fun generateCandidates(source: Source, existingActiveTopics: List<Topic>): List<TopicCandidate> {
+    private fun generateCandidates(source: Source, userId: UUID, existingActiveTopics: List<Topic>): List<TopicCandidate> {
         val systemPrompt = """
             You are a strict topic extraction engine.
             Return only JSON with this shape:
@@ -139,7 +141,13 @@ class TopicSuggestionService(
             $inputText
         """.trimIndent()
 
-        val raw = aiAdapter.complete(prompt = userPrompt, systemPrompt = systemPrompt)
+        val selection = userAiSettingsService.resolveUseCaseSelection(userId, UserAiSettingsService.TOPIC_EXTRACTION)
+        val raw = aiAdapter.complete(
+            provider = selection.provider,
+            model = selection.model,
+            prompt = userPrompt,
+            systemPrompt = systemPrompt
+        )
         return parseCandidates(raw)
     }
 

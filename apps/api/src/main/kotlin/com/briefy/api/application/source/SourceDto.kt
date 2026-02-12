@@ -42,7 +42,9 @@ data class MetadataDto(
     val author: String?,
     val publishedDate: Instant?,
     val platform: String?,
-    val estimatedReadingTime: Int?
+    val estimatedReadingTime: Int?,
+    val aiFormatted: Boolean,
+    val extractionProvider: String?
 )
 
 fun Source.toResponse(reuseInfo: ReuseInfoDto? = null): SourceResponse = SourceResponse(
@@ -73,5 +75,7 @@ fun Metadata.toDto(): MetadataDto = MetadataDto(
     author = author,
     publishedDate = publishedDate,
     platform = platform,
-    estimatedReadingTime = estimatedReadingTime
+    estimatedReadingTime = estimatedReadingTime,
+    aiFormatted = aiFormatted,
+    extractionProvider = extractionProvider
 )

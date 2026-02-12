@@ -29,7 +29,10 @@ spring:
         api-key: ${ZHIPUAI_CHAT_API_KEY:${ZHIPUAI_API_KEY:${LLM_API_KEY:}}}
         base-url: ${ZHIPUAI_CHAT_BASE_URL:${ZHIPUAI_BASE_URL:https://api.z.ai/api/paas}}
         options:
-          model: ${ZHIPUAI_CHAT_MODEL:glm-4.7}
+          model: ${ZHIPUAI_CHAT_MODEL:glm-4.7-flash}
+    google:
+      genai:
+        api-key: ${GOOGLE_GENAI_API_KEY:}
 
 server:
   port: ${SERVER_PORT:8081}
@@ -43,6 +46,14 @@ auth:
   cookie:
     secure: ${AUTH_COOKIE_SECURE:false}
     same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
+
+security:
+  encryption-key: ${ENCRYPTION_KEY:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+
+extraction:
+  firecrawl:
+    base-url: ${FIRECRAWL_BASE_URL:https://api.firecrawl.dev}
+    wait-for-ms: ${FIRECRAWL_WAIT_FOR_MS:1000}
 
 google:
   auth:

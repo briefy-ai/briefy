@@ -54,6 +54,16 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return handleResponse<T>(response)
 }
 
+export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  return handleResponse<T>(response)
+}
+
 export async function apiDelete(path: string): Promise<void> {
   const response = await fetch(path, {
     method: 'DELETE',
