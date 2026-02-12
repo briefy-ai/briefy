@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ContentGenerationRouteImport } from './routes/content-generation'
+import { Route as ContentConsumptionRouteImport } from './routes/content-consumption'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TopicsIndexRouteImport } from './routes/topics/index'
 import { Route as SourcesIndexRouteImport } from './routes/sources/index'
@@ -26,6 +28,16 @@ const SignupRoute = SignupRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContentGenerationRoute = ContentGenerationRouteImport.update({
+  id: '/content-generation',
+  path: '/content-generation',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ContentConsumptionRoute = ContentConsumptionRouteImport.update({
+  id: '/content-consumption',
+  path: '/content-consumption',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -61,6 +73,8 @@ const SourcesSourceIdRoute = SourcesSourceIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/content-consumption': typeof ContentConsumptionRoute
+  '/content-generation': typeof ContentGenerationRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
@@ -71,6 +85,8 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/content-consumption': typeof ContentConsumptionRoute
+  '/content-generation': typeof ContentGenerationRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
@@ -82,6 +98,8 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/content-consumption': typeof ContentConsumptionRoute
+  '/content-generation': typeof ContentGenerationRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
@@ -94,6 +112,8 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/content-consumption'
+    | '/content-generation'
     | '/login'
     | '/signup'
     | '/sources/$sourceId'
@@ -104,6 +124,8 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/content-consumption'
+    | '/content-generation'
     | '/login'
     | '/signup'
     | '/sources/$sourceId'
@@ -114,6 +136,8 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/content-consumption'
+    | '/content-generation'
     | '/login'
     | '/signup'
     | '/sources/$sourceId'
@@ -125,6 +149,8 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ContentConsumptionRoute: typeof ContentConsumptionRoute
+  ContentGenerationRoute: typeof ContentGenerationRoute
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   SourcesSourceIdRoute: typeof SourcesSourceIdRoute
@@ -148,6 +174,20 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/content-generation': {
+      id: '/content-generation'
+      path: '/content-generation'
+      fullPath: '/content-generation'
+      preLoaderRoute: typeof ContentGenerationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/content-consumption': {
+      id: '/content-consumption'
+      path: '/content-consumption'
+      fullPath: '/content-consumption'
+      preLoaderRoute: typeof ContentConsumptionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -197,6 +237,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ContentConsumptionRoute: ContentConsumptionRoute,
+  ContentGenerationRoute: ContentGenerationRoute,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   SourcesSourceIdRoute: SourcesSourceIdRoute,
