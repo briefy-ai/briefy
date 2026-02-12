@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import remarkBreaks from 'remark-breaks'
+import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
 
 const VARIANT_CLASSES = {
@@ -35,7 +36,7 @@ export function MarkdownContent({
 }: MarkdownContentProps) {
   if (!content.trim()) return null
 
-  const remarkPlugins = preserveSoftBreaks ? [remarkBreaks] : []
+  const remarkPlugins = preserveSoftBreaks ? [remarkGfm, remarkBreaks] : [remarkGfm]
 
   return (
     <div className={cn(VARIANT_CLASSES[variant], className)} data-testid={dataTestId}>

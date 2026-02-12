@@ -1,6 +1,8 @@
 package com.briefy.api.api
 
-import com.briefy.api.infrastructure.extraction.ContentExtractor
+import com.briefy.api.infrastructure.extraction.ExtractionProvider
+import com.briefy.api.infrastructure.extraction.ExtractionProviderId
+import com.briefy.api.infrastructure.extraction.ExtractionProviderResolver
 import com.briefy.api.infrastructure.extraction.ExtractionResult
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -11,6 +13,7 @@ import org.mockito.Mockito.`when`
 import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
@@ -32,13 +35,14 @@ class SourceControllerTest {
     lateinit var mockMvc: MockMvc
 
     @MockitoBean
-    lateinit var contentExtractor: ContentExtractor
+    lateinit var extractionProviderResolver: ExtractionProviderResolver
 
     @MockitoBean
     lateinit var currentUserProvider: CurrentUserProvider
 
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
     private val testUserId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
+    private val extractionProvider: ExtractionProvider = mock()
 
     private val sampleExtractionResult = ExtractionResult(
         text = "This is the extracted article content with enough words to test",
@@ -50,11 +54,13 @@ class SourceControllerTest {
     @BeforeEach
     fun setupCurrentUser() {
         `when`(currentUserProvider.requireUserId()).thenReturn(testUserId)
+        `when`(extractionProviderResolver.resolveProvider(any(), any())).thenReturn(extractionProvider)
+        `when`(extractionProvider.id).thenReturn(ExtractionProviderId.JSOUP)
     }
 
     @Test
     fun `POST creates source and extracts content`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
 
         mockMvc.perform(
             post("/api/sources")
@@ -81,7 +87,7 @@ class SourceControllerTest {
         val userA = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
         val userB = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
         `when`(currentUserProvider.requireUserId()).thenReturn(userA, userB)
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
 
         mockMvc.perform(
             post("/api/sources")
@@ -99,12 +105,12 @@ class SourceControllerTest {
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.reuse.usedCache").value(true))
 
-        verify(contentExtractor, times(1)).extract(any())
+        verify(extractionProvider, times(1)).extract(any())
     }
 
     @Test
     fun `POST returns conflict for duplicate URL`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
 
         // Create first
         mockMvc.perform(
@@ -136,11 +142,11 @@ class SourceControllerTest {
 
     @Test
     fun `POST returns 422 when extraction fails`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
             .thenThrow(RuntimeException("Connection refused"))
 
         // First call to create a unique URL that will fail on extraction
-        `when`(contentExtractor.extract(any())).thenThrow(RuntimeException("Connection refused"))
+        `when`(extractionProvider.extract(any())).thenThrow(RuntimeException("Connection refused"))
 
         mockMvc.perform(
             post("/api/sources")
@@ -152,7 +158,7 @@ class SourceControllerTest {
 
     @Test
     fun `GET list returns all sources`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
 
         // Create a source
         createSource("https://list-test.com/article")
@@ -178,7 +184,7 @@ class SourceControllerTest {
 
     @Test
     fun `GET by id returns source`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
 
         // Create a source
         val result = mockMvc.perform(
@@ -213,7 +219,7 @@ class SourceControllerTest {
 
     @Test
     fun `POST retry returns bad request for non-failed source`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
 
         // Create a source (will be ACTIVE)
         val id = createSource("https://retry-test.com/article")
@@ -225,7 +231,7 @@ class SourceControllerTest {
 
     @Test
     fun `DELETE archives source and hides it from default list`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
         val id = createSource("https://delete-test.com/article")
 
         mockMvc.perform(delete("/api/sources/$id"))
@@ -247,7 +253,7 @@ class SourceControllerTest {
 
     @Test
     fun `DELETE is idempotent for already archived source`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
         val id = createSource("https://delete-idempotent-test.com/article")
 
         mockMvc.perform(delete("/api/sources/$id"))
@@ -265,7 +271,7 @@ class SourceControllerTest {
 
     @Test
     fun `POST restore returns 204 and makes archived source active`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
         val id = createSource("https://restore-test.com/article")
 
         mockMvc.perform(delete("/api/sources/$id"))
@@ -289,7 +295,7 @@ class SourceControllerTest {
 
     @Test
     fun `POST restore is idempotent for active source`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
         val id = createSource("https://restore-idempotent-active.com/article")
 
         mockMvc.perform(post("/api/sources/$id/restore"))
@@ -311,7 +317,7 @@ class SourceControllerTest {
         val userA = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
         val userB = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
         `when`(currentUserProvider.requireUserId()).thenReturn(userB, userB, userA)
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
 
         val sourceId = createSource("https://restore-ownership-test.com/article")
         mockMvc.perform(delete("/api/sources/$sourceId"))
@@ -323,7 +329,7 @@ class SourceControllerTest {
 
     @Test
     fun `POST archive-batch archives all owned sources atomically`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
         val idA = createSource("https://batch-archive-a.com/article")
         val idB = createSource("https://batch-archive-b.com/article")
 
@@ -344,7 +350,7 @@ class SourceControllerTest {
 
     @Test
     fun `POST archive-batch returns 404 and archives none when one id is unknown`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
         val idA = createSource("https://batch-archive-unknown-a.com/article")
         val unknownId = UUID.fromString("00000000-0000-0000-0000-000000000000")
 
@@ -365,7 +371,7 @@ class SourceControllerTest {
         val userA = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
         val userB = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
         `when`(currentUserProvider.requireUserId()).thenReturn(userA, userB, userA)
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
 
         val ownedByA = createSource("https://batch-owned-a.com/article")
         val ownedByB = createSource("https://batch-owned-b.com/article")
@@ -380,7 +386,7 @@ class SourceControllerTest {
 
     @Test
     fun `POST archive-batch dedupes ids and succeeds`() {
-        `when`(contentExtractor.extract(any())).thenReturn(sampleExtractionResult)
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
         val idA = createSource("https://batch-dedupe.com/article")
 
         mockMvc.perform(

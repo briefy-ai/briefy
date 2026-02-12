@@ -1,6 +1,8 @@
 package com.briefy.api.api
 
-import com.briefy.api.infrastructure.extraction.ContentExtractor
+import com.briefy.api.infrastructure.extraction.ExtractionProvider
+import com.briefy.api.infrastructure.extraction.ExtractionProviderId
+import com.briefy.api.infrastructure.extraction.ExtractionProviderResolver
 import com.briefy.api.infrastructure.extraction.ExtractionResult
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import jakarta.servlet.http.Cookie
@@ -8,6 +10,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -32,13 +35,16 @@ class LoggingIntegrationTest {
     lateinit var mockMvc: MockMvc
 
     @MockitoBean
-    lateinit var contentExtractor: ContentExtractor
+    lateinit var extractionProviderResolver: ExtractionProviderResolver
 
     private val objectMapper = jacksonObjectMapper()
+    private val extractionProvider: ExtractionProvider = mock()
 
     @Test
     fun `logs include trace id and user id for authenticated request`(output: CapturedOutput) {
-        whenever(contentExtractor.extract(any())).thenReturn(
+        whenever(extractionProviderResolver.resolveProvider(any(), any())).thenReturn(extractionProvider)
+        whenever(extractionProvider.id).thenReturn(ExtractionProviderId.JSOUP)
+        whenever(extractionProvider.extract(any())).thenReturn(
             ExtractionResult(
                 text = "This is test content with enough words for metadata",
                 title = "Test title",

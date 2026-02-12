@@ -19,7 +19,13 @@ data class Metadata(
     val platform: String? = null,
 
     @Column(name = "metadata_estimated_reading_time")
-    val estimatedReadingTime: Int? = null
+    val estimatedReadingTime: Int? = null,
+
+    @Column(name = "metadata_ai_formatted")
+    val aiFormatted: Boolean = false,
+
+    @Column(name = "metadata_extraction_provider", length = 50)
+    val extractionProvider: String? = null
 ) {
     companion object {
         private const val WORDS_PER_MINUTE = 200
@@ -29,7 +35,9 @@ data class Metadata(
             author: String?,
             publishedDate: Instant?,
             platform: String?,
-            wordCount: Int
+            wordCount: Int,
+            aiFormatted: Boolean,
+            extractionProvider: String?
         ): Metadata {
             val readingTime = if (wordCount > 0) {
                 (wordCount / WORDS_PER_MINUTE).coerceAtLeast(1)
@@ -42,7 +50,9 @@ data class Metadata(
                 author = author?.take(255),
                 publishedDate = publishedDate,
                 platform = platform?.take(50),
-                estimatedReadingTime = readingTime
+                estimatedReadingTime = readingTime,
+                aiFormatted = aiFormatted,
+                extractionProvider = extractionProvider?.take(50)
             )
         }
     }

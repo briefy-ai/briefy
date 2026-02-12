@@ -35,7 +35,9 @@ class SourceTest {
             author = "Author",
             publishedDate = null,
             platform = "web",
-            wordCount = content.wordCount
+            wordCount = content.wordCount,
+            aiFormatted = false,
+            extractionProvider = "jsoup"
         )
 
         source.completeExtraction(content, metadata)
@@ -137,7 +139,9 @@ class SourceTest {
             author = null,
             publishedDate = null,
             platform = "web",
-            wordCount = 1000
+            wordCount = 1000,
+            aiFormatted = false,
+            extractionProvider = "jsoup"
         )
         assertEquals(5, metadata.estimatedReadingTime) // 1000 / 200 = 5
     }
@@ -149,7 +153,9 @@ class SourceTest {
             author = null,
             publishedDate = null,
             platform = "web",
-            wordCount = 50
+            wordCount = 50,
+            aiFormatted = false,
+            extractionProvider = "jsoup"
         )
         assertEquals(1, metadata.estimatedReadingTime)
     }
@@ -161,7 +167,9 @@ class SourceTest {
             author = null,
             publishedDate = null,
             platform = "web",
-            wordCount = 0
+            wordCount = 0,
+            aiFormatted = false,
+            extractionProvider = "jsoup"
         )
         assertNull(metadata.estimatedReadingTime)
     }

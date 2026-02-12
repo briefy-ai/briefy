@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TopicsIndexRouteImport } from './routes/topics/index'
 import { Route as SourcesIndexRouteImport } from './routes/sources/index'
+import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as TopicsTopicIdRouteImport } from './routes/topics/$topicId'
 import { Route as SourcesSourceIdRouteImport } from './routes/sources/$sourceId'
 
@@ -42,6 +43,11 @@ const SourcesIndexRoute = SourcesIndexRouteImport.update({
   path: '/sources/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TopicsTopicIdRoute = TopicsTopicIdRouteImport.update({
   id: '/topics/$topicId',
   path: '/topics/$topicId',
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
   '/topics/$topicId': typeof TopicsTopicIdRoute
+  '/settings/': typeof SettingsIndexRoute
   '/sources/': typeof SourcesIndexRoute
   '/topics/': typeof TopicsIndexRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
   '/topics/$topicId': typeof TopicsTopicIdRoute
+  '/settings': typeof SettingsIndexRoute
   '/sources': typeof SourcesIndexRoute
   '/topics': typeof TopicsIndexRoute
 }
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
   '/topics/$topicId': typeof TopicsTopicIdRoute
+  '/settings/': typeof SettingsIndexRoute
   '/sources/': typeof SourcesIndexRoute
   '/topics/': typeof TopicsIndexRoute
 }
@@ -89,6 +98,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/sources/$sourceId'
     | '/topics/$topicId'
+    | '/settings/'
     | '/sources/'
     | '/topics/'
   fileRoutesByTo: FileRoutesByTo
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/sources/$sourceId'
     | '/topics/$topicId'
+    | '/settings'
     | '/sources'
     | '/topics'
   id:
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/sources/$sourceId'
     | '/topics/$topicId'
+    | '/settings/'
     | '/sources/'
     | '/topics/'
   fileRoutesById: FileRoutesById
@@ -117,6 +129,7 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   SourcesSourceIdRoute: typeof SourcesSourceIdRoute
   TopicsTopicIdRoute: typeof TopicsTopicIdRoute
+  SettingsIndexRoute: typeof SettingsIndexRoute
   SourcesIndexRoute: typeof SourcesIndexRoute
   TopicsIndexRoute: typeof TopicsIndexRoute
 }
@@ -158,6 +171,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SourcesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/': {
+      id: '/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/topics/$topicId': {
       id: '/topics/$topicId'
       path: '/topics/$topicId'
@@ -181,6 +201,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   SourcesSourceIdRoute: SourcesSourceIdRoute,
   TopicsTopicIdRoute: TopicsTopicIdRoute,
+  SettingsIndexRoute: SettingsIndexRoute,
   SourcesIndexRoute: SourcesIndexRoute,
   TopicsIndexRoute: TopicsIndexRoute,
 }
