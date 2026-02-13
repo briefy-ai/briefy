@@ -54,6 +54,10 @@ extraction:
   firecrawl:
     base-url: ${FIRECRAWL_BASE_URL:https://api.firecrawl.dev}
     wait-for-ms: ${FIRECRAWL_WAIT_FOR_MS:1000}
+  x-api:
+    base-url: ${X_API_BASE_URL:https://api.x.com}
+    timeout-ms: ${X_API_TIMEOUT_MS:10000}
+    thread-max-results: ${X_API_THREAD_MAX_RESULTS:100}
 
 google:
   auth:

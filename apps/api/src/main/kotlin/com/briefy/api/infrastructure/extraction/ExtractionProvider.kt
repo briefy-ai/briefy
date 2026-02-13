@@ -7,6 +7,7 @@ interface ExtractionProvider {
 
 enum class ExtractionProviderId {
     FIRECRAWL,
+    X_API,
     JSOUP
 }
 

@@ -29,6 +29,13 @@ class UserSettingsService(
                     description = "Preferred for article-like content and cleaner markdown extraction"
                 ),
                 ProviderSettingDto(
+                    type = X_API,
+                    enabled = settings.xApiEnabled,
+                    configured = !settings.xApiBearerTokenEncrypted.isNullOrBlank(),
+                    platforms = X_API_PLATFORMS,
+                    description = "Preferred for X posts, threads, and article content"
+                ),
+                ProviderSettingDto(
                     type = JSOUP,
                     enabled = true,
                     configured = true,
@@ -41,16 +48,26 @@ class UserSettingsService(
 
     @Transactional
     fun updateProvider(userId: UUID, command: UpdateProviderCommand): ExtractionSettingsResponse {
-        if (command.type != FIRECRAWL) {
+        if (command.type !in updatableProviders) {
             throw IllegalArgumentException("Provider '${command.type}' is not updatable")
         }
 
         val settings = getOrCreateSettings(userId)
-        settings.firecrawlEnabled = command.enabled
-
         val normalizedApiKey = command.apiKey?.trim()?.takeIf { it.isNotBlank() }
-        if (normalizedApiKey != null) {
-            settings.firecrawlApiKeyEncrypted = apiKeyEncryptionService.encrypt(normalizedApiKey)
+
+        when (command.type) {
+            FIRECRAWL -> {
+                settings.firecrawlEnabled = command.enabled
+                if (normalizedApiKey != null) {
+                    settings.firecrawlApiKeyEncrypted = apiKeyEncryptionService.encrypt(normalizedApiKey)
+                }
+            }
+            X_API -> {
+                settings.xApiEnabled = command.enabled
+                if (normalizedApiKey != null) {
+                    settings.xApiBearerTokenEncrypted = apiKeyEncryptionService.encrypt(normalizedApiKey)
+                }
+            }
         }
 
         settings.updatedAt = Instant.now()
@@ -61,13 +78,21 @@ class UserSettingsService(
 
     @Transactional
     fun deleteProviderKey(userId: UUID, providerType: String): ExtractionSettingsResponse {
-        if (providerType != FIRECRAWL) {
+        if (providerType !in keyDeletableProviders) {
             throw IllegalArgumentException("Provider '$providerType' does not support deleting keys")
         }
 
         val settings = getOrCreateSettings(userId)
-        settings.firecrawlEnabled = false
-        settings.firecrawlApiKeyEncrypted = null
+        when (providerType) {
+            FIRECRAWL -> {
+                settings.firecrawlEnabled = false
+                settings.firecrawlApiKeyEncrypted = null
+            }
+            X_API -> {
+                settings.xApiEnabled = false
+                settings.xApiBearerTokenEncrypted = null
+            }
+        }
         settings.updatedAt = Instant.now()
         userExtractionSettingsRepository.save(settings)
 
@@ -87,6 +112,21 @@ class UserSettingsService(
     fun isFirecrawlEnabled(userId: UUID): Boolean {
         val settings = getOrCreateSettings(userId)
         return settings.firecrawlEnabled && !settings.firecrawlApiKeyEncrypted.isNullOrBlank()
+    }
+
+    @Transactional
+    fun getXApiBearerToken(userId: UUID): String? {
+        val settings = getOrCreateSettings(userId)
+        if (!settings.xApiEnabled || settings.xApiBearerTokenEncrypted.isNullOrBlank()) {
+            return null
+        }
+        return apiKeyEncryptionService.decrypt(settings.xApiBearerTokenEncrypted!!)
+    }
+
+    @Transactional
+    fun isXApiEnabled(userId: UUID): Boolean {
+        val settings = getOrCreateSettings(userId)
+        return settings.xApiEnabled && !settings.xApiBearerTokenEncrypted.isNullOrBlank()
     }
 
     private fun getOrCreateSettings(userId: UUID): UserExtractionSettings {
@@ -112,6 +152,7 @@ class UserSettingsService(
 
     companion object {
         const val FIRECRAWL = "firecrawl"
+        const val X_API = "x_api"
         const val JSOUP = "jsoup"
 
         private val FIRECRAWL_PLATFORMS = listOf(
@@ -122,5 +163,8 @@ class UserSettingsService(
             "wikipedia",
             "github"
         )
+        private val X_API_PLATFORMS = listOf("x", "twitter")
+        private val updatableProviders = setOf(FIRECRAWL, X_API)
+        private val keyDeletableProviders = setOf(FIRECRAWL, X_API)
     }
 }
