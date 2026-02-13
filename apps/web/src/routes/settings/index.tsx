@@ -27,11 +27,16 @@ function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [xApiSaving, setXApiSaving] = useState(false)
   const [savingAiUseCase, setSavingAiUseCase] = useState<AiUseCaseId | null>(null)
   const [removingKey, setRemovingKey] = useState(false)
+  const [xApiRemovingKey, setXApiRemovingKey] = useState(false)
   const [firecrawlEnabled, setFirecrawlEnabled] = useState(false)
   const [firecrawlApiKey, setFirecrawlApiKey] = useState('')
   const [showFirecrawlKey, setShowFirecrawlKey] = useState(false)
+  const [xApiEnabled, setXApiEnabled] = useState(false)
+  const [xApiToken, setXApiToken] = useState('')
+  const [showXApiToken, setShowXApiToken] = useState(false)
   const [topicProvider, setTopicProvider] = useState<string>('zhipuai')
   const [topicModel, setTopicModel] = useState<string>('')
   const [formatterProvider, setFormatterProvider] = useState<string>('zhipuai')
@@ -50,7 +55,9 @@ function SettingsPage() {
         setAiProviders(aiData.providers)
         setAiUseCases(aiData.useCases)
         const firecrawl = extractionData.providers.find((provider) => provider.type === 'firecrawl')
+        const xApi = extractionData.providers.find((provider) => provider.type === 'x_api')
         setFirecrawlEnabled(firecrawl?.enabled ?? false)
+        setXApiEnabled(xApi?.enabled ?? false)
         applyAiUseCaseState(aiData.useCases)
       } catch (e) {
         if (!mounted) return
@@ -75,6 +82,10 @@ function SettingsPage() {
   )
   const jsoupProvider = useMemo(
     () => providers.find((provider) => provider.type === 'jsoup'),
+    [providers]
+  )
+  const xApiProvider = useMemo(
+    () => providers.find((provider) => provider.type === 'x_api'),
     [providers]
   )
   const topicUseCase = useMemo(
@@ -128,6 +139,43 @@ function SettingsPage() {
       setError(e instanceof Error ? e.message : 'Failed to remove Firecrawl key')
     } finally {
       setRemovingKey(false)
+    }
+  }
+
+  const saveXApiSettings = async () => {
+    setXApiSaving(true)
+    setError(null)
+    setSuccessMessage(null)
+    try {
+      const data = await updateProvider('x_api', {
+        enabled: xApiEnabled,
+        apiKey: xApiToken.trim() ? xApiToken.trim() : undefined,
+      })
+      setProviders(data.providers)
+      setXApiToken('')
+      setSuccessMessage('X API settings updated.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update X API settings')
+    } finally {
+      setXApiSaving(false)
+    }
+  }
+
+  const removeXApiKey = async () => {
+    setXApiRemovingKey(true)
+    setError(null)
+    setSuccessMessage(null)
+    try {
+      const data = await deleteProviderKey('x_api')
+      setProviders(data.providers)
+      const xApi = data.providers.find((provider) => provider.type === 'x_api')
+      setXApiEnabled(xApi?.enabled ?? false)
+      setXApiToken('')
+      setSuccessMessage('X API key removed.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to remove X API key')
+    } finally {
+      setXApiRemovingKey(false)
     }
   }
 
@@ -339,6 +387,81 @@ function SettingsPage() {
                 ))}
               </div>
             </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                X API
+                {xApiProvider?.configured && <Badge variant="secondary">Configured</Badge>}
+              </CardTitle>
+              <CardDescription>
+                Preferred for X posts, threads, and article content.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <p className="text-sm font-medium">Enable X API extractor</p>
+                  <p className="text-xs text-muted-foreground">Use your own bearer token for X content extraction.</p>
+                </div>
+                <Toggle
+                  pressed={xApiEnabled}
+                  onPressedChange={setXApiEnabled}
+                  variant="outline"
+                  aria-label="Toggle X API provider"
+                  className="min-w-16"
+                >
+                  {xApiEnabled ? 'On' : 'Off'}
+                </Toggle>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Platforms</p>
+                <div className="flex flex-wrap gap-2">
+                  {(xApiProvider?.platforms ?? []).map((platform) => (
+                    <Badge key={platform} variant="outline">
+                      {platform}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="x-api-token" className="text-sm font-medium">
+                  Bearer token
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="x-api-token"
+                    type={showXApiToken ? 'text' : 'password'}
+                    placeholder={xApiProvider?.configured ? 'Configured (enter to replace)' : 'x-...'}
+                    value={xApiToken}
+                    onChange={(event) => setXApiToken(event.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowXApiToken((current) => !current)}
+                  >
+                    {showXApiToken ? <EyeOff /> : <Eye />}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="gap-2">
+              <Button type="button" onClick={saveXApiSettings} disabled={xApiSaving || loading}>
+                {xApiSaving ? 'Saving...' : 'Save'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={removeXApiKey}
+                disabled={xApiRemovingKey || !xApiProvider?.configured}
+              >
+                {xApiRemovingKey ? 'Removing...' : 'Remove key'}
+              </Button>
+            </CardFooter>
           </Card>
           </div>
 

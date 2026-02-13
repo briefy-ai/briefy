@@ -104,7 +104,7 @@ export interface LoginRequest {
   password: string
 }
 
-export type ExtractionProviderType = 'firecrawl' | 'jsoup'
+export type ExtractionProviderType = 'firecrawl' | 'x_api' | 'jsoup'
 
 export interface ProviderSettingDto {
   type: ExtractionProviderType
