@@ -85,3 +85,20 @@ management:
     web:
       exposure:
         include: health,info
+
+telegram:
+  integration:
+    enabled: ${TELEGRAM_INTEGRATION_ENABLED:true}
+  bot:
+    token: ${TELEGRAM_BOT_TOKEN:}
+    username: ${TELEGRAM_BOT_USERNAME:}
+  webhook:
+    url: ${TELEGRAM_WEBHOOK_URL:}
+    secret-token: ${TELEGRAM_WEBHOOK_SECRET_TOKEN:}
+  links:
+    web-base-url: ${BRIEFY_WEB_BASE_URL:http://localhost:5173}
+  ingestion:
+    worker:
+      poll-ms: ${TELEGRAM_INGESTION_WORKER_POLL_MS:5000}
+      batch-size: ${TELEGRAM_INGESTION_WORKER_BATCH_SIZE:5}
+      max-attempts: ${TELEGRAM_INGESTION_WORKER_MAX_ATTEMPTS:3}

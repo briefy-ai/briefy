@@ -38,6 +38,7 @@ class SecurityConfig(
                     .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/integrations/telegram/webhook").permitAll()
                     .requestMatchers("/api/health").permitAll()
                     .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                     .anyRequest().authenticated()

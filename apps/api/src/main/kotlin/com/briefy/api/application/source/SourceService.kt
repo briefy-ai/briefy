@@ -42,13 +42,17 @@ class SourceService(
 
     @Transactional
     fun submitSource(command: CreateSourceCommand): SourceResponse {
-        val userId = currentUserProvider.requireUserId()
+        return submitSourceForUser(currentUserProvider.requireUserId(), command)
+    }
+
+    @Transactional
+    fun submitSourceForUser(userId: UUID, command: CreateSourceCommand): SourceResponse {
         val normalizedUrl = Url.normalize(command.url)
         val sharedUrlSourceCount = sourceRepository.countByUrlNormalized(normalizedUrl)
         logger.info("[service] Submitting source userId={} url={}", userId, normalizedUrl)
 
-        sourceRepository.findByUserIdAndUrlNormalized(userId, normalizedUrl)?.let {
-            throw SourceAlreadyExistsException(normalizedUrl)
+        sourceRepository.findByUserIdAndUrlNormalized(userId, normalizedUrl)?.let { existing ->
+            throw SourceAlreadyExistsException(normalizedUrl, existing.id)
         }
 
         val sourceType = sourceTypeClassifier.classify(normalizedUrl)

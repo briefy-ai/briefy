@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
-import { BrainCircuit, Eye, EyeOff, KeyRound, Settings } from 'lucide-react'
+import { BrainCircuit, Eye, EyeOff, KeyRound, MessageCircle, Settings } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,9 +8,22 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input'
 import { Toggle } from '@/components/ui/toggle'
 import { getAiSettings, updateAiUseCase } from '@/lib/api/aiSettings'
-import { deleteProviderKey, getExtractionSettings, updateProvider } from '@/lib/api/settings'
+import {
+  deleteProviderKey,
+  generateTelegramLinkCode,
+  getExtractionSettings,
+  getTelegramLinkStatus,
+  unlinkTelegram,
+  updateProvider,
+} from '@/lib/api/settings'
 import { requireAuth } from '@/lib/auth/requireAuth'
-import type { AiProviderDto, AiUseCaseId, AiUseCaseSettingDto, ProviderSettingDto } from '@/lib/api/types'
+import type {
+  AiProviderDto,
+  AiUseCaseId,
+  AiUseCaseSettingDto,
+  ProviderSettingDto,
+  TelegramLinkStatusResponse,
+} from '@/lib/api/types'
 
 export const Route = createFileRoute('/settings/')({
   beforeLoad: async () => {
@@ -36,6 +49,10 @@ function SettingsPage() {
   const [topicModel, setTopicModel] = useState<string>('')
   const [formatterProvider, setFormatterProvider] = useState<string>('zhipuai')
   const [formatterModel, setFormatterModel] = useState<string>('')
+  const [telegramStatus, setTelegramStatus] = useState<TelegramLinkStatusResponse | null>(null)
+  const [telegramLinkCode, setTelegramLinkCode] = useState<string | null>(null)
+  const [generatingTelegramCode, setGeneratingTelegramCode] = useState(false)
+  const [unlinkingTelegram, setUnlinkingTelegram] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -44,11 +61,16 @@ function SettingsPage() {
       setLoading(true)
       setError(null)
       try {
-        const [extractionData, aiData] = await Promise.all([getExtractionSettings(), getAiSettings()])
+        const [extractionData, aiData, telegramData] = await Promise.all([
+          getExtractionSettings(),
+          getAiSettings(),
+          getTelegramLinkStatus(),
+        ])
         if (!mounted) return
         setProviders(extractionData.providers)
         setAiProviders(aiData.providers)
         setAiUseCases(aiData.useCases)
+        setTelegramStatus(telegramData)
         const firecrawl = extractionData.providers.find((provider) => provider.type === 'firecrawl')
         setFirecrawlEnabled(firecrawl?.enabled ?? false)
         applyAiUseCaseState(aiData.useCases)
@@ -189,6 +211,38 @@ function SettingsPage() {
     }
   }
 
+  const createTelegramLinkCode = async () => {
+    setGeneratingTelegramCode(true)
+    setError(null)
+    setSuccessMessage(null)
+    try {
+      const response = await generateTelegramLinkCode()
+      setTelegramLinkCode(response.code)
+      setSuccessMessage('Telegram link code generated.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to generate Telegram link code')
+    } finally {
+      setGeneratingTelegramCode(false)
+    }
+  }
+
+  const handleUnlinkTelegram = async () => {
+    setUnlinkingTelegram(true)
+    setError(null)
+    setSuccessMessage(null)
+    try {
+      await unlinkTelegram()
+      const status = await getTelegramLinkStatus()
+      setTelegramStatus(status)
+      setTelegramLinkCode(null)
+      setSuccessMessage('Telegram account unlinked.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to unlink Telegram')
+    } finally {
+      setUnlinkingTelegram(false)
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 animate-fade-in">
       <div className="space-y-2">
@@ -234,6 +288,13 @@ function SettingsPage() {
             >
               <BrainCircuit className="size-4" />
               AI Models
+            </a>
+            <a
+              href="#telegram"
+              className="mt-1 flex items-center gap-2 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <MessageCircle className="size-4" />
+              Telegram
             </a>
           </div>
         </aside>
@@ -448,6 +509,71 @@ function SettingsPage() {
                   disabled={savingAiUseCase === 'source_formatting' || !formatterProviderConfig?.configured}
                 >
                   {savingAiUseCase === 'source_formatting' ? 'Saving...' : 'Save'}
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+
+          <div id="telegram" className="space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold tracking-tight">Telegram</h2>
+              <p className="text-sm text-muted-foreground">
+                Link your Telegram account once, then forward or send URLs directly to the bot.
+              </p>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  Telegram Bot Link
+                  {telegramStatus?.linked ? <Badge variant="secondary">Linked</Badge> : <Badge variant="outline">Not linked</Badge>}
+                </CardTitle>
+                <CardDescription>
+                  Use a one-time code to link your Telegram account in private chat.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border p-3 text-sm">
+                  <p className="font-medium">Status</p>
+                  {telegramStatus?.linked ? (
+                    <div className="mt-1 space-y-1 text-muted-foreground">
+                      <p>Username: {telegramStatus.telegramUsername ? `@${telegramStatus.telegramUsername}` : 'n/a'}</p>
+                      <p>Telegram ID: {telegramStatus.maskedTelegramId ?? 'n/a'}</p>
+                      <p>Linked at: {telegramStatus.linkedAt ? new Date(telegramStatus.linkedAt).toLocaleString() : 'n/a'}</p>
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-muted-foreground">No Telegram account linked yet.</p>
+                  )}
+                </div>
+
+                <div className="rounded-lg border p-3 text-sm text-muted-foreground">
+                  <p>1. Generate a link code below.</p>
+                  <p>2. Open your Telegram bot and send: <span className="font-mono">/link CODE</span>.</p>
+                  <p>3. After linking, send any message with URLs to ingest them into Briefy.</p>
+                </div>
+
+                {telegramLinkCode && (
+                  <div className="rounded-lg border bg-muted/50 p-3">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current link code</p>
+                    <p className="mt-1 font-mono text-lg">{telegramLinkCode}</p>
+                  </div>
+                )}
+              </CardContent>
+              <CardFooter className="gap-2">
+                <Button
+                  type="button"
+                  onClick={() => void createTelegramLinkCode()}
+                  disabled={generatingTelegramCode || loading}
+                >
+                  {generatingTelegramCode ? 'Generating...' : 'Generate link code'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleUnlinkTelegram()}
+                  disabled={unlinkingTelegram || !telegramStatus?.linked}
+                >
+                  {unlinkingTelegram ? 'Unlinking...' : 'Unlink Telegram'}
                 </Button>
               </CardFooter>
             </Card>
