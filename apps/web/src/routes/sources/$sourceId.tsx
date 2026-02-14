@@ -307,6 +307,13 @@ function SourceDetailPage() {
   const showSuggestionSection = source.status === 'active' && !activeTopicsLoading && activeTopics.length === 0
   const selectedCount = selectedSuggestionIds.length
   const allSuggestionsSelected = topicSuggestions.length > 0 && selectedCount === topicSuggestions.length
+  const isYouTubeSource = source.url.platform === 'youtube'
+  const videoEmbedUrl = source.metadata?.videoEmbedUrl
+  const transcriptMeta = [
+    source.metadata?.transcriptSource && `Transcript: ${source.metadata.transcriptSource}`,
+    source.metadata?.transcriptLanguage && `Language: ${source.metadata.transcriptLanguage}`,
+    source.metadata?.videoDurationSeconds && `Duration: ${formatDuration(source.metadata.videoDurationSeconds)}`,
+  ].filter(Boolean)
 
   return (
     <div className="max-w-2xl mx-auto animate-fade-in">
@@ -576,12 +583,46 @@ function SourceDetailPage() {
         </section>
       )}
 
+      {isYouTubeSource && videoEmbedUrl && (
+        <section className="mb-8 animate-slide-up" style={{ animationDelay: '100ms', animationFillMode: 'backwards' }}>
+          <div className="overflow-hidden rounded-xl border border-border/50 bg-card/40">
+            <div className="aspect-video">
+              <iframe
+                title={source.metadata?.title ?? 'YouTube video'}
+                src={videoEmbedUrl}
+                className="h-full w-full"
+                loading="lazy"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </section>
+      )}
+
+      {isYouTubeSource && (source.status === 'submitted' || source.status === 'extracting') && (
+        <div className="mb-6 animate-scale-in">
+          <div className="rounded-lg border border-border/50 bg-card/40 px-4 py-3 text-sm text-muted-foreground">
+            Video is being transcribed. Refresh shortly to see the transcript.
+          </div>
+        </div>
+      )}
+
       {source.content?.text && (
         <article
           className="animate-slide-up"
           style={{ animationDelay: '100ms', animationFillMode: 'backwards' }}
         >
           <div className="border-t border-border/40 pt-8">
+            {isYouTubeSource && (
+              <div className="mb-5">
+                <h2 className="text-lg font-semibold tracking-tight">Transcript</h2>
+                {transcriptMeta.length > 0 && (
+                  <p className="mt-1 text-xs text-muted-foreground">{transcriptMeta.join(' · ')}</p>
+                )}
+              </div>
+            )}
             <MarkdownContent content={source.content.text} variant="article" />
           </div>
         </article>
@@ -683,4 +724,18 @@ function extractDomain(url: string): string {
   } catch {
     return url
   }
+}
+
+function formatDuration(totalSeconds: number): string {
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`
+  }
+  return `${seconds}s`
 }

@@ -46,6 +46,7 @@ class SourceServiceEventTest {
     private val topicRepository: TopicRepository = mock()
     private val topicLinkRepository: TopicLinkRepository = mock()
     private val sourceDependencyChecker: SourceDependencyChecker = mock()
+    private val sourceExtractionJobService: SourceExtractionJobService = mock()
     private val extractionProviderResolver: ExtractionProviderResolver = mock()
     private val extractionProvider: ExtractionProvider = mock()
     private val sourceTypeClassifier: SourceTypeClassifier = mock()
@@ -64,6 +65,7 @@ class SourceServiceEventTest {
         topicRepository = topicRepository,
         topicLinkRepository = topicLinkRepository,
         sourceDependencyChecker = sourceDependencyChecker,
+        sourceExtractionJobService = sourceExtractionJobService,
         extractionProviderResolver = extractionProviderResolver,
         sourceTypeClassifier = sourceTypeClassifier,
         freshnessPolicy = freshnessPolicy,
@@ -291,6 +293,32 @@ class SourceServiceEventTest {
         assertEquals(sourceId, activatedEvent.sourceId)
         assertEquals(userId, activatedEvent.userId)
         assertEquals(SourceActivationReason.CACHE_REUSE, activatedEvent.activationReason)
+    }
+
+    @Test
+    fun `submitSource enqueues youtube job and does not run sync extraction`() {
+        val userId = UUID.randomUUID()
+        val sourceId = UUID.randomUUID()
+        val url = "https://youtube.com/watch?v=dQw4w9WgXcQ"
+        val normalizedUrl = "https://youtube.com/watch?v=dQw4w9WgXcQ"
+
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.countByUrlNormalized(normalizedUrl)).thenReturn(0)
+        whenever(sourceRepository.findByUserIdAndUrlNormalized(userId, normalizedUrl)).thenReturn(null)
+        whenever(sourceTypeClassifier.classify(normalizedUrl)).thenReturn(SourceType.VIDEO)
+        whenever(freshnessPolicy.ttlSeconds(SourceType.VIDEO)).thenReturn(30 * 24 * 60 * 60L)
+        whenever(sharedSourceSnapshotRepository.findFirstByUrlNormalizedAndIsLatestTrue(normalizedUrl)).thenReturn(null)
+        whenever(idGenerator.newId()).thenReturn(sourceId)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+
+        val response = service.submitSource(CreateSourceCommand(url = url))
+
+        assertEquals("submitted", response.status)
+        val sourceIdCaptor = argumentCaptor<UUID>()
+        val userIdCaptor = argumentCaptor<UUID>()
+        verify(sourceExtractionJobService).enqueueYoutubeExtraction(sourceIdCaptor.capture(), userIdCaptor.capture(), any())
+        assertEquals(sourceId, sourceIdCaptor.firstValue)
+        assertEquals(userId, userIdCaptor.firstValue)
     }
 
     private fun createActiveSource(userId: UUID): Source {
