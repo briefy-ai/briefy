@@ -1,6 +1,7 @@
 package com.briefy.api.infrastructure.extraction
 
 import org.jsoup.Jsoup
+import org.jsoup.Connection
 import org.jsoup.nodes.Document
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -17,6 +18,8 @@ class JsoupExtractionProvider : ExtractionProvider {
 
     companion object {
         private const val TIMEOUT_MS = 10_000
+        private const val ACCEPT_HEADER = "text/markdown, text/html;q=0.9, application/xhtml+xml;q=0.8"
+        private const val ACCEPT_ENCODING_HEADER = "identity"
         private val USER_AGENT = "Mozilla/5.0 (compatible; Briefy/1.0; +https://briefy.ai)"
 
         private val DATE_FORMATTERS = listOf(
@@ -33,32 +36,34 @@ class JsoupExtractionProvider : ExtractionProvider {
         return try {
             validateFetchableUrl(url)
 
-            val document = Jsoup.connect(url)
+            val response = Jsoup.connect(url)
                 .userAgent(USER_AGENT)
+                .header("Accept", ACCEPT_HEADER)
+                .header("Accept-Encoding", ACCEPT_ENCODING_HEADER)
                 .timeout(TIMEOUT_MS)
                 .followRedirects(true)
-                .get()
-            validateFetchableUrl(document.location())
+                .execute()
+            val finalUrl = response.url().toString()
+            validateFetchableUrl(finalUrl)
 
-            val extractedText = extractContent(document)
-            if (extractedText.isBlank()) {
-                logger.warn("[extractor:jsoup] extraction_empty_content url={} finalUrl={}", url, document.location())
+            val result = if (isMarkdownResponse(response)) {
+                extractFromMarkdown(response)
+            } else {
+                extractFromHtml(response.parse())
             }
+            val sanitizedResult = sanitizeForPersistence(result, url, finalUrl)
 
-            val result = ExtractionResult(
-                text = extractedText,
-                title = extractTitle(document),
-                author = extractAuthor(document),
-                publishedDate = extractPublishedDate(document),
-                aiFormatted = false
-            )
+            if (sanitizedResult.text.isBlank()) {
+                logger.warn("[extractor:jsoup] extraction_empty_content url={} finalUrl={}", url, finalUrl)
+            }
             logger.info(
-                "[extractor:jsoup] extraction_succeeded url={} finalUrl={} textLength={}",
+                "[extractor:jsoup] extraction_succeeded url={} finalUrl={} contentType={} textLength={}",
                 url,
-                document.location(),
-                result.text.length
+                finalUrl,
+                response.contentType(),
+                sanitizedResult.text.length
             )
-            result
+            sanitizedResult
         } catch (e: IllegalArgumentException) {
             logger.warn("[extractor:jsoup] extraction_blocked url={} reason={}", url, e.message)
             throw e
@@ -71,6 +76,112 @@ class JsoupExtractionProvider : ExtractionProvider {
                 cause = e
             )
         }
+    }
+
+    private fun extractFromHtml(doc: Document): ExtractionResult {
+        return ExtractionResult(
+            text = extractContent(doc),
+            title = extractTitle(doc),
+            author = extractAuthor(doc),
+            publishedDate = extractPublishedDate(doc),
+            aiFormatted = false
+        )
+    }
+
+    private fun extractFromMarkdown(response: Connection.Response): ExtractionResult {
+        val markdown = response.body().trim()
+        val frontmatter = parseFrontmatter(markdown)
+        val title = frontmatter["title"] ?: extractFirstMarkdownHeading(markdown)
+        val author = frontmatter["author"]
+        val publishedDate = frontmatter["date"]?.let { parseDate(it) }
+            ?: frontmatter["published"]?.let { parseDate(it) }
+            ?: frontmatter["publishedDate"]?.let { parseDate(it) }
+
+        return ExtractionResult(
+            text = markdown,
+            title = title,
+            author = author,
+            publishedDate = publishedDate,
+            aiFormatted = false
+        )
+    }
+
+    private fun sanitizeForPersistence(result: ExtractionResult, originalUrl: String, finalUrl: String): ExtractionResult {
+        val sanitizedText = stripUnsupportedChars(result.text)
+        val sanitizedTitle = result.title?.let(::stripUnsupportedChars)
+        val sanitizedAuthor = result.author?.let(::stripUnsupportedChars)
+
+        if (sanitizedText.length != result.text.length) {
+            logger.warn(
+                "[extractor:jsoup] removed_unsupported_chars url={} finalUrl={} removed={}",
+                originalUrl,
+                finalUrl,
+                result.text.length - sanitizedText.length
+            )
+        }
+
+        if (sanitizedText === result.text &&
+            sanitizedTitle == result.title &&
+            sanitizedAuthor == result.author
+        ) {
+            return result
+        }
+
+        return result.copy(
+            text = sanitizedText,
+            title = sanitizedTitle,
+            author = sanitizedAuthor
+        )
+    }
+
+    private fun stripUnsupportedChars(value: String): String {
+        return value.filterNot { ch ->
+            ch == '\u0000' || (ch.isISOControl() && ch != '\n' && ch != '\r' && ch != '\t')
+        }
+    }
+
+    private fun isMarkdownResponse(response: Connection.Response): Boolean {
+        return response.contentType()
+            ?.lowercase()
+            ?.startsWith("text/markdown") == true
+    }
+
+    private fun parseFrontmatter(markdown: String): Map<String, String> {
+        val lines = markdown.lines()
+        if (lines.isEmpty() || lines.first().trim() != "---") {
+            return emptyMap()
+        }
+
+        val metadata = mutableMapOf<String, String>()
+        for (i in 1 until lines.size) {
+            val line = lines[i].trim()
+            if (line == "---") {
+                return metadata
+            }
+            if (line.isBlank() || line.startsWith("#")) {
+                continue
+            }
+            val separatorIdx = line.indexOf(':')
+            if (separatorIdx <= 0 || separatorIdx >= line.lastIndex) {
+                continue
+            }
+            val key = line.substring(0, separatorIdx).trim()
+            val value = line.substring(separatorIdx + 1).trim().removeSurrounding("\"")
+            if (key.isNotBlank() && value.isNotBlank()) {
+                metadata[key] = value
+            }
+        }
+
+        return emptyMap()
+    }
+
+    private fun extractFirstMarkdownHeading(markdown: String): String? {
+        return markdown
+            .lineSequence()
+            .firstOrNull { it.startsWith("# ") }
+            ?.removePrefix("# ")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
     }
 
     private fun extractTitle(doc: Document): String? {
