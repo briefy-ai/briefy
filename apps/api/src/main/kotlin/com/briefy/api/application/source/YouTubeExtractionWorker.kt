@@ -24,6 +24,11 @@ class YouTubeExtractionWorker(
         if (!enabled) return
 
         val now = Instant.now()
+        val reclaimed = sourceExtractionJobService.reclaimStaleProcessingJobs(now)
+        if (reclaimed > 0) {
+            logger.info("[youtube-worker] reclaimed_stale_processing_jobs count={}", reclaimed)
+        }
+
         val jobs = sourceExtractionJobService.claimDueJobs(now, batchSize.coerceAtLeast(1), lockOwner)
         if (jobs.isEmpty()) return
 

@@ -321,6 +321,47 @@ class SourceServiceEventTest {
         assertEquals(userId, userIdCaptor.firstValue)
     }
 
+    @Test
+    fun `processQueuedExtraction retries failed source before extracting`() {
+        val userId = UUID.randomUUID()
+        val source = Source.create(
+            id = UUID.randomUUID(),
+            rawUrl = "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            userId = userId,
+            sourceType = SourceType.VIDEO
+        ).apply {
+            startExtraction()
+            failExtraction()
+        }
+        val snapshotId = UUID.randomUUID()
+
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+        whenever(extractionProviderResolver.resolveProvider(userId, "youtube")).thenReturn(extractionProvider)
+        whenever(extractionProvider.id).thenReturn(ExtractionProviderId.YOUTUBE)
+        whenever(extractionProvider.extract(source.url.normalized)).thenReturn(
+            ExtractionResult(
+                text = "transcript text",
+                title = "video title",
+                author = "uploader",
+                publishedDate = Instant.parse("2025-01-01T00:00:00Z"),
+                aiFormatted = true,
+                videoId = "dQw4w9WgXcQ",
+                videoEmbedUrl = "https://www.youtube.com/embed/dQw4w9WgXcQ",
+                videoDurationSeconds = 120
+            )
+        )
+        whenever(idGenerator.newId()).thenReturn(snapshotId)
+        whenever(sharedSourceSnapshotRepository.findMaxVersionByUrlNormalized(source.url.normalized)).thenReturn(0)
+        whenever(freshnessPolicy.computeExpiresAt(any(), any())).thenReturn(Instant.now().plusSeconds(3600))
+
+        val response = service.processQueuedExtraction(source.id, userId)
+
+        assertEquals("active", response.status)
+        assertEquals("dQw4w9WgXcQ", response.metadata?.videoId)
+        verify(extractionProviderResolver).resolveProvider(userId, "youtube")
+    }
+
     private fun createActiveSource(userId: UUID): Source {
         return Source.create(
             id = UUID.randomUUID(),

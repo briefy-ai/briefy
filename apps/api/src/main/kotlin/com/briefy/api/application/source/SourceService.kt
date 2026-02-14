@@ -168,6 +168,10 @@ class SourceService(
         if (source.status == SourceStatus.ACTIVE) {
             return source.toResponse()
         }
+        if (source.status == SourceStatus.FAILED) {
+            source.retry()
+            sourceRepository.save(source)
+        }
 
         return extractContent(source).toResponse()
     }

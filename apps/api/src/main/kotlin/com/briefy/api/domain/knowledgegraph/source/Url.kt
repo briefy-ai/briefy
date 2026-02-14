@@ -73,7 +73,7 @@ data class Url(
             val host = uri.host?.lowercase() ?: return "web"
 
             for ((platform, patterns) in PLATFORM_PATTERNS) {
-                if (patterns.any { host.contains(it) }) {
+                if (patterns.any { host == it || host.endsWith(".$it") }) {
                     return platform
                 }
             }

@@ -16,7 +16,9 @@ class SourceExtractionJobService(
     private val sourceExtractionJobRepository: SourceExtractionJobRepository,
     private val idGenerator: IdGenerator,
     @param:Value("\${extraction.youtube.worker.max-attempts:5}")
-    private val maxAttempts: Int
+    private val maxAttempts: Int,
+    @param:Value("\${extraction.youtube.worker.processing-timeout-seconds:900}")
+    private val processingTimeoutSeconds: Long
 ) {
     @Transactional
     fun enqueueYoutubeExtraction(sourceId: UUID, userId: UUID, now: Instant): SourceExtractionJob {
@@ -73,6 +75,17 @@ class SourceExtractionJobService(
                 sourceExtractionJobRepository.findById(id).orElse(null)
             }
         }
+    }
+
+    @Transactional
+    fun reclaimStaleProcessingJobs(now: Instant): Int {
+        val staleBefore = now.minusSeconds(processingTimeoutSeconds.coerceAtLeast(1))
+        return sourceExtractionJobRepository.reclaimStaleProcessingJobs(
+            processingStatus = SourceExtractionJobStatus.PROCESSING,
+            retryStatus = SourceExtractionJobStatus.RETRY,
+            staleBefore = staleBefore,
+            now = now
+        )
     }
 
     @Transactional
