@@ -6,6 +6,7 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Component
 class YouTubeExtractionWorker(
@@ -14,7 +15,9 @@ class YouTubeExtractionWorker(
     @param:Value("\${extraction.youtube.enabled:true}")
     private val enabled: Boolean,
     @param:Value("\${extraction.youtube.worker.batch-size:5}")
-    private val batchSize: Int
+    private val batchSize: Int,
+    @param:Value("\${extraction.youtube.worker.lock-heartbeat-ms:30000}")
+    private val lockHeartbeatMs: Long
 ) {
     private val logger = LoggerFactory.getLogger(YouTubeExtractionWorker::class.java)
     private val lockOwner: String = "youtube-worker-${UUID.randomUUID()}"
@@ -33,6 +36,8 @@ class YouTubeExtractionWorker(
         if (jobs.isEmpty()) return
 
         jobs.forEach { job ->
+            val heartbeatRunning = AtomicBoolean(true)
+            val heartbeatThread = startLockHeartbeat(job.id, heartbeatRunning)
             try {
                 sourceService.processQueuedExtraction(job.sourceId, job.userId)
                 sourceExtractionJobService.markSucceeded(job.id, Instant.now())
@@ -46,7 +51,53 @@ class YouTubeExtractionWorker(
                     e
                 )
                 sourceExtractionJobService.markRetry(job.id, e.message ?: "unknown_error", Instant.now())
+            } finally {
+                heartbeatRunning.set(false)
+                heartbeatThread.join(2_000)
             }
+        }
+    }
+
+    private fun startLockHeartbeat(jobId: UUID, running: AtomicBoolean): Thread {
+        return Thread(
+            {
+                while (running.get()) {
+                    try {
+                        Thread.sleep(lockHeartbeatMs.coerceAtLeast(1000L))
+                    } catch (_: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                        return@Thread
+                    }
+
+                    if (!running.get()) {
+                        return@Thread
+                    }
+
+                    val refreshed = runCatching {
+                        sourceExtractionJobService.refreshProcessingLock(jobId, lockOwner, Instant.now())
+                    }.getOrElse { error ->
+                        logger.warn(
+                            "[youtube-worker] lock_heartbeat_failed jobId={} lockOwner={}",
+                            jobId,
+                            lockOwner,
+                            error
+                        )
+                        false
+                    }
+
+                    if (!refreshed) {
+                        logger.warn(
+                            "[youtube-worker] lock_heartbeat_skipped jobId={} reason=not_processing_or_lock_owner_changed",
+                            jobId
+                        )
+                        return@Thread
+                    }
+                }
+            },
+            "youtube-lock-heartbeat-$jobId"
+        ).apply {
+            isDaemon = true
+            start()
         }
     }
 }

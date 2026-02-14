@@ -69,4 +69,22 @@ interface SourceExtractionJobRepository : JpaRepository<SourceExtractionJob, UUI
         @Param("staleBefore") staleBefore: Instant,
         @Param("now") now: Instant
     ): Int
+
+    @Modifying
+    @Query(
+        """
+        update SourceExtractionJob j
+        set j.lockedAt = :now,
+            j.updatedAt = :now
+        where j.id = :id
+          and j.status = :processingStatus
+          and j.lockOwner = :lockOwner
+        """
+    )
+    fun refreshProcessingLock(
+        @Param("id") id: UUID,
+        @Param("processingStatus") processingStatus: SourceExtractionJobStatus,
+        @Param("lockOwner") lockOwner: String,
+        @Param("now") now: Instant
+    ): Int
 }

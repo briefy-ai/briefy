@@ -80,4 +80,28 @@ class SourceExtractionJobServiceTest {
         assertEquals(null, result.lockedAt)
         assertEquals(null, result.lastError)
     }
+
+    @Test
+    fun `refreshProcessingLock updates lock timestamp for claimed job`() {
+        val jobId = UUID.randomUUID()
+        val now = Instant.parse("2026-02-14T10:00:00Z")
+        whenever(
+            repository.refreshProcessingLock(
+                id = jobId,
+                processingStatus = SourceExtractionJobStatus.PROCESSING,
+                lockOwner = "worker-1",
+                now = now
+            )
+        ).thenReturn(1)
+
+        val refreshed = service.refreshProcessingLock(jobId, "worker-1", now)
+
+        assertEquals(true, refreshed)
+        verify(repository).refreshProcessingLock(
+            id = eq(jobId),
+            processingStatus = eq(SourceExtractionJobStatus.PROCESSING),
+            lockOwner = eq("worker-1"),
+            now = eq(now)
+        )
+    }
 }

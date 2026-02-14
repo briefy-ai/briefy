@@ -65,8 +65,6 @@ class YouTubeExtractionProvider(
                 transcriptSource = transcriptSource,
                 transcriptLanguage = transcriptLanguage
             )
-        } catch (e: ExtractionProviderException) {
-            throw e
         } catch (e: Exception) {
             logger.error("[extractor:youtube] extraction_failed url={}", url, e)
             throw ExtractionProviderException(
@@ -155,11 +153,11 @@ class YouTubeExtractionProvider(
             .filterNot { line ->
                 val trimmed = line.trim()
                 trimmed.startsWith("WEBVTT") ||
-                    trimmed.matches(Regex("^\\d+$")) ||
+                    trimmed.matches(VTT_INDEX_LINE_PATTERN) ||
                     trimmed.contains("-->") ||
                     trimmed.isBlank()
             }
-            .map { it.replace(Regex("<[^>]+>"), "").trim() }
+            .map { it.replace(VTT_TAG_PATTERN, "").trim() }
             .filter { it.isNotBlank() }
             .joinToString("\n")
             .trim()
@@ -337,6 +335,8 @@ class YouTubeExtractionProvider(
     companion object {
         private const val MAX_COMMAND_OUTPUT_CHARS = 500_000
         private const val COMMAND_OUTPUT_PREVIEW_CHARS = 4_000
+        private val VTT_INDEX_LINE_PATTERN = Regex("^\\d+$")
+        private val VTT_TAG_PATTERN = Regex("<[^>]+>")
     }
 }
 

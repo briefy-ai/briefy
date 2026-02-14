@@ -25,15 +25,10 @@ class YouTubeAiContentFormatter(
         """.trimIndent()
 
         return aiAdapter.complete(
-            provider = FORCED_PROVIDER,
-            model = FORCED_MODEL,
+            provider = provider,
+            model = model,
             prompt = prompt,
             systemPrompt = null
         )
-    }
-
-    companion object {
-        private const val FORCED_PROVIDER = "google_genai"
-        private const val FORCED_MODEL = "gemini-2.5-flash-lite"
     }
 }

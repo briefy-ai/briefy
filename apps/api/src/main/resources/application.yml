@@ -65,6 +65,7 @@ extraction:
       batch-size: ${YOUTUBE_WORKER_BATCH_SIZE:5}
       max-attempts: ${YOUTUBE_WORKER_MAX_ATTEMPTS:5}
       processing-timeout-seconds: ${YOUTUBE_WORKER_PROCESSING_TIMEOUT_SECONDS:900}
+      lock-heartbeat-ms: ${YOUTUBE_WORKER_LOCK_HEARTBEAT_MS:30000}
 
 transcription:
   openai:

@@ -1,4 +1,7 @@
 # Repository Guidelines
+For code changes, prefer using the following skills:
+- karpathy guidelines
+- clean code
 
 ## Project Structure & Module Organization
 This repository is a small monorepo with two apps:

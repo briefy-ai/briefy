@@ -89,24 +89,22 @@ class SourceExtractionJobService(
     }
 
     @Transactional
+    fun refreshProcessingLock(jobId: UUID, lockOwner: String, now: Instant): Boolean {
+        return sourceExtractionJobRepository.refreshProcessingLock(
+            id = jobId,
+            processingStatus = SourceExtractionJobStatus.PROCESSING,
+            lockOwner = lockOwner,
+            now = now
+        ) > 0
+    }
+
+    @Transactional
     fun markSucceeded(jobId: UUID, now: Instant) {
         val job = sourceExtractionJobRepository.findById(jobId).orElse(null) ?: return
         job.status = SourceExtractionJobStatus.SUCCEEDED
         job.lockOwner = null
         job.lockedAt = null
         job.lastError = null
-        job.updatedAt = now
-        sourceExtractionJobRepository.save(job)
-    }
-
-    @Transactional
-    fun markFailed(jobId: UUID, error: String, now: Instant) {
-        val job = sourceExtractionJobRepository.findById(jobId).orElse(null) ?: return
-        job.status = SourceExtractionJobStatus.FAILED
-        job.attempts += 1
-        job.lockOwner = null
-        job.lockedAt = null
-        job.lastError = error.take(4000)
         job.updatedAt = now
         sourceExtractionJobRepository.save(job)
     }

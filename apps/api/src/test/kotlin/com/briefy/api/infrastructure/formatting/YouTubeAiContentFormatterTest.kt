@@ -26,15 +26,15 @@ class YouTubeAiContentFormatterTest {
     }
 
     @Test
-    fun `forces google genai flash lite regardless of provided args`() {
+    fun `uses provided provider and model`() {
         whenever(aiAdapter.complete(any(), any(), any(), anyOrNull())).thenReturn("formatted")
 
         val result = formatter.format("raw captions text", "zhipuai", "glm-4.7")
 
         assertEquals("formatted", result)
         verify(aiAdapter).complete(
-            provider = eq("google_genai"),
-            model = eq("gemini-2.5-flash-lite"),
+            provider = eq("zhipuai"),
+            model = eq("glm-4.7"),
             prompt = any(),
             systemPrompt = eq(null)
         )
