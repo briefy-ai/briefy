@@ -110,6 +110,18 @@ class SourceExtractionJobService(
     }
 
     @Transactional
+    fun markFailed(jobId: UUID, error: String, now: Instant) {
+        val job = sourceExtractionJobRepository.findById(jobId).orElse(null) ?: return
+        job.status = SourceExtractionJobStatus.FAILED
+        job.attempts += 1
+        job.lockOwner = null
+        job.lockedAt = null
+        job.lastError = error.take(4000)
+        job.updatedAt = now
+        sourceExtractionJobRepository.save(job)
+    }
+
+    @Transactional
     fun markRetry(jobId: UUID, error: String, now: Instant) {
         val job = sourceExtractionJobRepository.findById(jobId).orElse(null) ?: return
         job.attempts += 1
