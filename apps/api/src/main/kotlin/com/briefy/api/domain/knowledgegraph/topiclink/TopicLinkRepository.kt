@@ -24,6 +24,13 @@ interface TopicLinkRepository : JpaRepository<TopicLink, UUID> {
         status: TopicLinkStatus
     ): List<TopicLink>
 
+    fun findByUserIdAndTargetTypeAndTargetIdAndStatusIn(
+        userId: UUID,
+        targetType: TopicLinkTargetType,
+        targetId: UUID,
+        statuses: Collection<TopicLinkStatus>
+    ): List<TopicLink>
+
     fun findByUserIdAndTopicIdAndTargetTypeAndStatusOrderByAssignedAtDesc(
         userId: UUID,
         topicId: UUID,

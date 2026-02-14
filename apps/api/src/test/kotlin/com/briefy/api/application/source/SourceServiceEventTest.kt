@@ -13,6 +13,12 @@ import com.briefy.api.domain.knowledgegraph.source.event.SourceActivationReason
 import com.briefy.api.domain.knowledgegraph.source.event.SourceArchivedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFormattingRequestedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
+import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
+import com.briefy.api.domain.knowledgegraph.topic.Topic
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkRepository
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLink
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkStatus
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkTargetType
 import com.briefy.api.infrastructure.extraction.ExtractionProvider
 import com.briefy.api.infrastructure.extraction.ExtractionProviderId
 import com.briefy.api.infrastructure.extraction.ExtractionProviderResolver
@@ -37,6 +43,9 @@ import java.util.UUID
 class SourceServiceEventTest {
     private val sourceRepository: SourceRepository = mock()
     private val sharedSourceSnapshotRepository: SharedSourceSnapshotRepository = mock()
+    private val topicRepository: TopicRepository = mock()
+    private val topicLinkRepository: TopicLinkRepository = mock()
+    private val sourceDependencyChecker: SourceDependencyChecker = mock()
     private val extractionProviderResolver: ExtractionProviderResolver = mock()
     private val extractionProvider: ExtractionProvider = mock()
     private val sourceTypeClassifier: SourceTypeClassifier = mock()
@@ -52,6 +61,9 @@ class SourceServiceEventTest {
     private val service = SourceService(
         sourceRepository = sourceRepository,
         sharedSourceSnapshotRepository = sharedSourceSnapshotRepository,
+        topicRepository = topicRepository,
+        topicLinkRepository = topicLinkRepository,
+        sourceDependencyChecker = sourceDependencyChecker,
         extractionProviderResolver = extractionProviderResolver,
         sourceTypeClassifier = sourceTypeClassifier,
         freshnessPolicy = freshnessPolicy,
@@ -61,11 +73,27 @@ class SourceServiceEventTest {
     )
 
     @Test
-    fun `deleteSource publishes SourceArchivedEvent when transitioning to archived`() {
+    fun `deleteSource hard deletes unreferenced source and publishes no archive event`() {
         val userId = UUID.randomUUID()
         val source = createActiveSource(userId)
         whenever(currentUserProvider.requireUserId()).thenReturn(userId)
         whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.countByUrlNormalized(source.url.normalized)).thenReturn(1)
+        whenever(sourceDependencyChecker.hasBlockingDependencies(source.id, userId)).thenReturn(false)
+
+        service.deleteSource(source.id)
+
+        verify(sourceRepository).delete(source)
+        verify(eventPublisher, never()).publishEvent(any<Any>())
+    }
+
+    @Test
+    fun `deleteSource archives source and publishes SourceArchivedEvent when dependencies exist`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId)
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceDependencyChecker.hasBlockingDependencies(source.id, userId)).thenReturn(true)
 
         service.deleteSource(source.id)
 
@@ -81,16 +109,74 @@ class SourceServiceEventTest {
     }
 
     @Test
-    fun `deleteSource does not publish event when source already archived`() {
+    fun `deleteSource is no-op when source not found`() {
         val userId = UUID.randomUUID()
-        val source = createActiveSource(userId).apply { archive() }
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(UUID.fromString("00000000-0000-0000-0000-000000000000"), userId)).thenReturn(null)
+
+        service.deleteSource(UUID.fromString("00000000-0000-0000-0000-000000000000"))
+
+        verify(sourceRepository, never()).save(any())
+        verify(sourceRepository, never()).delete(any())
+        verify(eventPublisher, never()).publishEvent(any<Any>())
+    }
+
+    @Test
+    fun `deleteSource removes source topic links, orphan topic, and snapshots for last url source`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId)
+        val topic = Topic.activeUser(UUID.randomUUID(), userId, "security")
+        val link = TopicLink.activeUserForSource(UUID.randomUUID(), topic.id, source.id, userId)
         whenever(currentUserProvider.requireUserId()).thenReturn(userId)
         whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceDependencyChecker.hasBlockingDependencies(source.id, userId)).thenReturn(false)
+        whenever(sourceRepository.countByUrlNormalized(source.url.normalized)).thenReturn(1)
+        whenever(
+            topicLinkRepository.findByUserIdAndTargetTypeAndTargetIdAndStatusIn(
+                userId = userId,
+                targetType = TopicLinkTargetType.SOURCE,
+                targetId = source.id,
+                statuses = listOf(TopicLinkStatus.SUGGESTED, TopicLinkStatus.ACTIVE)
+            )
+        ).thenReturn(listOf(link))
+        whenever(topicRepository.findAllByIdInAndUserId(setOf(topic.id), userId)).thenReturn(listOf(topic))
+        whenever(topicLinkRepository.countByUserIdAndTopicIdAndStatusIn(userId, topic.id, listOf(TopicLinkStatus.SUGGESTED, TopicLinkStatus.ACTIVE)))
+            .thenReturn(0)
 
         service.deleteSource(source.id)
 
-        verify(sourceRepository, never()).save(any())
-        verify(eventPublisher, never()).publishEvent(any<Any>())
+        verify(topicLinkRepository).deleteAll(listOf(link))
+        verify(topicRepository).deleteAll(listOf(topic))
+        verify(sourceRepository).delete(source)
+        verify(sharedSourceSnapshotRepository).deleteByUrlNormalized(source.url.normalized)
+    }
+
+    @Test
+    fun `deleteSource keeps snapshots and non-orphan topic when other url sources or links exist`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId)
+        val topic = Topic.activeUser(UUID.randomUUID(), userId, "security")
+        val link = TopicLink.activeUserForSource(UUID.randomUUID(), topic.id, source.id, userId)
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceDependencyChecker.hasBlockingDependencies(source.id, userId)).thenReturn(false)
+        whenever(sourceRepository.countByUrlNormalized(source.url.normalized)).thenReturn(2)
+        whenever(
+            topicLinkRepository.findByUserIdAndTargetTypeAndTargetIdAndStatusIn(
+                userId = userId,
+                targetType = TopicLinkTargetType.SOURCE,
+                targetId = source.id,
+                statuses = listOf(TopicLinkStatus.SUGGESTED, TopicLinkStatus.ACTIVE)
+            )
+        ).thenReturn(listOf(link))
+        whenever(topicRepository.findAllByIdInAndUserId(setOf(topic.id), userId)).thenReturn(listOf(topic))
+        whenever(topicLinkRepository.countByUserIdAndTopicIdAndStatusIn(userId, topic.id, listOf(TopicLinkStatus.SUGGESTED, TopicLinkStatus.ACTIVE)))
+            .thenReturn(1)
+
+        service.deleteSource(source.id)
+
+        verify(topicRepository, never()).deleteAll(any<Iterable<Topic>>())
+        verify(sharedSourceSnapshotRepository, never()).deleteByUrlNormalized(any())
     }
 
     @Test
