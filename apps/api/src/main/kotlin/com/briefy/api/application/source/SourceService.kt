@@ -6,6 +6,11 @@ import com.briefy.api.domain.knowledgegraph.source.event.SourceActivatedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivationReason
 import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFormattingRequestedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
+import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
+import com.briefy.api.domain.knowledgegraph.topic.TopicStatus
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkRepository
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkStatus
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkTargetType
 import com.briefy.api.infrastructure.extraction.ExtractionProviderId
 import com.briefy.api.infrastructure.extraction.ExtractionProviderResolver
 import com.briefy.api.infrastructure.id.IdGenerator
@@ -23,6 +28,9 @@ class SourceService(
     private val sourceRepository: SourceRepository,
     private val sharedSourceSnapshotRepository: SharedSourceSnapshotRepository,
     private val sourceExtractionJobService: SourceExtractionJobService,
+    private val topicRepository: TopicRepository,
+    private val topicLinkRepository: TopicLinkRepository,
+    private val sourceDependencyChecker: SourceDependencyChecker,
     private val extractionProviderResolver: ExtractionProviderResolver,
     private val sourceTypeClassifier: SourceTypeClassifier,
     private val freshnessPolicy: FreshnessPolicy,
@@ -169,13 +177,22 @@ class SourceService(
         val userId = currentUserProvider.requireUserId()
         logger.info("[service] Deleting source userId={} sourceId={}", userId, id)
         val source = sourceRepository.findByIdAndUserId(id, userId)
-            ?: throw SourceNotFoundException(id)
+            ?: return
 
-        if (source.status != SourceStatus.ARCHIVED) {
-            source.archive()
-            sourceRepository.save(source)
-            eventPublisher.publishEvent(SourceArchivedEvent(sourceId = source.id, userId = userId))
+        if (sourceDependencyChecker.hasBlockingDependencies(sourceId = source.id, userId = userId)) {
+            if (source.status != SourceStatus.ARCHIVED) {
+                source.archive()
+                sourceRepository.save(source)
+                eventPublisher.publishEvent(SourceArchivedEvent(sourceId = source.id, userId = userId))
+            }
+            return
         }
+
+        require(source.status in HARD_DELETE_ELIGIBLE_STATUSES) {
+            "Can only hard-delete ACTIVE, FAILED, or ARCHIVED sources. Current status: ${source.status}"
+        }
+
+        hardDeleteSource(source)
     }
 
     @Transactional
@@ -223,6 +240,58 @@ class SourceService(
 
     companion object {
         private const val MAX_BATCH_ARCHIVE_SOURCE_IDS = 100
+        private val HARD_DELETE_ELIGIBLE_STATUSES = setOf(
+            SourceStatus.ACTIVE,
+            SourceStatus.FAILED,
+            SourceStatus.ARCHIVED
+        )
+        private val LIVE_TOPIC_LINK_STATUSES = listOf(
+            TopicLinkStatus.SUGGESTED,
+            TopicLinkStatus.ACTIVE
+        )
+    }
+
+    private fun hardDeleteSource(source: Source) {
+        val wasLastSourceForUrl = sourceRepository.countByUrlNormalized(source.url.normalized) == 1L
+        val sourceTopicLinks = topicLinkRepository.findByUserIdAndTargetTypeAndTargetIdAndStatusIn(
+            userId = source.userId,
+            targetType = TopicLinkTargetType.SOURCE,
+            targetId = source.id,
+            statuses = LIVE_TOPIC_LINK_STATUSES
+        )
+        val affectedTopicIds = sourceTopicLinks.map { it.topicId }.toSet()
+
+        if (sourceTopicLinks.isNotEmpty()) {
+            topicLinkRepository.deleteAll(sourceTopicLinks)
+        }
+        deleteOrphanTopicsForSource(source.userId, affectedTopicIds)
+        sourceRepository.delete(source)
+
+        if (wasLastSourceForUrl) {
+            sharedSourceSnapshotRepository.deleteByUrlNormalized(source.url.normalized)
+        }
+
+        // TODO: Emit SourceDeletedEvent once downstream consumers are implemented.
+    }
+
+    private fun deleteOrphanTopicsForSource(userId: UUID, topicIds: Set<UUID>) {
+        if (topicIds.isEmpty()) {
+            return
+        }
+
+        val topicsToDelete = topicRepository.findAllByIdInAndUserId(topicIds, userId)
+            .filter { it.status == TopicStatus.SUGGESTED || it.status == TopicStatus.ACTIVE }
+            .filter { topic ->
+                topicLinkRepository.countByUserIdAndTopicIdAndStatusIn(
+                    userId = userId,
+                    topicId = topic.id,
+                    statuses = LIVE_TOPIC_LINK_STATUSES
+                ) == 0L
+            }
+
+        if (topicsToDelete.isNotEmpty()) {
+            topicRepository.deleteAll(topicsToDelete)
+        }
     }
 
     private fun extractContent(source: Source): Source {

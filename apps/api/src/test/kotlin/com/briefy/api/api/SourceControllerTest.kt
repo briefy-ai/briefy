@@ -230,7 +230,7 @@ class SourceControllerTest {
     }
 
     @Test
-    fun `DELETE archives source and hides it from default list`() {
+    fun `DELETE hard deletes unreferenced source and hides it from list`() {
         `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
         val id = createSource("https://delete-test.com/article")
 
@@ -244,15 +244,14 @@ class SourceControllerTest {
 
         mockMvc.perform(get("/api/sources").param("status", "archived"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$[?(@.id=='$id')]").isNotEmpty)
+            .andExpect(jsonPath("$[?(@.id=='$id')]").isEmpty)
 
         mockMvc.perform(get("/api/sources/$id"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.status").value("archived"))
+            .andExpect(status().isNotFound)
     }
 
     @Test
-    fun `DELETE is idempotent for already archived source`() {
+    fun `DELETE is idempotent for already deleted source`() {
         `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
         val id = createSource("https://delete-idempotent-test.com/article")
 
@@ -264,13 +263,13 @@ class SourceControllerTest {
     }
 
     @Test
-    fun `DELETE returns 404 for unknown id`() {
+    fun `DELETE returns 204 for unknown id`() {
         mockMvc.perform(delete("/api/sources/00000000-0000-0000-0000-000000000000"))
-            .andExpect(status().isNotFound)
+            .andExpect(status().isNoContent)
     }
 
     @Test
-    fun `POST restore returns 204 and makes archived source active`() {
+    fun `POST restore returns 404 after source is hard deleted`() {
         `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
         val id = createSource("https://restore-test.com/article")
 
@@ -278,19 +277,7 @@ class SourceControllerTest {
             .andExpect(status().isNoContent)
 
         mockMvc.perform(post("/api/sources/$id/restore"))
-            .andExpect(status().isNoContent)
-
-        mockMvc.perform(get("/api/sources"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$[?(@.id=='$id')]").isNotEmpty)
-
-        mockMvc.perform(get("/api/sources").param("status", "archived"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$[?(@.id=='$id')]").isEmpty)
-
-        mockMvc.perform(get("/api/sources/$id"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.status").value("active"))
+            .andExpect(status().isNotFound)
     }
 
     @Test
