@@ -22,6 +22,7 @@ import java.util.UUID
 class SourceService(
     private val sourceRepository: SourceRepository,
     private val sharedSourceSnapshotRepository: SharedSourceSnapshotRepository,
+    private val sourceExtractionJobService: SourceExtractionJobService,
     private val extractionProviderResolver: ExtractionProviderResolver,
     private val sourceTypeClassifier: SourceTypeClassifier,
     private val freshnessPolicy: FreshnessPolicy,
@@ -80,11 +81,22 @@ class SourceService(
             )
         }
 
-        // Create source and extract fresh content
         val source = Source.create(idGenerator.newId(), command.url, userId, sourceType)
         sourceRepository.save(source)
+
+        if (sourceType == SourceType.VIDEO) {
+            sourceExtractionJobService.enqueueYoutubeExtraction(source.id, source.userId, Instant.now())
+            logger.info("[service] Enqueued youtube extraction sourceId={} userId={}", source.id, source.userId)
+            return source.toResponse(
+                reuseInfo = ReuseInfoDto(
+                    usedCache = false,
+                    cacheAgeSeconds = snapshotCacheAge,
+                    freshnessTtlSeconds = freshnessTtlSeconds
+                )
+            )
+        }
+
         val extractedSource = extractContent(source)
-        saveSharedSnapshot(extractedSource, Instant.now())
 
         return extractedSource.toResponse(
             reuseInfo = ReuseInfoDto(
@@ -128,6 +140,26 @@ class SourceService(
 
         source.retry()
         sourceRepository.save(source)
+
+        if (source.sourceType == SourceType.VIDEO) {
+            sourceExtractionJobService.enqueueYoutubeExtraction(source.id, source.userId, Instant.now())
+            return source.toResponse()
+        }
+
+        return extractContent(source).toResponse()
+    }
+
+    @Transactional
+    fun processQueuedExtraction(sourceId: UUID, userId: UUID): SourceResponse {
+        val source = sourceRepository.findByIdAndUserId(sourceId, userId)
+            ?: throw SourceNotFoundException(sourceId)
+
+        if (source.status == SourceStatus.ARCHIVED) {
+            return source.toResponse()
+        }
+        if (source.status == SourceStatus.ACTIVE) {
+            return source.toResponse()
+        }
 
         return extractContent(source).toResponse()
     }
@@ -194,8 +226,12 @@ class SourceService(
     }
 
     private fun extractContent(source: Source): Source {
-        source.startExtraction()
-        sourceRepository.save(source)
+        if (source.status == SourceStatus.SUBMITTED) {
+            source.startExtraction()
+            sourceRepository.save(source)
+        } else if (source.status != SourceStatus.EXTRACTING) {
+            throw InvalidSourceStateException("Source ${source.id} cannot be extracted from state ${source.status}")
+        }
 
         try {
             val provider = extractionProviderResolver.resolveProvider(source.userId, source.url.platform)
@@ -210,11 +246,17 @@ class SourceService(
                 platform = source.url.platform,
                 wordCount = content.wordCount,
                 aiFormatted = result.aiFormatted,
-                extractionProvider = resolvedProvider
+                extractionProvider = resolvedProvider,
+                videoId = result.videoId,
+                videoEmbedUrl = result.videoEmbedUrl,
+                videoDurationSeconds = result.videoDurationSeconds,
+                transcriptSource = result.transcriptSource,
+                transcriptLanguage = result.transcriptLanguage
             )
 
             source.completeExtraction(content, metadata)
             sourceRepository.save(source)
+            saveSharedSnapshot(source, Instant.now())
             eventPublisher.publishEvent(
                 SourceActivatedEvent(
                     sourceId = source.id,
@@ -241,8 +283,10 @@ class SourceService(
             return source
         } catch (e: Exception) {
             logger.error("[service] Failed to extract content url={}", source.url.normalized, e)
-            source.failExtraction()
-            sourceRepository.save(source)
+            if (source.status == SourceStatus.EXTRACTING) {
+                source.failExtraction()
+                sourceRepository.save(source)
+            }
             throw ExtractionFailedException(source.url.normalized, e)
         }
     }

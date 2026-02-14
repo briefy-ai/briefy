@@ -6,6 +6,11 @@ import java.net.URI
 
 @Component
 class SourceTypeClassifier {
+    private val videoHosts = setOf(
+        "youtube.com",
+        "youtu.be"
+    )
+
     private val researchHosts = setOf(
         "arxiv.org",
         "doi.org",
@@ -36,6 +41,7 @@ class SourceTypeClassifier {
         val host = runCatching { URI.create(normalizedUrl).host?.lowercase().orEmpty() }.getOrDefault("")
         if (host.isBlank()) return SourceType.BLOG
 
+        if (matches(host, videoHosts)) return SourceType.VIDEO
         if (matches(host, researchHosts)) return SourceType.RESEARCH
         if (matches(host, newsHosts)) return SourceType.NEWS
         return SourceType.BLOG

@@ -14,6 +14,16 @@ class ExtractionProviderResolverTest {
     private val userId = UUID.randomUUID()
     private val jsoupProvider: ExtractionProvider = mock()
     private val firecrawlProvider: ExtractionProvider = mock()
+    private val youtubeProvider: ExtractionProvider = mock()
+
+    @Test
+    fun `returns youtube provider for youtube platform`() {
+        whenever(factory.youtube()).thenReturn(youtubeProvider)
+
+        val provider = resolver.resolveProvider(userId, "youtube")
+
+        assertSame(youtubeProvider, provider)
+    }
 
     @Test
     fun `returns firecrawl when platform supported and configured`() {
