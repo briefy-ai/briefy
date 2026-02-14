@@ -58,7 +58,7 @@ class YouTubeExtractionProvider(
                 title = metadata.title,
                 author = metadata.uploader,
                 publishedDate = metadata.uploadDate,
-                aiFormatted = true,
+                aiFormatted = transcriptSource == "whisper",
                 videoId = ref.videoId,
                 videoEmbedUrl = ref.embedUrl,
                 videoDurationSeconds = metadata.duration,

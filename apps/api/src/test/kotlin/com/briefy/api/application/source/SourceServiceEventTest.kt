@@ -362,6 +362,88 @@ class SourceServiceEventTest {
         verify(extractionProviderResolver).resolveProvider(userId, "youtube")
     }
 
+    @Test
+    fun `processQueuedExtraction publishes formatting request for youtube captions transcript`() {
+        val userId = UUID.randomUUID()
+        val source = Source.create(
+            id = UUID.randomUUID(),
+            rawUrl = "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            userId = userId,
+            sourceType = SourceType.VIDEO
+        )
+        val snapshotId = UUID.randomUUID()
+
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+        whenever(extractionProviderResolver.resolveProvider(userId, "youtube")).thenReturn(extractionProvider)
+        whenever(extractionProvider.id).thenReturn(ExtractionProviderId.YOUTUBE)
+        whenever(extractionProvider.extract(source.url.normalized)).thenReturn(
+            ExtractionResult(
+                text = "caption transcript",
+                title = "video title",
+                author = "uploader",
+                publishedDate = Instant.parse("2025-01-01T00:00:00Z"),
+                aiFormatted = false,
+                videoId = "dQw4w9WgXcQ",
+                videoEmbedUrl = "https://www.youtube.com/embed/dQw4w9WgXcQ",
+                videoDurationSeconds = 120,
+                transcriptSource = "captions"
+            )
+        )
+        whenever(idGenerator.newId()).thenReturn(snapshotId)
+        whenever(sharedSourceSnapshotRepository.findMaxVersionByUrlNormalized(source.url.normalized)).thenReturn(0)
+        whenever(freshnessPolicy.computeExpiresAt(any(), any())).thenReturn(Instant.now().plusSeconds(3600))
+
+        service.processQueuedExtraction(source.id, userId)
+
+        val eventCaptor = argumentCaptor<Any>()
+        verify(eventPublisher, atLeastOnce()).publishEvent(eventCaptor.capture())
+        val formattingEvents = eventCaptor.allValues.filterIsInstance<SourceContentFormattingRequestedEvent>()
+        assertEquals(1, formattingEvents.size)
+        assertEquals(source.id, formattingEvents.first().sourceId)
+        assertEquals(ExtractionProviderId.YOUTUBE, formattingEvents.first().extractorId)
+    }
+
+    @Test
+    fun `processQueuedExtraction does not publish formatting request for youtube whisper transcript`() {
+        val userId = UUID.randomUUID()
+        val source = Source.create(
+            id = UUID.randomUUID(),
+            rawUrl = "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            userId = userId,
+            sourceType = SourceType.VIDEO
+        )
+        val snapshotId = UUID.randomUUID()
+
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+        whenever(extractionProviderResolver.resolveProvider(userId, "youtube")).thenReturn(extractionProvider)
+        whenever(extractionProvider.id).thenReturn(ExtractionProviderId.YOUTUBE)
+        whenever(extractionProvider.extract(source.url.normalized)).thenReturn(
+            ExtractionResult(
+                text = "whisper transcript",
+                title = "video title",
+                author = "uploader",
+                publishedDate = Instant.parse("2025-01-01T00:00:00Z"),
+                aiFormatted = true,
+                videoId = "dQw4w9WgXcQ",
+                videoEmbedUrl = "https://www.youtube.com/embed/dQw4w9WgXcQ",
+                videoDurationSeconds = 120,
+                transcriptSource = "whisper"
+            )
+        )
+        whenever(idGenerator.newId()).thenReturn(snapshotId)
+        whenever(sharedSourceSnapshotRepository.findMaxVersionByUrlNormalized(source.url.normalized)).thenReturn(0)
+        whenever(freshnessPolicy.computeExpiresAt(any(), any())).thenReturn(Instant.now().plusSeconds(3600))
+
+        service.processQueuedExtraction(source.id, userId)
+
+        val eventCaptor = argumentCaptor<Any>()
+        verify(eventPublisher, atLeastOnce()).publishEvent(eventCaptor.capture())
+        val formattingEvents = eventCaptor.allValues.filterIsInstance<SourceContentFormattingRequestedEvent>()
+        assertTrue(formattingEvents.isEmpty())
+    }
+
     private fun createActiveSource(userId: UUID): Source {
         return Source.create(
             id = UUID.randomUUID(),
