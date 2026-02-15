@@ -1,11 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
-import { BrainCircuit, Eye, EyeOff, KeyRound, MessageCircle, Settings } from 'lucide-react'
+import { BrainCircuit, Check, Copy, Eye, EyeOff, KeyRound, MessageCircle, Settings } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Toggle } from '@/components/ui/toggle'
 import { getAiSettings, updateAiUseCase } from '@/lib/api/aiSettings'
 import {
@@ -56,6 +57,7 @@ function SettingsPage() {
   const [formatterModel, setFormatterModel] = useState<string>('')
   const [telegramStatus, setTelegramStatus] = useState<TelegramLinkStatusResponse | null>(null)
   const [telegramLinkCode, setTelegramLinkCode] = useState<string | null>(null)
+  const [isTelegramCodeCopied, setIsTelegramCodeCopied] = useState(false)
   const [generatingTelegramCode, setGeneratingTelegramCode] = useState(false)
   const [unlinkingTelegram, setUnlinkingTelegram] = useState(false)
 
@@ -288,6 +290,17 @@ function SettingsPage() {
       setError(e instanceof Error ? e.message : 'Failed to unlink Telegram')
     } finally {
       setUnlinkingTelegram(false)
+    }
+  }
+
+  const handleCopyTelegramCode = async () => {
+    if (!telegramLinkCode) return
+    try {
+      await navigator.clipboard.writeText(telegramLinkCode)
+      setIsTelegramCodeCopied(true)
+      window.setTimeout(() => setIsTelegramCodeCopied(false), 1500)
+    } catch {
+      setError('Failed to copy link code')
     }
   }
 
@@ -544,31 +557,36 @@ function SettingsPage() {
               <CardContent className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Provider</label>
-                  <select
+                  <Select
                     value={topicProvider}
-                    onChange={(event) => handleProviderChange('topic_extraction', event.target.value)}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    onValueChange={(value) => handleProviderChange('topic_extraction', value)}
                   >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a provider" />
+                    </SelectTrigger>
+                    <SelectContent>
                     {aiProviders.map((provider) => (
-                      <option key={provider.id} value={provider.id} disabled={!provider.configured}>
+                      <SelectItem key={provider.id} value={provider.id} disabled={!provider.configured}>
                         {provider.label}{provider.configured ? '' : ' (not configured)'}
-                      </option>
+                      </SelectItem>
                     ))}
-                  </select>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Model</label>
-                  <select
-                    value={topicModel}
-                    onChange={(event) => setTopicModel(event.target.value)}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
+                  <Select value={topicModel} onValueChange={setTopicModel}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
                     {(topicProviderConfig?.models ?? []).map((model) => (
-                      <option key={model.id} value={model.id}>
+                      <SelectItem key={model.id} value={model.id}>
                         {model.label}
-                      </option>
+                      </SelectItem>
                     ))}
-                  </select>
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardContent>
               <CardFooter className="justify-between">
@@ -595,31 +613,36 @@ function SettingsPage() {
               <CardContent className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Provider</label>
-                  <select
+                  <Select
                     value={formatterProvider}
-                    onChange={(event) => handleProviderChange('source_formatting', event.target.value)}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    onValueChange={(value) => handleProviderChange('source_formatting', value)}
                   >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a provider" />
+                    </SelectTrigger>
+                    <SelectContent>
                     {aiProviders.map((provider) => (
-                      <option key={provider.id} value={provider.id} disabled={!provider.configured}>
+                      <SelectItem key={provider.id} value={provider.id} disabled={!provider.configured}>
                         {provider.label}{provider.configured ? '' : ' (not configured)'}
-                      </option>
+                      </SelectItem>
                     ))}
-                  </select>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Model</label>
-                  <select
-                    value={formatterModel}
-                    onChange={(event) => setFormatterModel(event.target.value)}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  >
+                  <Select value={formatterModel} onValueChange={setFormatterModel}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
                     {(formatterProviderConfig?.models ?? []).map((model) => (
-                      <option key={model.id} value={model.id}>
+                      <SelectItem key={model.id} value={model.id}>
                         {model.label}
-                      </option>
+                      </SelectItem>
                     ))}
-                  </select>
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardContent>
               <CardFooter className="justify-between">
@@ -677,7 +700,18 @@ function SettingsPage() {
 
                 {telegramLinkCode && (
                   <div className="rounded-lg border bg-muted/50 p-3">
-                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current link code</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current link code</p>
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="ghost"
+                        onClick={() => void handleCopyTelegramCode()}
+                        aria-label="Copy telegram link code"
+                      >
+                        {isTelegramCodeCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                      </Button>
+                    </div>
                     <p className="mt-1 font-mono text-lg">{telegramLinkCode}</p>
                   </div>
                 )}

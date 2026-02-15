@@ -65,6 +65,8 @@ class YouTubeExtractionProvider(
                 transcriptSource = transcriptSource,
                 transcriptLanguage = transcriptLanguage
             )
+        } catch (e: ExtractionProviderException) {
+            throw e
         } catch (e: Exception) {
             logger.error("[extractor:youtube] extraction_failed url={}", url, e)
             throw ExtractionProviderException(
