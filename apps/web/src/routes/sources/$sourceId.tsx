@@ -494,6 +494,12 @@ function SourceDetailPage() {
                 placeholder="Add a manual topic"
                 maxLength={200}
                 disabled={manualTopicLoading || topicActionLoading}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    void handleAddManualTopicSuggestion()
+                  }
+                }}
               />
               <Button
                 size="sm"

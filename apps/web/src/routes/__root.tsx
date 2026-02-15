@@ -1,5 +1,14 @@
 import { createRootRoute, Link, Outlet } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/router-devtools'
+import React from 'react'
+
+const TanStackRouterDevtools =
+  import.meta.env.PROD
+    ? () => null
+    : React.lazy(() =>
+        import('@tanstack/router-devtools').then((res) => ({
+          default: res.TanStackRouterDevtools,
+        })),
+      )
 import { LogOut, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
