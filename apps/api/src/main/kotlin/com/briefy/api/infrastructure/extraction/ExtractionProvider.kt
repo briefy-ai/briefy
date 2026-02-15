@@ -7,7 +7,8 @@ interface ExtractionProvider {
 
 enum class ExtractionProviderId {
     FIRECRAWL,
-    JSOUP
+    JSOUP,
+    YOUTUBE
 }
 
 enum class ExtractionFailureReason {
