@@ -129,7 +129,7 @@ class YouTubeExtractionProvider(
                     "--write-subs",
                     "--write-auto-subs",
                     "--sub-langs",
-                    "en.*,en",
+                    "en.*,en", //TODO: support other languages
                     "--sub-format",
                     "vtt",
                     "--output",
