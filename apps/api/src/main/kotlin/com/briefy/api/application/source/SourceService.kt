@@ -27,10 +27,10 @@ import java.util.UUID
 class SourceService(
     private val sourceRepository: SourceRepository,
     private val sharedSourceSnapshotRepository: SharedSourceSnapshotRepository,
+    private val sourceExtractionJobService: SourceExtractionJobService,
     private val topicRepository: TopicRepository,
     private val topicLinkRepository: TopicLinkRepository,
     private val sourceDependencyChecker: SourceDependencyChecker,
-    private val sourceExtractionJobService: SourceExtractionJobService,
     private val extractionProviderResolver: ExtractionProviderResolver,
     private val sourceTypeClassifier: SourceTypeClassifier,
     private val freshnessPolicy: FreshnessPolicy,
@@ -171,6 +171,10 @@ class SourceService(
         }
         if (source.status == SourceStatus.ACTIVE) {
             return source.toResponse()
+        }
+        if (source.status == SourceStatus.FAILED) {
+            source.retry()
+            sourceRepository.save(source)
         }
 
         return extractContent(source).toResponse()

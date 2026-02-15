@@ -64,6 +64,8 @@ extraction:
       poll-ms: ${YOUTUBE_WORKER_POLL_MS:5000}
       batch-size: ${YOUTUBE_WORKER_BATCH_SIZE:5}
       max-attempts: ${YOUTUBE_WORKER_MAX_ATTEMPTS:5}
+      processing-timeout-seconds: ${YOUTUBE_WORKER_PROCESSING_TIMEOUT_SECONDS:900}
+      lock-heartbeat-ms: ${YOUTUBE_WORKER_LOCK_HEARTBEAT_MS:30000}
 
 transcription:
   openai:
@@ -88,7 +90,7 @@ management:
 
 telegram:
   integration:
-    enabled: ${TELEGRAM_INTEGRATION_ENABLED:true}
+    enabled: ${TELEGRAM_INTEGRATION_ENABLED:false}
   bot:
     token: ${TELEGRAM_BOT_TOKEN:}
     username: ${TELEGRAM_BOT_USERNAME:}
@@ -96,7 +98,7 @@ telegram:
     url: ${TELEGRAM_WEBHOOK_URL:}
     secret-token: ${TELEGRAM_WEBHOOK_SECRET_TOKEN:}
   links:
-    web-base-url: ${BRIEFY_WEB_BASE_URL:http://localhost:5173}
+    web-base-url: ${BRIEFY_WEB_BASE_URL:http://localhost:3000}
   ingestion:
     worker:
       poll-ms: ${TELEGRAM_INGESTION_WORKER_POLL_MS:5000}

@@ -1,10 +1,12 @@
 package com.briefy.api.infrastructure.extraction
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.io.File
+import java.io.InputStream
+import java.io.InputStreamReader
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.time.Instant
 import java.time.LocalDate
@@ -25,7 +27,6 @@ class YouTubeExtractionProvider(
 ) : ExtractionProvider {
     override val id: ExtractionProviderId = ExtractionProviderId.YOUTUBE
     private val logger = LoggerFactory.getLogger(YouTubeExtractionProvider::class.java)
-    private val mapper = jacksonObjectMapper()
 
     override fun extract(url: String): ExtractionResult {
         val ref = YouTubeUrlParser.parse(url)
@@ -57,15 +58,13 @@ class YouTubeExtractionProvider(
                 title = metadata.title,
                 author = metadata.uploader,
                 publishedDate = metadata.uploadDate,
-                aiFormatted = true,
+                aiFormatted = transcriptSource == "whisper",
                 videoId = ref.videoId,
                 videoEmbedUrl = ref.embedUrl,
                 videoDurationSeconds = metadata.duration,
                 transcriptSource = transcriptSource,
                 transcriptLanguage = transcriptLanguage
             )
-        } catch (e: ExtractionProviderException) {
-            throw e
         } catch (e: Exception) {
             logger.error("[extractor:youtube] extraction_failed url={}", url, e)
             throw ExtractionProviderException(
@@ -84,15 +83,34 @@ class YouTubeExtractionProvider(
             listOf(
                 ytDlpPath,
                 "--no-playlist",
-                "--dump-single-json",
+                "--quiet",
+                "--no-warnings",
+                "--print",
+                "id",
+                "--print",
+                "title",
+                "--print",
+                "uploader",
+                "--print",
+                "duration",
+                "--print",
+                "upload_date",
                 url
             )
         )
-        val json = mapper.readTree(output)
-        val title = json.path("title").asText(null)
-        val uploader = json.path("uploader").asText(null)
-        val duration = json.path("duration").asInt(0)
-        val uploadDate = parseUploadDate(json.path("upload_date").asText(""))
+        val lines = output
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toList()
+        if (lines.size < 5) {
+            throw IllegalStateException("Unexpected yt-dlp metadata output: '$output'")
+        }
+
+        val title = lines.getOrNull(1)
+        val uploader = lines.getOrNull(2)
+        val duration = lines.getOrNull(3)?.toIntOrNull() ?: 0
+        val uploadDate = parseUploadDate(lines.getOrNull(4).orEmpty())
         return YouTubeMetadata(
             title = title,
             uploader = uploader,
@@ -111,7 +129,7 @@ class YouTubeExtractionProvider(
                     "--write-subs",
                     "--write-auto-subs",
                     "--sub-langs",
-                    "en.*,en",
+                    "en.*,en", //TODO: support other languages
                     "--sub-format",
                     "vtt",
                     "--output",
@@ -135,11 +153,11 @@ class YouTubeExtractionProvider(
             .filterNot { line ->
                 val trimmed = line.trim()
                 trimmed.startsWith("WEBVTT") ||
-                    trimmed.matches(Regex("^\\d+$")) ||
+                    trimmed.matches(VTT_INDEX_LINE_PATTERN) ||
                     trimmed.contains("-->") ||
                     trimmed.isBlank()
             }
-            .map { it.replace(Regex("<[^>]+>"), "").trim() }
+            .map { it.replace(VTT_TAG_PATTERN, "").trim() }
             .filter { it.isNotBlank() }
             .joinToString("\n")
             .trim()
@@ -206,19 +224,54 @@ class YouTubeExtractionProvider(
     }
 
     private fun runCommand(command: List<String>): String {
+        val startedAtNanos = System.nanoTime()
+        logger.info(
+            "[extractor:youtube] command_start timeoutSeconds={} command={}",
+            commandTimeoutSeconds,
+            command.joinToString(" ")
+        )
+
         val process = ProcessBuilder(command)
             .redirectErrorStream(true)
             .start()
+        val outputCollector = ProcessOutputCollector(process.inputStream, MAX_COMMAND_OUTPUT_CHARS)
+        val outputThread = Thread(outputCollector, "youtube-cmd-output-${command.firstOrNull().orEmpty()}").apply {
+            isDaemon = true
+            start()
+        }
         val completed = process.waitFor(commandTimeoutSeconds, TimeUnit.SECONDS)
-        val output = process.inputStream.bufferedReader().use { it.readText() }
 
         if (!completed) {
             process.destroyForcibly()
-            throw IllegalStateException("Command timed out: ${command.joinToString(" ")}")
+            process.waitFor(5, TimeUnit.SECONDS)
+            outputThread.join(5_000)
+            val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos)
+            val outputPreview = outputCollector.snapshot().take(COMMAND_OUTPUT_PREVIEW_CHARS)
+            logger.error(
+                "[extractor:youtube] command_timeout elapsedMs={} command={} outputPreview={}",
+                elapsedMs,
+                command.joinToString(" "),
+                outputPreview
+            )
+            throw IllegalStateException("Command timed out after ${elapsedMs}ms: ${command.joinToString(" ")}")
         }
+
+        outputThread.join(5_000)
+        val output = outputCollector.snapshot()
+        val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos)
+        logger.info(
+            "[extractor:youtube] command_finished elapsedMs={} exitCode={} outputChars={} truncated={} command={}",
+            elapsedMs,
+            process.exitValue(),
+            output.length,
+            outputCollector.wasTruncated(),
+            command.joinToString(" ")
+        )
+
         if (process.exitValue() != 0) {
+            val outputPreview = output.take(COMMAND_OUTPUT_PREVIEW_CHARS)
             throw IllegalStateException(
-                "Command failed (exit=${process.exitValue()}): ${command.joinToString(" ")}; output=$output"
+                "Command failed (exit=${process.exitValue()}): ${command.joinToString(" ")}; output=$outputPreview"
             )
         }
         return output
@@ -236,6 +289,54 @@ class YouTubeExtractionProvider(
     private fun extractLanguageFromSubtitleFile(file: File): String? {
         val parts = file.nameWithoutExtension.split(".")
         return if (parts.size >= 2) parts.lastOrNull() else null
+    }
+
+    private class ProcessOutputCollector(
+        private val inputStream: InputStream,
+        private val maxChars: Int
+    ) : Runnable {
+        private val buffer = StringBuilder()
+        @Volatile
+        private var truncated = false
+
+        override fun run() {
+            InputStreamReader(inputStream, StandardCharsets.UTF_8).use { reader ->
+                val chunk = CharArray(4096)
+                while (true) {
+                    val read = reader.read(chunk)
+                    if (read < 0) break
+                    append(chunk, read)
+                }
+            }
+        }
+
+        @Synchronized
+        fun snapshot(): String = buffer.toString()
+
+        fun wasTruncated(): Boolean = truncated
+
+        @Synchronized
+        private fun append(chunk: CharArray, read: Int) {
+            if (buffer.length >= maxChars) {
+                truncated = true
+                return
+            }
+            val remaining = maxChars - buffer.length
+            val toAppend = minOf(remaining, read)
+            if (toAppend > 0) {
+                buffer.append(chunk, 0, toAppend)
+            }
+            if (toAppend < read) {
+                truncated = true
+            }
+        }
+    }
+
+    companion object {
+        private const val MAX_COMMAND_OUTPUT_CHARS = 500_000
+        private const val COMMAND_OUTPUT_PREVIEW_CHARS = 4_000
+        private val VTT_INDEX_LINE_PATTERN = Regex("^\\d+$")
+        private val VTT_TAG_PATTERN = Regex("<[^>]+>")
     }
 }
 

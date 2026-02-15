@@ -101,6 +101,12 @@ class UrlTest {
     }
 
     @Test
+    fun `detectPlatform does not false-positive on partial host matches`() {
+        assertEquals("web", Url.detectPlatform("https://notyoutube.com/watch?v=abc"))
+        assertEquals("web", Url.detectPlatform("https://x.competition.com/thread/123"))
+    }
+
+    @Test
     fun `from creates Url with normalized values`() {
         val url = Url.from("http://www.Example.com/blog/post/")
         assertEquals("http://www.Example.com/blog/post/", url.raw)

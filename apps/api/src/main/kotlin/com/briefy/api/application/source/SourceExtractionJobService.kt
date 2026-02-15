@@ -16,7 +16,9 @@ class SourceExtractionJobService(
     private val sourceExtractionJobRepository: SourceExtractionJobRepository,
     private val idGenerator: IdGenerator,
     @param:Value("\${extraction.youtube.worker.max-attempts:5}")
-    private val maxAttempts: Int
+    private val maxAttempts: Int,
+    @param:Value("\${extraction.youtube.worker.processing-timeout-seconds:900}")
+    private val processingTimeoutSeconds: Long
 ) {
     @Transactional
     fun enqueueYoutubeExtraction(sourceId: UUID, userId: UUID, now: Instant): SourceExtractionJob {
@@ -76,24 +78,33 @@ class SourceExtractionJobService(
     }
 
     @Transactional
+    fun reclaimStaleProcessingJobs(now: Instant): Int {
+        val staleBefore = now.minusSeconds(processingTimeoutSeconds.coerceAtLeast(1))
+        return sourceExtractionJobRepository.reclaimStaleProcessingJobs(
+            processingStatus = SourceExtractionJobStatus.PROCESSING,
+            retryStatus = SourceExtractionJobStatus.RETRY,
+            staleBefore = staleBefore,
+            now = now
+        )
+    }
+
+    @Transactional
+    fun refreshProcessingLock(jobId: UUID, lockOwner: String, now: Instant): Boolean {
+        return sourceExtractionJobRepository.refreshProcessingLock(
+            id = jobId,
+            processingStatus = SourceExtractionJobStatus.PROCESSING,
+            lockOwner = lockOwner,
+            now = now
+        ) > 0
+    }
+
+    @Transactional
     fun markSucceeded(jobId: UUID, now: Instant) {
         val job = sourceExtractionJobRepository.findById(jobId).orElse(null) ?: return
         job.status = SourceExtractionJobStatus.SUCCEEDED
         job.lockOwner = null
         job.lockedAt = null
         job.lastError = null
-        job.updatedAt = now
-        sourceExtractionJobRepository.save(job)
-    }
-
-    @Transactional
-    fun markFailed(jobId: UUID, error: String, now: Instant) {
-        val job = sourceExtractionJobRepository.findById(jobId).orElse(null) ?: return
-        job.status = SourceExtractionJobStatus.FAILED
-        job.attempts += 1
-        job.lockOwner = null
-        job.lockedAt = null
-        job.lastError = error.take(4000)
         job.updatedAt = now
         sourceExtractionJobRepository.save(job)
     }
