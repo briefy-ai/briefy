@@ -129,6 +129,19 @@ export interface UpdateProviderRequest {
   apiKey?: string
 }
 
+export interface TelegramLinkStatusResponse {
+  linked: boolean
+  telegramUsername: string | null
+  maskedTelegramId: string | null
+  linkedAt: string | null
+}
+
+export interface TelegramLinkCodeResponse {
+  code: string
+  expiresAt: string | null
+  instructions: string
+}
+
 export type AiProviderId = 'zhipuai' | 'google_genai'
 export type AiUseCaseId = 'topic_extraction' | 'source_formatting'
 
