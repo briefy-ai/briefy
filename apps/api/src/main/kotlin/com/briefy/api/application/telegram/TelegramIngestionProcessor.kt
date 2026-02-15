@@ -27,6 +27,16 @@ class TelegramIngestionProcessor(
             telegramBotGateway.sendMessage(job.telegramChatId, "No supported URLs found in your message.")
             return
         }
+        logger.info(
+            "[telegram] processing_ingestion_job jobId={} telegramUserId={} telegramChatId={} telegramMessageId={} linkedUserId={} urlCount={} urls={}",
+            job.id,
+            job.telegramUserId,
+            job.telegramChatId,
+            job.telegramMessageId,
+            job.linkedUserId,
+            extraction.urls.size,
+            extraction.urls
+        )
 
         val results = mutableListOf<UrlIngestionResult>()
         val seenNormalizedUrls = mutableSetOf<String>()
@@ -70,6 +80,16 @@ class TelegramIngestionProcessor(
         }
 
         val summary = buildSummary(results, extraction.skippedCount)
+        logger.info(
+            "[telegram] ingestion_job_completed jobId={} telegramUserId={} created={} duplicate={} invalid={} failed={} skippedCount={}",
+            job.id,
+            job.telegramUserId,
+            results.count { it.status == UrlIngestionStatus.CREATED },
+            results.count { it.status == UrlIngestionStatus.DUPLICATE },
+            results.count { it.status == UrlIngestionStatus.INVALID },
+            results.count { it.status == UrlIngestionStatus.FAILED },
+            extraction.skippedCount
+        )
         telegramBotGateway.sendMessage(job.telegramChatId, summary)
     }
 

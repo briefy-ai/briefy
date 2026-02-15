@@ -44,9 +44,18 @@ class TelegramBotGateway(
     }
 
     fun setWebhook() {
-        if (!isEnabled()) return
+        if (!isEnabled()) {
+            logger.info("[telegram] setWebhook skipped because integration is disabled or bot token is missing")
+            return
+        }
         val webhookUrl = telegramProperties.webhook.url.trim()
         val secretToken = telegramProperties.webhook.secretToken.trim()
+        logger.info(
+            "[telegram] setWebhook request botUsername={} webhookUrl={} secretConfigured={}",
+            telegramProperties.bot.username.ifBlank { "n/a" },
+            webhookUrl.ifBlank { "n/a" },
+            secretToken.isNotBlank()
+        )
         if (webhookUrl.isBlank() || secretToken.isBlank()) {
             logger.warn("[telegram] Skipping webhook registration because url or secret token is blank")
             return

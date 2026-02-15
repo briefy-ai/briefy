@@ -6,7 +6,6 @@ import com.briefy.api.infrastructure.telegram.TelegramUrlExtractor
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
-import org.telegram.telegrambots.meta.api.objects.Update
 
 @Service
 class TelegramWebhookService(
@@ -17,60 +16,89 @@ class TelegramWebhookService(
 ) {
     private val logger = LoggerFactory.getLogger(TelegramWebhookService::class.java)
 
-    fun handleUpdate(update: Update) {
-        val message = update.message ?: return
-        val chat = message.chat ?: return
-        val from = message.from ?: return
-        val chatType = chat.type ?: ""
-        if (!chatType.equals("private", ignoreCase = true)) return
+    fun handleIncomingMessage(
+        telegramUserId: Long?,
+        telegramChatId: Long?,
+        telegramMessageId: Long?,
+        chatType: String?,
+        username: String?,
+        text: String
+    ) {
+        if (telegramUserId == null || telegramChatId == null || telegramMessageId == null) {
+            return
+        }
 
-        val text = message.text ?: message.caption ?: ""
-        if (text.isBlank()) return
+        val normalizedChatType = chatType.orEmpty()
+        val normalizedText = text.trim()
+        if (normalizedText.isBlank()) return
 
-        if (text.startsWith("/")) {
+        if (!normalizedChatType.equals("private", ignoreCase = true)) return
+
+        if (normalizedText.startsWith("/")) {
             handleCommand(
-                telegramUserId = from.id,
-                telegramChatId = chat.id,
-                username = from.userName,
-                rawText = text
+                telegramUserId = telegramUserId,
+                telegramChatId = telegramChatId,
+                telegramMessageId = telegramMessageId,
+                username = username,
+                rawText = normalizedText
             )
             return
         }
 
-        val extracted = telegramUrlExtractor.extract(text, MAX_URLS_PER_MESSAGE)
+        val extracted = telegramUrlExtractor.extract(normalizedText, MAX_URLS_PER_MESSAGE)
         if (extracted.urls.isEmpty()) {
             return
         }
+        logger.info(
+            "[telegram] urls_received telegramUserId={} telegramChatId={} telegramMessageId={} urlCount={} truncated={} skippedCount={} urls={}",
+            telegramUserId,
+            telegramChatId,
+            telegramMessageId,
+            extracted.urls.size,
+            extracted.truncated,
+            extracted.skippedCount,
+            extracted.urls
+        )
 
-        val link = telegramLinkService.findLinkByTelegramUserId(from.id)
+        val link = telegramLinkService.findLinkByTelegramUserId(telegramUserId)
         if (link == null) {
             sendSafely(
-                chat.id,
+                telegramChatId,
                 "Your Telegram account is not linked yet. Open Briefy settings, generate a link code, then send /link CODE."
             )
             return
         }
 
         telegramIngestionJobService.enqueue(
-            telegramChatId = chat.id,
-            telegramMessageId = message.messageId.toLong(),
-            telegramUserId = from.id,
+            telegramChatId = telegramChatId,
+            telegramMessageId = telegramMessageId,
+            telegramUserId = telegramUserId,
             linkedUserId = link.userId,
-            payloadText = text,
+            payloadText = normalizedText,
             now = Instant.now()
         )
         val truncatedText = if (extracted.truncated) " (processing first $MAX_URLS_PER_MESSAGE URLs)" else ""
-        sendSafely(chat.id, "Received ${extracted.urls.size} URL(s). Processing now$truncatedText.")
+        sendSafely(telegramChatId, "Received ${extracted.urls.size} URL(s). Processing now$truncatedText.")
     }
 
     private fun handleCommand(
         telegramUserId: Long,
         telegramChatId: Long,
+        telegramMessageId: Long,
         username: String?,
         rawText: String
     ) {
         val parts = rawText.trim().split(Regex("\\s+"), limit = 2)
         val command = parts.firstOrNull()?.lowercase()?.substringBefore("@").orEmpty()
+        logger.info(
+            "[telegram] command_received telegramUserId={} telegramChatId={} telegramMessageId={} username={} command={} hasArgument={}",
+            telegramUserId,
+            telegramChatId,
+            telegramMessageId,
+            username ?: "n/a",
+            command,
+            parts.getOrNull(1)?.isNotBlank() == true
+        )
         when (command) {
             "/start", "/help" -> sendSafely(telegramChatId, helpText())
             "/link" -> {

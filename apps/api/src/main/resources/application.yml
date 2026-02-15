@@ -90,7 +90,7 @@ management:
 
 telegram:
   integration:
-    enabled: ${TELEGRAM_INTEGRATION_ENABLED:false}
+    enabled: ${TELEGRAM_INTEGRATION_ENABLED:true}
   bot:
     token: ${TELEGRAM_BOT_TOKEN:}
     username: ${TELEGRAM_BOT_USERNAME:}

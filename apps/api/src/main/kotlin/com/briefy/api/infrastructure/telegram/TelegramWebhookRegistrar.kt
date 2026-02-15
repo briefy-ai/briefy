@@ -14,10 +14,23 @@ class TelegramWebhookRegistrar(
     private val logger = LoggerFactory.getLogger(TelegramWebhookRegistrar::class.java)
 
     override fun run(args: ApplicationArguments) {
-        if (!telegramProperties.integration.enabled) return
+        logger.info(
+            "[telegram] startup integrationEnabled={} botUsername={} webhookUrlConfigured={} secretConfigured={} tokenConfigured={}",
+            telegramProperties.integration.enabled,
+            telegramProperties.bot.username.ifBlank { "n/a" },
+            telegramProperties.webhook.url.isNotBlank(),
+            telegramProperties.webhook.secretToken.isNotBlank(),
+            telegramProperties.bot.token.isNotBlank()
+        )
+        if (!telegramProperties.integration.enabled) {
+            logger.info("[telegram] startup skipped webhook registration because integration is disabled")
+            return
+        }
 
         try {
+            logger.info("[telegram] startup registering webhook")
             telegramBotGateway.setWebhook()
+            logger.info("[telegram] startup webhook registration flow completed")
         } catch (e: Exception) {
             logger.error("[telegram] Failed to register webhook on startup", e)
         }
