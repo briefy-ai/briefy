@@ -44,7 +44,12 @@ data class MetadataDto(
     val platform: String?,
     val estimatedReadingTime: Int?,
     val aiFormatted: Boolean,
-    val extractionProvider: String?
+    val extractionProvider: String?,
+    val videoId: String?,
+    val videoEmbedUrl: String?,
+    val videoDurationSeconds: Int?,
+    val transcriptSource: String?,
+    val transcriptLanguage: String?
 )
 
 fun Source.toResponse(reuseInfo: ReuseInfoDto? = null): SourceResponse = SourceResponse(
@@ -77,5 +82,10 @@ fun Metadata.toDto(): MetadataDto = MetadataDto(
     platform = platform,
     estimatedReadingTime = estimatedReadingTime,
     aiFormatted = aiFormatted,
-    extractionProvider = extractionProvider
+    extractionProvider = extractionProvider,
+    videoId = videoId,
+    videoEmbedUrl = videoEmbedUrl,
+    videoDurationSeconds = videoDurationSeconds,
+    transcriptSource = transcriptSource,
+    transcriptLanguage = transcriptLanguage
 )

@@ -13,6 +13,16 @@ class ExtractionProviderResolver(
     private val logger = LoggerFactory.getLogger(ExtractionProviderResolver::class.java)
 
     fun resolveProvider(userId: UUID, platform: String): ExtractionProvider {
+        if (platform.equals("youtube", ignoreCase = true)) {
+            logger.info(
+                "[resolver] Extraction provider resolved userId={} platform={} provider={} reason=platform_youtube",
+                userId,
+                platform,
+                ExtractionProviderId.YOUTUBE
+            )
+            return extractionProviderFactory.youtube()
+        }
+
         if (isXPlatform(platform)) {
             return resolveForXPlatform(userId, platform)
         }

@@ -27,4 +27,8 @@ interface SharedSourceSnapshotRepository : JpaRepository<SharedSourceSnapshot, U
         @Param("urlNormalized") urlNormalized: String,
         @Param("updatedAt") updatedAt: Instant
     ): Int
+
+    @Modifying
+    @Query("delete from SharedSourceSnapshot s where s.urlNormalized = :urlNormalized")
+    fun deleteByUrlNormalized(@Param("urlNormalized") urlNormalized: String): Int
 }

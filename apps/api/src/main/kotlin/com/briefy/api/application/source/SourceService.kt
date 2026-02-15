@@ -6,6 +6,11 @@ import com.briefy.api.domain.knowledgegraph.source.event.SourceActivatedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivationReason
 import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFormattingRequestedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
+import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
+import com.briefy.api.domain.knowledgegraph.topic.TopicStatus
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkRepository
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkStatus
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkTargetType
 import com.briefy.api.infrastructure.extraction.ExtractionProviderId
 import com.briefy.api.infrastructure.extraction.ExtractionProviderResolver
 import com.briefy.api.infrastructure.id.IdGenerator
@@ -22,6 +27,10 @@ import java.util.UUID
 class SourceService(
     private val sourceRepository: SourceRepository,
     private val sharedSourceSnapshotRepository: SharedSourceSnapshotRepository,
+    private val sourceExtractionJobService: SourceExtractionJobService,
+    private val topicRepository: TopicRepository,
+    private val topicLinkRepository: TopicLinkRepository,
+    private val sourceDependencyChecker: SourceDependencyChecker,
     private val extractionProviderResolver: ExtractionProviderResolver,
     private val sourceTypeClassifier: SourceTypeClassifier,
     private val freshnessPolicy: FreshnessPolicy,
@@ -80,11 +89,22 @@ class SourceService(
             )
         }
 
-        // Create source and extract fresh content
         val source = Source.create(idGenerator.newId(), command.url, userId, sourceType)
         sourceRepository.save(source)
+
+        if (sourceType == SourceType.VIDEO) {
+            sourceExtractionJobService.enqueueYoutubeExtraction(source.id, source.userId, Instant.now())
+            logger.info("[service] Enqueued youtube extraction sourceId={} userId={}", source.id, source.userId)
+            return source.toResponse(
+                reuseInfo = ReuseInfoDto(
+                    usedCache = false,
+                    cacheAgeSeconds = snapshotCacheAge,
+                    freshnessTtlSeconds = freshnessTtlSeconds
+                )
+            )
+        }
+
         val extractedSource = extractContent(source)
-        saveSharedSnapshot(extractedSource, Instant.now())
 
         return extractedSource.toResponse(
             reuseInfo = ReuseInfoDto(
@@ -129,6 +149,30 @@ class SourceService(
         source.retry()
         sourceRepository.save(source)
 
+        if (source.sourceType == SourceType.VIDEO) {
+            sourceExtractionJobService.enqueueYoutubeExtraction(source.id, source.userId, Instant.now())
+            return source.toResponse()
+        }
+
+        return extractContent(source).toResponse()
+    }
+
+    @Transactional
+    fun processQueuedExtraction(sourceId: UUID, userId: UUID): SourceResponse {
+        val source = sourceRepository.findByIdAndUserId(sourceId, userId)
+            ?: throw SourceNotFoundException(sourceId)
+
+        if (source.status == SourceStatus.ARCHIVED) {
+            return source.toResponse()
+        }
+        if (source.status == SourceStatus.ACTIVE) {
+            return source.toResponse()
+        }
+        if (source.status == SourceStatus.FAILED) {
+            source.retry()
+            sourceRepository.save(source)
+        }
+
         return extractContent(source).toResponse()
     }
 
@@ -137,13 +181,22 @@ class SourceService(
         val userId = currentUserProvider.requireUserId()
         logger.info("[service] Deleting source userId={} sourceId={}", userId, id)
         val source = sourceRepository.findByIdAndUserId(id, userId)
-            ?: throw SourceNotFoundException(id)
+            ?: return
 
-        if (source.status != SourceStatus.ARCHIVED) {
-            source.archive()
-            sourceRepository.save(source)
-            eventPublisher.publishEvent(SourceArchivedEvent(sourceId = source.id, userId = userId))
+        if (sourceDependencyChecker.hasBlockingDependencies(sourceId = source.id, userId = userId)) {
+            if (source.status != SourceStatus.ARCHIVED) {
+                source.archive()
+                sourceRepository.save(source)
+                eventPublisher.publishEvent(SourceArchivedEvent(sourceId = source.id, userId = userId))
+            }
+            return
         }
+
+        require(source.status in HARD_DELETE_ELIGIBLE_STATUSES) {
+            "Can only hard-delete ACTIVE, FAILED, or ARCHIVED sources. Current status: ${source.status}"
+        }
+
+        hardDeleteSource(source)
     }
 
     @Transactional
@@ -191,11 +244,67 @@ class SourceService(
 
     companion object {
         private const val MAX_BATCH_ARCHIVE_SOURCE_IDS = 100
+        private val HARD_DELETE_ELIGIBLE_STATUSES = setOf(
+            SourceStatus.ACTIVE,
+            SourceStatus.FAILED,
+            SourceStatus.ARCHIVED
+        )
+        private val LIVE_TOPIC_LINK_STATUSES = listOf(
+            TopicLinkStatus.SUGGESTED,
+            TopicLinkStatus.ACTIVE
+        )
+    }
+
+    private fun hardDeleteSource(source: Source) {
+        val wasLastSourceForUrl = sourceRepository.countByUrlNormalized(source.url.normalized) == 1L
+        val sourceTopicLinks = topicLinkRepository.findByUserIdAndTargetTypeAndTargetIdAndStatusIn(
+            userId = source.userId,
+            targetType = TopicLinkTargetType.SOURCE,
+            targetId = source.id,
+            statuses = LIVE_TOPIC_LINK_STATUSES
+        )
+        val affectedTopicIds = sourceTopicLinks.map { it.topicId }.toSet()
+
+        if (sourceTopicLinks.isNotEmpty()) {
+            topicLinkRepository.deleteAll(sourceTopicLinks)
+        }
+        deleteOrphanTopicsForSource(source.userId, affectedTopicIds)
+        sourceRepository.delete(source)
+
+        if (wasLastSourceForUrl) {
+            sharedSourceSnapshotRepository.deleteByUrlNormalized(source.url.normalized)
+        }
+
+        // TODO: Emit SourceDeletedEvent once downstream consumers are implemented.
+    }
+
+    private fun deleteOrphanTopicsForSource(userId: UUID, topicIds: Set<UUID>) {
+        if (topicIds.isEmpty()) {
+            return
+        }
+
+        val topicsToDelete = topicRepository.findAllByIdInAndUserId(topicIds, userId)
+            .filter { it.status == TopicStatus.SUGGESTED || it.status == TopicStatus.ACTIVE }
+            .filter { topic ->
+                topicLinkRepository.countByUserIdAndTopicIdAndStatusIn(
+                    userId = userId,
+                    topicId = topic.id,
+                    statuses = LIVE_TOPIC_LINK_STATUSES
+                ) == 0L
+            }
+
+        if (topicsToDelete.isNotEmpty()) {
+            topicRepository.deleteAll(topicsToDelete)
+        }
     }
 
     private fun extractContent(source: Source): Source {
-        source.startExtraction()
-        sourceRepository.save(source)
+        if (source.status == SourceStatus.SUBMITTED) {
+            source.startExtraction()
+            sourceRepository.save(source)
+        } else if (source.status != SourceStatus.EXTRACTING) {
+            throw InvalidSourceStateException("Source ${source.id} cannot be extracted from state ${source.status}")
+        }
 
         try {
             val provider = extractionProviderResolver.resolveProvider(source.userId, source.url.platform)
@@ -210,11 +319,17 @@ class SourceService(
                 platform = source.url.platform,
                 wordCount = content.wordCount,
                 aiFormatted = result.aiFormatted,
-                extractionProvider = resolvedProvider
+                extractionProvider = resolvedProvider,
+                videoId = result.videoId,
+                videoEmbedUrl = result.videoEmbedUrl,
+                videoDurationSeconds = result.videoDurationSeconds,
+                transcriptSource = result.transcriptSource,
+                transcriptLanguage = result.transcriptLanguage
             )
 
             source.completeExtraction(content, metadata)
             sourceRepository.save(source)
+            saveSharedSnapshot(source, Instant.now())
             eventPublisher.publishEvent(
                 SourceActivatedEvent(
                     sourceId = source.id,
@@ -241,8 +356,10 @@ class SourceService(
             return source
         } catch (e: Exception) {
             logger.error("[service] Failed to extract content url={}", source.url.normalized, e)
-            source.failExtraction()
-            sourceRepository.save(source)
+            if (source.status == SourceStatus.EXTRACTING) {
+                source.failExtraction()
+                sourceRepository.save(source)
+            }
             throw ExtractionFailedException(source.url.normalized, e)
         }
     }

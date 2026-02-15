@@ -225,7 +225,7 @@ class TopicControllerTest {
     }
 
     @Test
-    fun `topic list and detail exclude archived sources from active topic links`() {
+    fun `topic list and detail remove orphan topics after source deletion`() {
         val sourceId = createSource("https://topic-archive-filter-test.com/article")
         val suggestionId = createSuggestedTopicForSource(sourceId, "Elections")
 
@@ -247,11 +247,10 @@ class TopicControllerTest {
 
         mockMvc.perform(get("/api/topics"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$[?(@.name=='Elections' && @.linkedSourcesCount==0)]").isNotEmpty)
+            .andExpect(jsonPath("$[?(@.name=='Elections')]").isEmpty)
 
         mockMvc.perform(get("/api/topics/$topicId"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.linkedSources").isEmpty)
+            .andExpect(status().isNotFound)
     }
 
     @Test

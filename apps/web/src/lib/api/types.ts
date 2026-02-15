@@ -16,13 +16,19 @@ export interface SourceMetadata {
   platform: string | null
   estimatedReadingTime: number | null
   aiFormatted: boolean
+  extractionProvider: string | null
+  videoId: string | null
+  videoEmbedUrl: string | null
+  videoDurationSeconds: number | null
+  transcriptSource: string | null
+  transcriptLanguage: string | null
 }
 
 export interface Source {
   id: string
   url: SourceUrl
   status: 'submitted' | 'extracting' | 'active' | 'failed' | 'archived'
-  sourceType: 'news' | 'blog' | 'research'
+  sourceType: 'news' | 'blog' | 'research' | 'video'
   content: SourceContent | null
   metadata: SourceMetadata | null
   createdAt: string
@@ -60,7 +66,7 @@ export interface TopicLinkedSource {
   id: string
   normalizedUrl: string
   title: string | null
-  sourceType: 'news' | 'blog' | 'research'
+  sourceType: 'news' | 'blog' | 'research' | 'video'
   status: 'submitted' | 'extracting' | 'active' | 'failed' | 'archived'
   createdAt: string
 }

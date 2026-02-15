@@ -1,5 +1,6 @@
 package com.briefy.api.application.source
 
+import com.briefy.api.application.settings.AiModelSelection
 import com.briefy.api.application.settings.UserAiSettingsService
 import com.briefy.api.domain.knowledgegraph.source.Content
 import com.briefy.api.domain.knowledgegraph.source.Metadata
@@ -53,24 +54,24 @@ class SourceContentFormatterService(
             return
         }
 
+        if (extractorId == ExtractionProviderId.YOUTUBE && !metadata.transcriptSource.equals("captions", ignoreCase = true)) {
+            logger.info(
+                "[formatter] skipped sourceId={} userId={} extractorId={} reason=youtube_non_caption_transcript transcriptSource={}",
+                sourceId,
+                userId,
+                extractorId,
+                metadata.transcriptSource
+            )
+            return
+        }
+
         val formatter = extractionContentFormatters.firstOrNull { it.supports(extractorId) }
         if (formatter == null) {
             logger.info("[formatter] skipped sourceId={} userId={} extractorId={} reason=unsupported_extractor", sourceId, userId, extractorId)
             return
         }
 
-        val aiSelection = try {
-            userAiSettingsService.resolveUseCaseSelection(userId, UserAiSettingsService.SOURCE_FORMATTING)
-        } catch (e: Exception) {
-            logger.warn(
-                "[formatter] formatting_failed sourceId={} userId={} extractorId={} reason=ai_settings_resolution_failed",
-                sourceId,
-                userId,
-                extractorId,
-                e
-            )
-            return
-        }
+        val aiSelection = resolveModelSelection(sourceId, userId, extractorId) ?: return
 
         val formattedText = try {
             formatter.format(content.text, aiSelection.provider, aiSelection.model)
@@ -92,7 +93,12 @@ class SourceContentFormatterService(
             platform = metadata.platform,
             wordCount = formattedContent.wordCount,
             aiFormatted = true,
-            extractionProvider = metadata.extractionProvider
+            extractionProvider = metadata.extractionProvider,
+            videoId = metadata.videoId,
+            videoEmbedUrl = metadata.videoEmbedUrl,
+            videoDurationSeconds = metadata.videoDurationSeconds,
+            transcriptSource = metadata.transcriptSource,
+            transcriptLanguage = metadata.transcriptLanguage
         )
 
         source.content = formattedContent
@@ -178,5 +184,32 @@ class SourceContentFormatterService(
             formattedSnapshot.version,
             extractorId
         )
+    }
+
+    private fun resolveModelSelection(sourceId: UUID, userId: UUID, extractorId: ExtractionProviderId): AiModelSelection? {
+        if (extractorId == ExtractionProviderId.YOUTUBE) {
+            return AiModelSelection(
+                provider = YOUTUBE_FORMATTER_PROVIDER,
+                model = YOUTUBE_FORMATTER_MODEL
+            )
+        }
+
+        return try {
+            userAiSettingsService.resolveUseCaseSelection(userId, UserAiSettingsService.SOURCE_FORMATTING)
+        } catch (e: Exception) {
+            logger.warn(
+                "[formatter] formatting_failed sourceId={} userId={} extractorId={} reason=ai_settings_resolution_failed",
+                sourceId,
+                userId,
+                extractorId,
+                e
+            )
+            null
+        }
+    }
+
+    companion object {
+        private const val YOUTUBE_FORMATTER_PROVIDER = "google_genai"
+        private const val YOUTUBE_FORMATTER_MODEL = "gemini-2.5-flash-lite"
     }
 }
