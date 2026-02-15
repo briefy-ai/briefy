@@ -37,11 +37,12 @@ class SettingsControllerTest {
     }
 
     @Test
-    fun `GET extraction settings includes firecrawl and jsoup without secrets`() {
+    fun `GET extraction settings includes firecrawl x_api and jsoup without secrets`() {
         mockMvc.perform(get("/api/settings/extraction"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.providers[0].type").value("firecrawl"))
-            .andExpect(jsonPath("$.providers[1].type").value("jsoup"))
+            .andExpect(jsonPath("$.providers[1].type").value("x_api"))
+            .andExpect(jsonPath("$.providers[2].type").value("jsoup"))
     }
 
     @Test
@@ -57,6 +58,18 @@ class SettingsControllerTest {
     }
 
     @Test
+    fun `PUT x_api updates enabled and configured state`() {
+        mockMvc.perform(
+            put("/api/settings/extraction/providers/x_api")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":true,"apiKey":"x-user-token"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.providers[1].enabled").value(true))
+            .andExpect(jsonPath("$.providers[1].configured").value(true))
+    }
+
+    @Test
     fun `DELETE firecrawl key disables provider`() {
         mockMvc.perform(
             put("/api/settings/extraction/providers/firecrawl")
@@ -69,5 +82,20 @@ class SettingsControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.providers[0].enabled").value(false))
             .andExpect(jsonPath("$.providers[0].configured").value(false))
+    }
+
+    @Test
+    fun `DELETE x_api key disables provider`() {
+        mockMvc.perform(
+            put("/api/settings/extraction/providers/x_api")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":true,"apiKey":"x-user-token"}""")
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(delete("/api/settings/extraction/providers/x_api/key"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.providers[1].enabled").value(false))
+            .andExpect(jsonPath("$.providers[1].configured").value(false))
     }
 }

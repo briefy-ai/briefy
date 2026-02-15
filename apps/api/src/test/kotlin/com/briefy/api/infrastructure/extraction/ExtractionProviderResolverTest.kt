@@ -14,6 +14,7 @@ class ExtractionProviderResolverTest {
     private val userId = UUID.randomUUID()
     private val jsoupProvider: ExtractionProvider = mock()
     private val firecrawlProvider: ExtractionProvider = mock()
+    private val xApiProvider: ExtractionProvider = mock()
     private val youtubeProvider: ExtractionProvider = mock()
 
     @Test
@@ -38,11 +39,23 @@ class ExtractionProviderResolverTest {
 
     @Test
     fun `returns jsoup for excluded platform`() {
+        whenever(settingsService.isXApiEnabled(userId)).thenReturn(false)
         whenever(factory.jsoup()).thenReturn(jsoupProvider)
 
         val provider = resolver.resolveProvider(userId, "twitter")
 
         assertSame(jsoupProvider, provider)
+    }
+
+    @Test
+    fun `returns x api when x platform and configured`() {
+        whenever(settingsService.isXApiEnabled(userId)).thenReturn(true)
+        whenever(settingsService.getXApiBearerToken(userId)).thenReturn("x-token")
+        whenever(factory.xApi("x-token")).thenReturn(xApiProvider)
+
+        val provider = resolver.resolveProvider(userId, "x")
+
+        assertSame(xApiProvider, provider)
     }
 
     @Test

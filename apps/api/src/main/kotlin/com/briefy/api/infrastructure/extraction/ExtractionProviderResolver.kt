@@ -23,6 +23,10 @@ class ExtractionProviderResolver(
             return extractionProviderFactory.youtube()
         }
 
+        if (isXPlatform(platform)) {
+            return resolveForXPlatform(userId, platform)
+        }
+
         if (!shouldTryFirecrawl(platform)) {
             logger.info(
                 "[resolver] Extraction provider resolved userId={} platform={} provider={} reason=platform_excluded",
@@ -63,11 +67,47 @@ class ExtractionProviderResolver(
         return extractionProviderFactory.jsoup()
     }
 
+    private fun resolveForXPlatform(userId: UUID, platform: String): ExtractionProvider {
+        if (!userSettingsService.isXApiEnabled(userId)) {
+            logger.info(
+                "[resolver] Extraction provider resolved userId={} platform={} provider={} reason=x_api_disabled_or_unconfigured",
+                userId,
+                platform,
+                ExtractionProviderId.JSOUP
+            )
+            return extractionProviderFactory.jsoup()
+        }
+
+        val bearerToken = userSettingsService.getXApiBearerToken(userId)
+        if (!bearerToken.isNullOrBlank()) {
+            logger.info(
+                "[resolver] Extraction provider resolved userId={} platform={} provider={} reason=x_api_enabled",
+                userId,
+                platform,
+                ExtractionProviderId.X_API
+            )
+            return extractionProviderFactory.xApi(bearerToken)
+        }
+
+        logger.info(
+            "[resolver] Extraction provider resolved userId={} platform={} provider={} reason=missing_x_api_token",
+            userId,
+            platform,
+            ExtractionProviderId.JSOUP
+        )
+        return extractionProviderFactory.jsoup()
+    }
+
     private fun shouldTryFirecrawl(platform: String): Boolean {
         return platform.lowercase() !in excludedPlatforms
     }
 
+    private fun isXPlatform(platform: String): Boolean {
+        return platform.lowercase() in xPlatforms
+    }
+
     companion object {
         private val excludedPlatforms = setOf("twitter", "x")
+        private val xPlatforms = setOf("twitter", "x")
     }
 }
