@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Check, ExternalLink, Plus, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -54,6 +54,7 @@ function SourceDetailPage() {
   const navigate = useNavigate()
   const { sourceId } = Route.useParams()
   const [source, setSource] = useState<Source | null>(null)
+  const [showRawContent, setShowRawContent] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [retrying, setRetrying] = useState(false)
@@ -72,6 +73,7 @@ function SourceDetailPage() {
   const [addActiveTopicName, setAddActiveTopicName] = useState('')
   const [addActiveTopicLoading, setAddActiveTopicLoading] = useState(false)
   const [addActiveTopicError, setAddActiveTopicError] = useState<string | null>(null)
+  const suggestionPollingStartedAtRef = useRef<number | null>(null)
 
   const fetchSource = useCallback(async () => {
     try {
@@ -92,6 +94,42 @@ function SourceDetailPage() {
   useEffect(() => {
     fetchSource()
   }, [fetchSource])
+
+  useEffect(() => {
+    setShowRawContent(false)
+    suggestionPollingStartedAtRef.current = null
+  }, [sourceId])
+
+  useEffect(() => {
+    if (!source || source.metadata?.aiFormatted !== false) {
+      return
+    }
+
+    let inFlight = false
+    const intervalId = window.setInterval(() => {
+      if (inFlight) {
+        return
+      }
+      inFlight = true
+      void getSource(sourceId)
+        .then((data) => {
+          setSource(data)
+          if (data.metadata?.aiFormatted === true) {
+            setShowRawContent(false)
+          }
+        })
+        .catch(() => {
+          // Ignore polling errors to avoid interrupting the page flow.
+        })
+        .finally(() => {
+          inFlight = false
+        })
+    }, 2000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [source, sourceId])
 
   const fetchTopicSuggestions = useCallback(async () => {
     try {
@@ -131,11 +169,77 @@ function SourceDetailPage() {
       setTopicSuggestions([])
       setSelectedSuggestionIds([])
       setActiveTopics([])
+      suggestionPollingStartedAtRef.current = null
       return
     }
     void fetchTopicSuggestions()
     void fetchActiveTopics()
-  }, [source, fetchTopicSuggestions, fetchActiveTopics])
+  }, [source?.status, fetchTopicSuggestions, fetchActiveTopics])
+
+  useEffect(() => {
+    const shouldPollSuggestions = Boolean(
+      source &&
+        source.status === 'active' &&
+        activeTopics.length === 0 &&
+        topicSuggestions.length === 0 &&
+        !topicActionLoading &&
+        !suggestionsLoading &&
+        !manualTopicLoading
+    )
+    if (!shouldPollSuggestions) {
+      suggestionPollingStartedAtRef.current = null
+      return
+    }
+
+    if (suggestionPollingStartedAtRef.current == null) {
+      suggestionPollingStartedAtRef.current = Date.now()
+    }
+
+    let inFlight = false
+    const intervalId = window.setInterval(() => {
+      const startedAt = suggestionPollingStartedAtRef.current
+      if (startedAt == null) {
+        return
+      }
+      if (Date.now() - startedAt >= 60_000) {
+        window.clearInterval(intervalId)
+        return
+      }
+      if (inFlight) {
+        return
+      }
+
+      inFlight = true
+      void listSourceTopicSuggestions(sourceId)
+        .then((data) => {
+          if (data.length === 0) {
+            return
+          }
+          suggestionPollingStartedAtRef.current = null
+          setTopicSuggestions(data)
+          setSelectedSuggestionIds(data.map((item) => item.topicLinkId))
+          window.clearInterval(intervalId)
+        })
+        .catch(() => {
+          // Ignore polling errors to avoid interrupting the page flow.
+        })
+        .finally(() => {
+          inFlight = false
+        })
+    }, 2000)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [
+    source,
+    sourceId,
+    activeTopics.length,
+    topicSuggestions.length,
+    topicActionLoading,
+    suggestionsLoading,
+    manualTopicLoading,
+  ])
 
   async function handleRetry() {
     setRetrying(true)
@@ -308,6 +412,8 @@ function SourceDetailPage() {
   const selectedCount = selectedSuggestionIds.length
   const allSuggestionsSelected = topicSuggestions.length > 0 && selectedCount === topicSuggestions.length
   const isYouTubeSource = source.url.platform === 'youtube'
+  const isFormattingPending = source.metadata?.aiFormatted === false
+  const shouldGateContent = isFormattingPending && !showRawContent
   const videoEmbedUrl = source.metadata?.videoEmbedUrl
   const transcriptMeta = [
     source.metadata?.transcriptSource && `Transcript: ${source.metadata.transcriptSource}`,
@@ -615,7 +721,9 @@ function SourceDetailPage() {
         </div>
       )}
 
-      {source.content?.text && (
+      {shouldGateContent ? (
+        <FormattingPendingNotice onSeeRawContent={() => setShowRawContent(true)} />
+      ) : source.content?.text ? (
         <article
           className="animate-slide-up"
           style={{ animationDelay: '100ms', animationFillMode: 'backwards' }}
@@ -632,7 +740,7 @@ function SourceDetailPage() {
             <MarkdownContent content={source.content.text} variant="article" />
           </div>
         </article>
-      )}
+      ) : null}
 
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
         <AlertDialogContent>
@@ -720,6 +828,29 @@ function BackLink() {
       <ArrowLeft className="size-3.5" />
       Back to Library
     </Link>
+  )
+}
+
+function FormattingPendingNotice({ onSeeRawContent }: { onSeeRawContent: () => void }) {
+  return (
+    <div className="animate-slide-up" style={{ animationDelay: '100ms', animationFillMode: 'backwards' }}>
+      <section className="rounded-xl border border-border/50 bg-card/40 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="flex items-center gap-2 text-sm font-medium">
+              <span className="size-3 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" />
+              Source content is being formatted.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              This usually takes a few seconds.
+            </p>
+          </div>
+          <Button type="button" variant="secondary" size="sm" onClick={onSeeRawContent}>
+            See raw content
+          </Button>
+        </div>
+      </section>
+    </div>
   )
 }
 
