@@ -146,7 +146,8 @@ class TopicSuggestionService(
             provider = selection.provider,
             model = selection.model,
             prompt = userPrompt,
-            systemPrompt = systemPrompt
+            systemPrompt = systemPrompt,
+            useCase = UserAiSettingsService.TOPIC_EXTRACTION
         )
         return parseCandidates(raw)
     }

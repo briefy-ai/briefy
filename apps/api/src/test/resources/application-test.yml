@@ -18,3 +18,7 @@ spring:
       chat: none
       embedding: none
       image: none
+
+ai:
+  observability:
+    enabled: false

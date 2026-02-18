@@ -87,10 +87,27 @@ management:
   tracing:
     sampling:
       probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:https://cloud.langfuse.com/api/public/otel}
+      headers:
+        Authorization: Basic ${LANGFUSE_AUTH_STRING:dummy}
+      protocol: ${OTEL_EXPORTER_OTLP_TRACES_PROTOCOL:http/protobuf}
+      sampling: 1
   endpoints:
     web:
       exposure:
         include: health,info
+
+ai:
+  observability:
+    enabled: ${AI_OBSERVABILITY_ENABLED:true}
+    capture-full-payloads: ${AI_OBSERVABILITY_CAPTURE_FULL_PAYLOADS:false}
+    max-payload-chars: ${AI_OBSERVABILITY_MAX_PAYLOAD_CHARS:400}
+    langfuse:
+      base-url: ${LANGFUSE_BASE_URL:https://cloud.langfuse.com}
+      public-key: ${LANGFUSE_PUBLIC_KEY:}
+      secret-key: ${LANGFUSE_SECRET_KEY:}
 
 telegram:
   integration:

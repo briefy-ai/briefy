@@ -37,6 +37,7 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("io.micrometer:micrometer-tracing-bridge-otel")
 	implementation("io.opentelemetry:opentelemetry-sdk")
+	implementation("io.opentelemetry:opentelemetry-exporter-otlp")
 	implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 	implementation("net.logstash.logback:logstash-logback-encoder:8.0")
 	implementation("io.jsonwebtoken:jjwt-api:0.12.6")
@@ -56,7 +57,9 @@ dependencies {
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 	testImplementation("com.h2database:h2")
 	testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
+	testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
 	testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+	testImplementation("io.opentelemetry:opentelemetry-sdk-testing")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
