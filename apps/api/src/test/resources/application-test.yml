@@ -22,3 +22,7 @@ spring:
 ai:
   observability:
     enabled: false
+
+briefing:
+  generation:
+    enabled: false

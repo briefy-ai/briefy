@@ -129,3 +129,10 @@ telegram:
       poll-ms: ${TELEGRAM_INGESTION_WORKER_POLL_MS:5000}
       batch-size: ${TELEGRAM_INGESTION_WORKER_BATCH_SIZE:5}
       max-attempts: ${TELEGRAM_INGESTION_WORKER_MAX_ATTEMPTS:3}
+
+briefing:
+  generation:
+    enabled: ${BRIEFING_GENERATION_ENABLED:true}
+    worker:
+      poll-ms: ${BRIEFING_GENERATION_WORKER_POLL_MS:5000}
+      batch-size: ${BRIEFING_GENERATION_WORKER_BATCH_SIZE:5}
