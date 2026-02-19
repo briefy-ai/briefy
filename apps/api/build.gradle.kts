@@ -60,6 +60,8 @@ dependencies {
 	testImplementation("com.squareup.okhttp3:okhttp:4.12.0")
 	testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 	testImplementation("io.opentelemetry:opentelemetry-sdk-testing")
+	testImplementation("org.testcontainers:junit-jupiter:1.21.3")
+	testImplementation("org.testcontainers:postgresql:1.21.3")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 

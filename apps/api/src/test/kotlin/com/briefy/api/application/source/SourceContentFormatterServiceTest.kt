@@ -10,6 +10,7 @@ import com.briefy.api.domain.knowledgegraph.source.SharedSourceSnapshotStatus
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceType
+import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFinalizedEvent
 import com.briefy.api.infrastructure.extraction.ExtractionProviderId
 import com.briefy.api.infrastructure.formatting.ExtractionContentFormatter
 import com.briefy.api.infrastructure.id.IdGenerator
@@ -22,6 +23,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.springframework.context.ApplicationEventPublisher
 import java.time.Instant
 import java.util.UUID
 
@@ -32,13 +34,15 @@ class SourceContentFormatterServiceTest {
     private val youtubeFormatter: ExtractionContentFormatter = mock()
     private val userAiSettingsService: UserAiSettingsService = mock()
     private val idGenerator: IdGenerator = mock()
+    private val eventPublisher: ApplicationEventPublisher = mock()
 
     private val service = SourceContentFormatterService(
         sourceRepository = sourceRepository,
         sharedSourceSnapshotRepository = sharedSourceSnapshotRepository,
         extractionContentFormatters = listOf(jsoupFormatter, youtubeFormatter),
         userAiSettingsService = userAiSettingsService,
-        idGenerator = idGenerator
+        idGenerator = idGenerator,
+        eventPublisher = eventPublisher
     )
 
     @Test
@@ -88,6 +92,10 @@ class SourceContentFormatterServiceTest {
         assertEquals(2, snapshotCaptor.firstValue.version)
         assertTrue(snapshotCaptor.firstValue.metadata?.aiFormatted == true)
         assertEquals("jsoup", snapshotCaptor.firstValue.metadata?.extractionProvider)
+        val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
+        verify(eventPublisher).publishEvent(eventCaptor.capture())
+        assertEquals(sourceId, eventCaptor.firstValue.sourceId)
+        assertEquals(userId, eventCaptor.firstValue.userId)
     }
 
     @Test
@@ -104,6 +112,10 @@ class SourceContentFormatterServiceTest {
 
         verify(sourceRepository, never()).save(any())
         verify(sharedSourceSnapshotRepository, never()).save(any())
+        val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
+        verify(eventPublisher).publishEvent(eventCaptor.capture())
+        assertEquals(sourceId, eventCaptor.firstValue.sourceId)
+        assertEquals(userId, eventCaptor.firstValue.userId)
     }
 
     @Test
@@ -118,6 +130,10 @@ class SourceContentFormatterServiceTest {
 
         verify(jsoupFormatter, never()).format(any(), any(), any())
         verify(sourceRepository, never()).save(any())
+        val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
+        verify(eventPublisher).publishEvent(eventCaptor.capture())
+        assertEquals(sourceId, eventCaptor.firstValue.sourceId)
+        assertEquals(userId, eventCaptor.firstValue.userId)
     }
 
     @Test
@@ -176,6 +192,10 @@ class SourceContentFormatterServiceTest {
         assertEquals("xgpLjLHB5sA", source.metadata?.videoId)
         assertEquals("captions", source.metadata?.transcriptSource)
         assertTrue(source.metadata?.aiFormatted == true)
+        val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
+        verify(eventPublisher).publishEvent(eventCaptor.capture())
+        assertEquals(sourceId, eventCaptor.firstValue.sourceId)
+        assertEquals(userId, eventCaptor.firstValue.userId)
     }
 
     @Test
@@ -198,6 +218,30 @@ class SourceContentFormatterServiceTest {
 
         verify(youtubeFormatter, never()).format(any(), any(), any())
         verify(sourceRepository, never()).save(any())
+        val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
+        verify(eventPublisher).publishEvent(eventCaptor.capture())
+        assertEquals(sourceId, eventCaptor.firstValue.sourceId)
+        assertEquals(userId, eventCaptor.firstValue.userId)
+    }
+
+    @Test
+    fun `does not publish finalized event when formatter call fails`() {
+        val userId = UUID.randomUUID()
+        val sourceId = UUID.randomUUID()
+        val source = createActiveSource(sourceId, userId, "raw extracted content", false, "jsoup")
+
+        whenever(sourceRepository.findByIdAndUserId(sourceId, userId)).thenReturn(source)
+        whenever(userAiSettingsService.resolveUseCaseSelection(userId, UserAiSettingsService.SOURCE_FORMATTING))
+            .thenReturn(AiModelSelection(provider = "zhipuai", model = "glm-4.7"))
+        whenever(jsoupFormatter.supports(ExtractionProviderId.JSOUP)).thenReturn(true)
+        whenever(jsoupFormatter.format("raw extracted content", "zhipuai", "glm-4.7"))
+            .thenThrow(RuntimeException("llm_failed"))
+
+        service.formatSourceContent(sourceId, userId, ExtractionProviderId.JSOUP)
+
+        verify(eventPublisher, never()).publishEvent(any<SourceContentFinalizedEvent>())
+        verify(sourceRepository, never()).save(any())
+        verify(sharedSourceSnapshotRepository, never()).save(any())
     }
 
     private fun createActiveSource(

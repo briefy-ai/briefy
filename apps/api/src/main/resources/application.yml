@@ -100,6 +100,10 @@ management:
         include: health,info
 
 ai:
+  embedding:
+    openai:
+      api-key: ${AI_EMBEDDING_OPENAI_API_KEY:${OPENAI_API_KEY:}}
+      base-url: ${AI_EMBEDDING_OPENAI_BASE_URL:https://api.openai.com}
   observability:
     enabled: ${AI_OBSERVABILITY_ENABLED:true}
     capture-full-payloads: ${AI_OBSERVABILITY_CAPTURE_FULL_PAYLOADS:false}

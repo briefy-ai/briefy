@@ -4,6 +4,7 @@ import com.briefy.api.domain.knowledgegraph.source.*
 import com.briefy.api.domain.knowledgegraph.source.event.SourceArchivedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivatedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivationReason
+import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFinalizedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFormattingRequestedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
 import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
@@ -349,6 +350,8 @@ class SourceService(
                         extractorId = provider.id
                     )
                 )
+            } else {
+                publishSourceContentFinalizedEvent(source)
             }
 
             logger.info(
@@ -444,7 +447,10 @@ class SourceService(
                 activationReason = SourceActivationReason.CACHE_REUSE
             )
         )
-        maybeRequestAsyncFormatting(source)
+        val formattingRequested = maybeRequestAsyncFormatting(source)
+        if (!formattingRequested) {
+            publishSourceContentFinalizedEvent(source)
+        }
 
         val ttlSeconds = freshnessPolicy.ttlSeconds(latestSnapshot.sourceType)
         logger.info(
@@ -466,10 +472,10 @@ class SourceService(
         )
     }
 
-    private fun maybeRequestAsyncFormatting(source: Source) {
-        val metadata = source.metadata ?: return
+    private fun maybeRequestAsyncFormatting(source: Source): Boolean {
+        val metadata = source.metadata ?: return false
         if (metadata.aiFormatted) {
-            return
+            return false
         }
 
         val provider = parseExtractionProvider(metadata.extractionProvider)
@@ -479,7 +485,7 @@ class SourceService(
                 source.id,
                 metadata.extractionProvider
             )
-            return
+            return false
         }
 
         eventPublisher.publishEvent(
@@ -494,6 +500,16 @@ class SourceService(
             source.id,
             source.userId,
             provider
+        )
+        return true
+    }
+
+    private fun publishSourceContentFinalizedEvent(source: Source) {
+        eventPublisher.publishEvent(
+            SourceContentFinalizedEvent(
+                sourceId = source.id,
+                userId = source.userId
+            )
         )
     }
 

@@ -10,9 +10,11 @@ import com.briefy.api.domain.knowledgegraph.source.SharedSourceSnapshotStatus
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
+import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFinalizedEvent
 import com.briefy.api.infrastructure.extraction.ExtractionProviderId
 import com.briefy.api.infrastructure.formatting.ExtractionContentFormatter
 import com.briefy.api.infrastructure.id.IdGenerator
+import org.springframework.context.ApplicationEventPublisher
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -25,7 +27,8 @@ class SourceContentFormatterService(
     private val sharedSourceSnapshotRepository: SharedSourceSnapshotRepository,
     private val extractionContentFormatters: List<ExtractionContentFormatter>,
     private val userAiSettingsService: UserAiSettingsService,
-    private val idGenerator: IdGenerator
+    private val idGenerator: IdGenerator,
+    private val eventPublisher: ApplicationEventPublisher
 ) {
     private val logger = LoggerFactory.getLogger(SourceContentFormatterService::class.java)
 
@@ -51,6 +54,7 @@ class SourceContentFormatterService(
 
         if (metadata.aiFormatted) {
             logger.info("[formatter] skipped sourceId={} userId={} extractorId={} reason=already_formatted", sourceId, userId, extractorId)
+            publishSourceContentFinalizedEvent(source.id, source.userId)
             return
         }
 
@@ -62,16 +66,21 @@ class SourceContentFormatterService(
                 extractorId,
                 metadata.transcriptSource
             )
+            publishSourceContentFinalizedEvent(source.id, source.userId)
             return
         }
 
         val formatter = extractionContentFormatters.firstOrNull { it.supports(extractorId) }
         if (formatter == null) {
             logger.info("[formatter] skipped sourceId={} userId={} extractorId={} reason=unsupported_extractor", sourceId, userId, extractorId)
+            publishSourceContentFinalizedEvent(source.id, source.userId)
             return
         }
 
-        val aiSelection = resolveModelSelection(sourceId, userId, extractorId) ?: return
+        val aiSelection = resolveModelSelection(sourceId, userId, extractorId)
+        if (aiSelection == null) {
+            return
+        }
 
         val formattedText = try {
             formatter.format(content.text, aiSelection.provider, aiSelection.model)
@@ -107,6 +116,7 @@ class SourceContentFormatterService(
         sourceRepository.save(source)
 
         maybeUpdateLatestSnapshot(source, formattedContent, formattedMetadata, extractorId)
+        publishSourceContentFinalizedEvent(source.id, source.userId)
 
         logger.info(
             "[formatter] formatting_succeeded sourceId={} userId={} extractorId={} provider={} model={} originalWordCount={} formattedWordCount={}",
@@ -206,6 +216,15 @@ class SourceContentFormatterService(
             )
             null
         }
+    }
+
+    private fun publishSourceContentFinalizedEvent(sourceId: UUID, userId: UUID) {
+        eventPublisher.publishEvent(
+            SourceContentFinalizedEvent(
+                sourceId = sourceId,
+                userId = userId
+            )
+        )
     }
 
     companion object {

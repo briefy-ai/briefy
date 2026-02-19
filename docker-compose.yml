@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${DB_NAME:-briefy}
       POSTGRES_USER: ${DB_USER:-briefy}
@@ -25,6 +25,7 @@ services:
       ZHIPUAI_BASE_URL: ${ZHIPUAI_BASE_URL:-https://api.z.ai/api/paas}
       ZHIPUAI_CHAT_MODEL: ${ZHIPUAI_CHAT_MODEL:-glm-4.7}
       GOOGLE_GENAI_API_KEY: ${GOOGLE_GENAI_API_KEY:-}
+      AI_EMBEDDING_OPENAI_API_KEY: ${AI_EMBEDDING_OPENAI_API_KEY:-${OPENAI_API_KEY:-}}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
       FIRECRAWL_BASE_URL: ${FIRECRAWL_BASE_URL:-https://api.firecrawl.dev}
       FIRECRAWL_WAIT_FOR_MS: ${FIRECRAWL_WAIT_FOR_MS:-1000}

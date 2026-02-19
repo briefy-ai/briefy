@@ -1,6 +1,7 @@
 package com.briefy.api.infrastructure.events
 
 import com.briefy.api.domain.knowledgegraph.source.event.SourceArchivedEvent
+import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFinalizedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Configuration
@@ -24,6 +25,16 @@ class EventsConfig {
     fun onSourceRestored(event: SourceRestoredEvent) {
         logger.info(
             "[event] SourceRestored sourceId={} userId={} occurredAt={}",
+            event.sourceId,
+            event.userId,
+            event.occurredAt
+        )
+    }
+
+    @EventListener
+    fun onSourceContentFinalized(event: SourceContentFinalizedEvent) {
+        logger.info(
+            "[event] SourceContentFinalized sourceId={} userId={} occurredAt={}",
             event.sourceId,
             event.userId,
             event.occurredAt

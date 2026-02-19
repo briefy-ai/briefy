@@ -11,6 +11,7 @@ import com.briefy.api.domain.knowledgegraph.source.SourceType
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivatedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivationReason
 import com.briefy.api.domain.knowledgegraph.source.event.SourceArchivedEvent
+import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFinalizedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFormattingRequestedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
 import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
@@ -268,7 +269,7 @@ class SourceServiceEventTest {
             sourceType = SourceType.BLOG,
             status = SharedSourceSnapshotStatus.ACTIVE,
             content = Content.from("Cached article content"),
-            metadata = Metadata(title = "Cached"),
+            metadata = Metadata(title = "Cached", aiFormatted = true, extractionProvider = "jsoup"),
             fetchedAt = now.minusSeconds(120),
             expiresAt = now.plusSeconds(3600),
             version = 1,
@@ -288,11 +289,57 @@ class SourceServiceEventTest {
         service.submitSource(CreateSourceCommand(url = url))
 
         val eventCaptor = argumentCaptor<Any>()
-        verify(eventPublisher, times(1)).publishEvent(eventCaptor.capture())
+        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture())
         val activatedEvent = eventCaptor.allValues.filterIsInstance<SourceActivatedEvent>().single()
         assertEquals(sourceId, activatedEvent.sourceId)
         assertEquals(userId, activatedEvent.userId)
         assertEquals(SourceActivationReason.CACHE_REUSE, activatedEvent.activationReason)
+        val finalizedEvent = eventCaptor.allValues.filterIsInstance<SourceContentFinalizedEvent>().single()
+        assertEquals(sourceId, finalizedEvent.sourceId)
+        assertEquals(userId, finalizedEvent.userId)
+        assertTrue(eventCaptor.allValues.none { it is SourceContentFormattingRequestedEvent })
+    }
+
+    @Test
+    fun `submitSource publishes SourceContentFinalizedEvent when extractor output is already formatted`() {
+        val userId = UUID.randomUUID()
+        val sourceId = UUID.randomUUID()
+        val snapshotId = UUID.randomUUID()
+        val url = "https://fresh-already-formatted-test.com/article"
+        val normalizedUrl = "https://fresh-already-formatted-test.com/article"
+
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.countByUrlNormalized(normalizedUrl)).thenReturn(0)
+        whenever(sourceRepository.findByUserIdAndUrlNormalized(userId, normalizedUrl)).thenReturn(null)
+        whenever(sourceTypeClassifier.classify(normalizedUrl)).thenReturn(SourceType.BLOG)
+        whenever(freshnessPolicy.ttlSeconds(SourceType.BLOG)).thenReturn(7 * 24 * 60 * 60L)
+        whenever(freshnessPolicy.computeExpiresAt(any(), any())).thenReturn(Instant.now().plusSeconds(7 * 24 * 60 * 60L))
+        whenever(sharedSourceSnapshotRepository.findFirstByUrlNormalizedAndIsLatestTrue(normalizedUrl)).thenReturn(null)
+        whenever(idGenerator.newId()).thenReturn(sourceId, snapshotId)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+        whenever(sharedSourceSnapshotRepository.findMaxVersionByUrlNormalized(normalizedUrl)).thenReturn(0)
+        whenever(extractionProviderResolver.resolveProvider(userId, "web")).thenReturn(extractionProvider)
+        whenever(extractionProvider.extract(normalizedUrl)).thenReturn(
+            ExtractionResult(
+                text = "Already formatted content",
+                title = "Formatted Article",
+                author = "Author",
+                publishedDate = Instant.parse("2025-01-01T00:00:00Z"),
+                aiFormatted = true
+            )
+        )
+
+        service.submitSource(CreateSourceCommand(url = url))
+
+        val eventCaptor = argumentCaptor<Any>()
+        verify(eventPublisher, atLeastOnce()).publishEvent(eventCaptor.capture())
+        val activatedEvent = eventCaptor.allValues.filterIsInstance<SourceActivatedEvent>().single()
+        assertEquals(sourceId, activatedEvent.sourceId)
+        assertEquals(userId, activatedEvent.userId)
+        val finalizedEvent = eventCaptor.allValues.filterIsInstance<SourceContentFinalizedEvent>().single()
+        assertEquals(sourceId, finalizedEvent.sourceId)
+        assertEquals(userId, finalizedEvent.userId)
+        assertTrue(eventCaptor.allValues.none { it is SourceContentFormattingRequestedEvent })
     }
 
     @Test
