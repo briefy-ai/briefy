@@ -33,6 +33,13 @@ spring:
     google:
       genai:
         api-key: ${GOOGLE_GENAI_API_KEY:}
+    chat:
+      observations:
+        log-prompt: ${SPRING_AI_CHAT_OBSERVATIONS_LOG_PROMPT:true}
+        log-completion: ${SPRING_AI_CHAT_OBSERVATIONS_LOG_COMPLETION:true}
+    embedding:
+      observations:
+        log-query-response: ${SPRING_AI_EMBEDDING_OBSERVATIONS_LOG_QUERY_RESPONSE:true}
 
 server:
   port: ${SERVER_PORT:8081}
@@ -86,14 +93,7 @@ google:
 management:
   tracing:
     sampling:
-      probability: 1.0
-  otlp:
-    tracing:
-      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:https://cloud.langfuse.com/api/public/otel}
-      headers:
-        Authorization: Basic ${LANGFUSE_AUTH_STRING:dummy}
-      protocol: ${OTEL_EXPORTER_OTLP_TRACES_PROTOCOL:http/protobuf}
-      sampling: 1
+      probability: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:1.0}
   endpoints:
     web:
       exposure:
