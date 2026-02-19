@@ -27,7 +27,7 @@ class YouTubeAiContentFormatterTest {
 
     @Test
     fun `uses provided provider and model`() {
-        whenever(aiAdapter.complete(any(), any(), any(), anyOrNull())).thenReturn("formatted")
+        whenever(aiAdapter.complete(any(), any(), any(), anyOrNull(), anyOrNull())).thenReturn("formatted")
 
         val result = formatter.format("raw captions text", "zhipuai", "glm-4.7")
 
@@ -36,7 +36,8 @@ class YouTubeAiContentFormatterTest {
             provider = eq("zhipuai"),
             model = eq("glm-4.7"),
             prompt = any(),
-            systemPrompt = eq(null)
+            systemPrompt = eq(null),
+            useCase = eq("source_formatting")
         )
     }
 

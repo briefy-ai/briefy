@@ -15,12 +15,19 @@ import java.nio.charset.StandardCharsets
 class AiAdapter(
     private val chatModelProvider: ObjectProvider<ChatModel>,
     private val restClientBuilder: RestClient.Builder,
+    private val aiCallObserver: AiCallObserver,
     @param:Value("\${spring.ai.google.genai.api-key:}")
     private val googleGenAiApiKey: String
 ) {
     private val logger = LoggerFactory.getLogger(AiAdapter::class.java)
 
-    fun complete(provider: String, model: String, prompt: String, systemPrompt: String? = null): String {
+    fun complete(
+        provider: String,
+        model: String,
+        prompt: String,
+        systemPrompt: String? = null,
+        useCase: String? = null
+    ): String {
         require(prompt.isNotBlank()) { "prompt must not be blank" }
         require(provider.isNotBlank()) { "provider must not be blank" }
         require(model.isNotBlank()) { "model must not be blank" }
@@ -33,10 +40,18 @@ class AiAdapter(
             !systemPrompt.isNullOrBlank()
         )
 
-        return when (provider.trim().lowercase()) {
-            "zhipuai" -> completeWithSpringChatModel(prompt = prompt, systemPrompt = systemPrompt, model = model)
-            "google_genai" -> completeWithGoogleGenAi(prompt = prompt, systemPrompt = systemPrompt, model = model)
-            else -> throw IllegalArgumentException("Unsupported AI provider '$provider'")
+        return aiCallObserver.observeCompletion(
+            provider = provider,
+            model = model,
+            useCase = useCase,
+            prompt = prompt,
+            systemPrompt = systemPrompt
+        ) {
+            when (provider.trim().lowercase()) {
+                "zhipuai" -> completeWithSpringChatModel(prompt = prompt, systemPrompt = systemPrompt, model = model)
+                "google_genai" -> completeWithGoogleGenAi(prompt = prompt, systemPrompt = systemPrompt, model = model)
+                else -> throw IllegalArgumentException("Unsupported AI provider '$provider'")
+            }
         }
     }
 

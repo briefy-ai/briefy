@@ -33,6 +33,13 @@ spring:
     google:
       genai:
         api-key: ${GOOGLE_GENAI_API_KEY:}
+    chat:
+      observations:
+        log-prompt: ${SPRING_AI_CHAT_OBSERVATIONS_LOG_PROMPT:true}
+        log-completion: ${SPRING_AI_CHAT_OBSERVATIONS_LOG_COMPLETION:true}
+    embedding:
+      observations:
+        log-query-response: ${SPRING_AI_EMBEDDING_OBSERVATIONS_LOG_QUERY_RESPONSE:true}
 
 server:
   port: ${SERVER_PORT:8081}
@@ -86,11 +93,21 @@ google:
 management:
   tracing:
     sampling:
-      probability: 1.0
+      probability: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:1.0}
   endpoints:
     web:
       exposure:
         include: health,info
+
+ai:
+  observability:
+    enabled: ${AI_OBSERVABILITY_ENABLED:true}
+    capture-full-payloads: ${AI_OBSERVABILITY_CAPTURE_FULL_PAYLOADS:false}
+    max-payload-chars: ${AI_OBSERVABILITY_MAX_PAYLOAD_CHARS:400}
+    langfuse:
+      base-url: ${LANGFUSE_BASE_URL:https://cloud.langfuse.com}
+      public-key: ${LANGFUSE_PUBLIC_KEY:}
+      secret-key: ${LANGFUSE_SECRET_KEY:}
 
 telegram:
   integration:

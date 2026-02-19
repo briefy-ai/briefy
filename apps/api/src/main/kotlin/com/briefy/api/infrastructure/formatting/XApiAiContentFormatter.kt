@@ -32,7 +32,8 @@ class XApiAiContentFormatter(
             provider = provider,
             model = model,
             prompt = userPrompt,
-            systemPrompt = systemPrompt
+            systemPrompt = systemPrompt,
+            useCase = "source_formatting"
         )
     }
 }

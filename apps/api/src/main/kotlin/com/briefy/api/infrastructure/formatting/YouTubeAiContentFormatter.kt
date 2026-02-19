@@ -28,7 +28,8 @@ class YouTubeAiContentFormatter(
             provider = provider,
             model = model,
             prompt = prompt,
-            systemPrompt = null
+            systemPrompt = null,
+            useCase = "source_formatting"
         )
     }
 }
