@@ -1,6 +1,10 @@
 package com.briefy.api.api
 
 import com.briefy.api.application.auth.*
+import com.briefy.api.application.briefing.BriefingNotFoundException
+import com.briefy.api.application.briefing.BriefingSourceAccessException
+import com.briefy.api.application.briefing.InvalidBriefingRequestException
+import com.briefy.api.application.briefing.InvalidBriefingStateException
 import com.briefy.api.application.source.*
 import com.briefy.api.application.topic.InvalidTopicLinkStateException
 import com.briefy.api.application.topic.TopicAlreadyExistsException
@@ -20,6 +24,54 @@ import java.time.Instant
 class GlobalExceptionHandler {
 
     private val logger = LoggerFactory.getLogger(GlobalExceptionHandler::class.java)
+
+    @ExceptionHandler(BriefingNotFoundException::class)
+    fun handleBriefingNotFound(ex: BriefingNotFoundException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.NOT_FOUND.value(),
+                    error = "Not Found",
+                    message = ex.message ?: "Briefing not found"
+                )
+            )
+    }
+
+    @ExceptionHandler(BriefingSourceAccessException::class)
+    fun handleBriefingSourceAccess(ex: BriefingSourceAccessException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.FORBIDDEN.value(),
+                    error = "Forbidden",
+                    message = ex.message ?: "One or more sources are missing or not accessible"
+                )
+            )
+    }
+
+    @ExceptionHandler(InvalidBriefingRequestException::class)
+    fun handleInvalidBriefingRequest(ex: InvalidBriefingRequestException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.BAD_REQUEST.value(),
+                    error = "Bad Request",
+                    message = ex.message ?: "Invalid briefing request"
+                )
+            )
+    }
+
+    @ExceptionHandler(InvalidBriefingStateException::class)
+    fun handleInvalidBriefingState(ex: InvalidBriefingStateException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.BAD_REQUEST.value(),
+                    error = "Bad Request",
+                    message = ex.message ?: "Invalid briefing state"
+                )
+            )
+    }
 
     @ExceptionHandler(SourceNotFoundException::class)
     fun handleSourceNotFound(ex: SourceNotFoundException): ResponseEntity<ErrorResponse> {
@@ -231,3 +283,50 @@ data class ErrorResponse(
     val message: String,
     val timestamp: Instant = Instant.now()
 )
+    @ExceptionHandler(BriefingNotFoundException::class)
+    fun handleBriefingNotFound(ex: BriefingNotFoundException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.NOT_FOUND.value(),
+                    error = "Not Found",
+                    message = ex.message ?: "Briefing not found"
+                )
+            )
+    }
+
+    @ExceptionHandler(BriefingSourceAccessException::class)
+    fun handleBriefingSourceAccess(ex: BriefingSourceAccessException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.FORBIDDEN.value(),
+                    error = "Forbidden",
+                    message = ex.message ?: "One or more sources are missing or not accessible"
+                )
+            )
+    }
+
+    @ExceptionHandler(InvalidBriefingRequestException::class)
+    fun handleInvalidBriefingRequest(ex: InvalidBriefingRequestException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.BAD_REQUEST.value(),
+                    error = "Bad Request",
+                    message = ex.message ?: "Invalid briefing request"
+                )
+            )
+    }
+
+    @ExceptionHandler(InvalidBriefingStateException::class)
+    fun handleInvalidBriefingState(ex: InvalidBriefingStateException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.BAD_REQUEST.value(),
+                    error = "Bad Request",
+                    message = ex.message ?: "Invalid briefing state"
+                )
+            )
+    }
