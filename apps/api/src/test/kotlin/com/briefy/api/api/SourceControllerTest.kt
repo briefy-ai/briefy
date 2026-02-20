@@ -170,6 +170,16 @@ class SourceControllerTest {
     }
 
     @Test
+    fun `GET list includes pending suggested topics count defaulted to zero`() {
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
+        val id = createSource("https://list-count-default-test.com/article")
+
+        mockMvc.perform(get("/api/sources"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[?(@.id=='$id' && @.pendingSuggestedTopicsCount==0)]").isNotEmpty)
+    }
+
+    @Test
     fun `GET list filters by status`() {
         mockMvc.perform(get("/api/sources").param("status", "active"))
             .andExpect(status().isOk)
@@ -386,6 +396,10 @@ class SourceControllerTest {
         mockMvc.perform(get("/api/sources/$idA"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.status").value("archived"))
+
+        mockMvc.perform(get("/api/sources").param("status", "archived"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[?(@.id=='$idA' && @.pendingSuggestedTopicsCount==0)]").isNotEmpty)
     }
 
     @Test

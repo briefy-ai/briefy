@@ -31,6 +31,7 @@ export interface Source {
   sourceType: 'news' | 'blog' | 'research' | 'video'
   content: SourceContent | null
   metadata: SourceMetadata | null
+  pendingSuggestedTopicsCount: number
   createdAt: string
   updatedAt: string
 }

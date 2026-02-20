@@ -386,6 +386,7 @@ function SourcesPage() {
                 source={source}
                 selected={selectedSourceIds.includes(source.id)}
                 onCardClick={(event) => handleSourceCardClick(event, index, source.id)}
+                showPendingSuggestionIndicator={filter === 'active'}
                 showRestoreAction={filter === 'archived'}
                 restoring={restoringSourceIds.includes(source.id)}
                 onRestore={() => void handleRestore(source.id)}
@@ -413,6 +414,7 @@ function SourceCard({
   source,
   selected,
   onCardClick,
+  showPendingSuggestionIndicator,
   showRestoreAction,
   restoring,
   onRestore,
@@ -420,12 +422,14 @@ function SourceCard({
   source: Source
   selected: boolean
   onCardClick: (event: React.MouseEvent<HTMLAnchorElement>) => void
+  showPendingSuggestionIndicator: boolean
   showRestoreAction: boolean
   restoring: boolean
   onRestore: () => void
 }) {
   const status = STATUS_CONFIG[source.status]
   const domain = extractDomain(source.url.normalized)
+  const hasPendingTopicSuggestions = showPendingSuggestionIndicator && source.pendingSuggestedTopicsCount > 0
 
   return (
     <RouterLink
@@ -452,6 +456,13 @@ function SourceCard({
             </p>
           </div>
           <div className="flex items-center gap-1">
+            {hasPendingTopicSuggestions && (
+              <span
+                role="status"
+                aria-label="Has pending topic suggestions"
+                className="size-2 shrink-0 rounded-full bg-amber-500"
+              />
+            )}
             <Badge variant={status.variant} className="shrink-0">
               {source.status === 'extracting' && (
                 <span className="mr-1 size-1.5 rounded-full bg-current animate-pulse" />
