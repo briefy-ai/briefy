@@ -110,9 +110,32 @@ interface TopicLinkRepository : JpaRepository<TopicLink, UUID> {
         @Param("topicLinkStatus") topicLinkStatus: TopicLinkStatus,
         @Param("sourceStatus") sourceStatus: SourceStatus
     ): List<TopicLinkCountProjection>
+
+    @Query(
+        """
+        select tl.targetId as sourceId, count(tl.id) as linkCount
+        from TopicLink tl
+        where tl.userId = :userId
+          and tl.targetType = :targetType
+          and tl.status = :status
+          and tl.targetId in :sourceIds
+        group by tl.targetId
+        """
+    )
+    fun countBySourceIdsAndStatus(
+        @Param("userId") userId: UUID,
+        @Param("sourceIds") sourceIds: Collection<UUID>,
+        @Param("targetType") targetType: TopicLinkTargetType,
+        @Param("status") status: TopicLinkStatus
+    ): List<SourceTopicSuggestionCountProjection>
 }
 
 interface TopicLinkCountProjection {
     val topicId: UUID
+    val linkCount: Long
+}
+
+interface SourceTopicSuggestionCountProjection {
+    val sourceId: UUID
     val linkCount: Long
 }

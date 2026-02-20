@@ -15,6 +15,7 @@ data class SourceResponse(
     val sourceType: String,
     val content: ContentDto?,
     val metadata: MetadataDto?,
+    val pendingSuggestedTopicsCount: Long,
     val reuse: ReuseInfoDto?,
     val createdAt: Instant,
     val updatedAt: Instant
@@ -52,13 +53,17 @@ data class MetadataDto(
     val transcriptLanguage: String?
 )
 
-fun Source.toResponse(reuseInfo: ReuseInfoDto? = null): SourceResponse = SourceResponse(
+fun Source.toResponse(
+    pendingSuggestedTopicsCount: Long = 0,
+    reuseInfo: ReuseInfoDto? = null
+): SourceResponse = SourceResponse(
     id = id,
     url = url.toDto(),
     status = status.name.lowercase(),
     sourceType = sourceType.name.lowercase(),
     content = content?.toDto(),
     metadata = metadata?.toDto(),
+    pendingSuggestedTopicsCount = pendingSuggestedTopicsCount,
     reuse = reuseInfo,
     createdAt = createdAt,
     updatedAt = updatedAt

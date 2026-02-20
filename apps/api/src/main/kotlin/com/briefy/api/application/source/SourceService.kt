@@ -127,7 +127,15 @@ class SourceService(
         logger.info("[service] Listing sources userId={} status={}", userId, effectiveStatus)
         val sources = sourceRepository.findByUserIdAndStatus(userId, effectiveStatus)
         logger.info("[service] Listed sources userId={} count={}", userId, sources.size)
-        return sources.map { it.toResponse() }
+        val pendingSuggestionsBySourceId = if (effectiveStatus == SourceStatus.ACTIVE) {
+            loadPendingSuggestionCountsBySourceId(userId, sources)
+        } else {
+            emptyMap()
+        }
+
+        return sources.map { source ->
+            source.toResponse(pendingSuggestedTopicsCount = pendingSuggestionsBySourceId[source.id] ?: 0L)
+        }
     }
 
     @Transactional(readOnly = true)
@@ -254,10 +262,26 @@ class SourceService(
             SourceStatus.FAILED,
             SourceStatus.ARCHIVED
         )
+        private val PENDING_TOPIC_LINK_TARGET_TYPE = TopicLinkTargetType.SOURCE
+        private val PENDING_TOPIC_LINK_STATUS = TopicLinkStatus.SUGGESTED
         private val LIVE_TOPIC_LINK_STATUSES = listOf(
             TopicLinkStatus.SUGGESTED,
             TopicLinkStatus.ACTIVE
         )
+    }
+
+    private fun loadPendingSuggestionCountsBySourceId(userId: UUID, sources: List<Source>): Map<UUID, Long> {
+        if (sources.isEmpty()) {
+            return emptyMap()
+        }
+        return topicLinkRepository.countBySourceIdsAndStatus(
+            userId = userId,
+            sourceIds = sources.map { it.id },
+            targetType = PENDING_TOPIC_LINK_TARGET_TYPE,
+            status = PENDING_TOPIC_LINK_STATUS
+        ).associate { projection ->
+            projection.sourceId to projection.linkCount
+        }
     }
 
     private fun hardDeleteSource(source: Source) {

@@ -94,6 +94,27 @@ class TopicControllerTest {
     }
 
     @Test
+    fun `GET sources list includes pending suggested topics count and refreshes after apply`() {
+        val sourceId = createSource("https://topic-suggestion-count-test.com/article")
+        createSuggestedTopicForSource(sourceId, "GraphQL")
+
+        mockMvc.perform(get("/api/sources"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[?(@.id=='$sourceId' && @.pendingSuggestedTopicsCount==1)]").isNotEmpty)
+
+        mockMvc.perform(
+            post("/api/sources/$sourceId/topics/apply")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"keepTopicLinkIds":[]}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(get("/api/sources"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[?(@.id=='$sourceId' && @.pendingSuggestedTopicsCount==0)]").isNotEmpty)
+    }
+
+    @Test
     fun `POST apply keeps selected suggestions and dismisses the rest`() {
         val sourceId = createSource("https://topic-apply-test.com/article")
         val keepId = createSuggestedTopicForSource(sourceId, "Kotlin")
