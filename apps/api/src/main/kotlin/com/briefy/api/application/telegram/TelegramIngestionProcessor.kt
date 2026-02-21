@@ -44,7 +44,7 @@ class TelegramIngestionProcessor(
             val normalized = try {
                 Url.normalize(rawUrl)
             } catch (_: Exception) {
-                results.add(UrlIngestionResult(rawUrl, UrlIngestionStatus.INVALID, null, "invalid_url"))
+                results.add(UrlIngestionResult(rawUrl, UrlIngestionStatus.INVALID, null, null, "invalid_url"))
                 return@forEach
             }
 
@@ -54,13 +54,13 @@ class TelegramIngestionProcessor(
 
             val existingSource = sourceRepository.findByUserIdAndUrlNormalized(job.linkedUserId, normalized)
             if (existingSource != null) {
-                results.add(UrlIngestionResult(rawUrl, UrlIngestionStatus.DUPLICATE, existingSource.id.toString(), null))
+                results.add(UrlIngestionResult(rawUrl, UrlIngestionStatus.DUPLICATE, existingSource.id.toString(), existingSource.metadata?.title, null))
                 return@forEach
             }
 
             try {
                 val created = sourceService.submitSourceForUser(job.linkedUserId, CreateSourceCommand(rawUrl))
-                results.add(UrlIngestionResult(rawUrl, UrlIngestionStatus.CREATED, created.id.toString(), null))
+                results.add(UrlIngestionResult(rawUrl, UrlIngestionStatus.CREATED, created.id.toString(), created.metadata?.title, null))
             } catch (e: Exception) {
                 logger.warn(
                     "[telegram] Source ingestion failed for telegramUserId={} url={}",
@@ -73,6 +73,7 @@ class TelegramIngestionProcessor(
                         rawUrl = rawUrl,
                         status = UrlIngestionStatus.FAILED,
                         sourceId = null,
+                        sourceTitle = null,
                         error = e.message?.take(120) ?: "unknown_error"
                     )
                 )
@@ -103,8 +104,8 @@ class TelegramIngestionProcessor(
         lines.add("Briefy ingestion results:")
         results.forEach { result ->
             val line = when (result.status) {
-                UrlIngestionStatus.CREATED -> "- ${result.rawUrl} -> created ${sourceLink(webBaseUrl, result.sourceId)}"
-                UrlIngestionStatus.DUPLICATE -> "- ${result.rawUrl} -> duplicate ${sourceLink(webBaseUrl, result.sourceId)}"
+                UrlIngestionStatus.CREATED -> "- ${result.rawUrl} -> created ${sourceLink(webBaseUrl, result.sourceId, result.sourceTitle, result.rawUrl)}"
+                UrlIngestionStatus.DUPLICATE -> "- ${result.rawUrl} -> duplicate ${sourceLink(webBaseUrl, result.sourceId, result.sourceTitle, result.rawUrl)}"
                 UrlIngestionStatus.INVALID -> "- ${result.rawUrl} -> invalid URL"
                 UrlIngestionStatus.FAILED -> "- ${result.rawUrl} -> failed (${result.error ?: "unknown_error"})"
             }
@@ -116,10 +117,12 @@ class TelegramIngestionProcessor(
         return lines.joinToString("\n")
     }
 
-    private fun sourceLink(baseUrl: String, sourceId: String?): String {
+    private fun sourceLink(baseUrl: String, sourceId: String?, sourceTitle: String?, rawUrl: String): String {
         if (sourceId == null) return ""
         val normalizedBase = baseUrl.trimEnd('/')
-        return "$normalizedBase/sources/$sourceId"
+        val url = "$normalizedBase/sources/$sourceId"
+        val label = sourceTitle ?: (runCatching { java.net.URI(rawUrl).host }.getOrNull() ?: rawUrl)
+        return "[$label]($url)"
     }
 
     companion object {
@@ -131,6 +134,7 @@ private data class UrlIngestionResult(
     val rawUrl: String,
     val status: UrlIngestionStatus,
     val sourceId: String?,
+    val sourceTitle: String?,
     val error: String?
 )
 
