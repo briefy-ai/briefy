@@ -448,21 +448,21 @@ function SourceCard({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-medium leading-snug truncate group-hover:text-primary transition-colors">
-              {source.metadata?.title ?? source.url.normalized}
+            <h3 className="flex items-center gap-1.5 text-sm font-medium leading-snug group-hover:text-primary transition-colors">
+              <span className="truncate">{source.metadata?.title ?? source.url.normalized}</span>
+              {hasPendingTopicSuggestions && (
+                <span
+                  role="status"
+                  aria-label="Has pending topic suggestions"
+                  className="size-2 shrink-0 rounded-full bg-amber-500"
+                />
+              )}
             </h3>
             <p className="mt-0.5 text-xs text-muted-foreground truncate">
               {domain}
             </p>
           </div>
           <div className="flex items-center gap-1">
-            {hasPendingTopicSuggestions && (
-              <span
-                role="status"
-                aria-label="Has pending topic suggestions"
-                className="size-2 shrink-0 rounded-full bg-amber-500"
-              />
-            )}
             <Badge variant={status.variant} className="shrink-0">
               {source.status === 'extracting' && (
                 <span className="mr-1 size-1.5 rounded-full bg-current animate-pulse" />
