@@ -157,7 +157,7 @@ export function useChatPanelController() {
 
   const selectIntent = useCallback(
     async (intent: ChatIntentId) => {
-      if (!sourceContext || isActionPending(ACTION_KEYS.SELECT_INTENT)) return
+      if (!sourceContext || activeBriefingId || isActionPending(ACTION_KEYS.SELECT_INTENT)) return
 
       setActionPending(ACTION_KEYS.SELECT_INTENT, true)
       setMessages((prev) =>
@@ -183,7 +183,7 @@ export function useChatPanelController() {
         setActionPending(ACTION_KEYS.SELECT_INTENT, false)
       }
     },
-    [sourceContext, isActionPending, setActionPending, transport]
+    [sourceContext, activeBriefingId, isActionPending, setActionPending, transport]
   )
 
   const approvePlan = useCallback(

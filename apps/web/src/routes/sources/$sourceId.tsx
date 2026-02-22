@@ -68,6 +68,11 @@ function SourceDetailPage() {
       return
     }
 
+    if (source.status !== 'active') {
+      setPageSourceContext(null)
+      return
+    }
+
     setPageSourceContext({
       sourceId: source.id,
       sourceTitle: source.metadata?.title ?? source.url.normalized,
