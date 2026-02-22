@@ -40,7 +40,7 @@ class XApiExtractionProviderTest {
             assertEquals("Bearer token-1", request.getHeader("Authorization"))
             assertTrue(result.text.contains("# X Post"))
             assertTrue(result.text.contains("hello from x"))
-            assertEquals("Alice (@alice)", result.author)
+            assertEquals("@alice", result.author)
         } finally {
             server.shutdown()
         }
