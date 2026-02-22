@@ -173,3 +173,82 @@ export interface UpdateAiUseCaseRequest {
   provider: AiProviderId
   model: string
 }
+
+export type BriefingStatus =
+  | 'plan_pending_approval'
+  | 'approved'
+  | 'generating'
+  | 'ready'
+  | 'failed'
+
+export type BriefingPlanStepStatus =
+  | 'planned'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+
+export interface BriefingPlanStepResponse {
+  id: string
+  personaId: string | null
+  personaName: string
+  task: string
+  status: BriefingPlanStepStatus
+  stepOrder: number
+}
+
+export interface BriefingReferenceResponse {
+  id: string
+  url: string
+  title: string
+  snippet: string | null
+  status: string
+  promotedToSourceId: string | null
+}
+
+export interface BriefingCitationResponse {
+  label: string
+  type: string
+  title: string
+  url: string | null
+  sourceId: string | null
+  referenceId: string | null
+}
+
+export interface BriefingConflictHighlightResponse {
+  claim: string
+  counterClaim: string
+  confidence: number
+  evidenceCitationLabels: string[]
+}
+
+export interface BriefingErrorResponse {
+  code: string
+  message: string
+  retryable: boolean
+  details: Record<string, string> | null
+}
+
+export interface BriefingResponse {
+  id: string
+  status: BriefingStatus
+  enrichmentIntent: string
+  sourceIds: string[]
+  plan: BriefingPlanStepResponse[]
+  references: BriefingReferenceResponse[]
+  contentMarkdown: string | null
+  citations: BriefingCitationResponse[]
+  conflictHighlights: BriefingConflictHighlightResponse[] | null
+  error: BriefingErrorResponse | null
+  createdAt: string
+  updatedAt: string
+  plannedAt: string | null
+  approvedAt: string | null
+  generationStartedAt: string | null
+  generationCompletedAt: string | null
+  failedAt: string | null
+}
+
+export interface CreateBriefingRequest {
+  sourceIds: string[]
+  enrichmentIntent: 'deep_dive' | 'contextual_expansion' | 'truth_grounding'
+}

@@ -1,5 +1,5 @@
-import { createRootRoute, Link, Outlet } from '@tanstack/react-router'
-import React from 'react'
+import { createRootRoute, Link, Outlet, useRouterState } from '@tanstack/react-router'
+import React, { useEffect } from 'react'
 
 const TanStackRouterDevtools =
   import.meta.env.PROD
@@ -9,7 +9,7 @@ const TanStackRouterDevtools =
           default: res.TanStackRouterDevtools,
         })),
       )
-import { LogOut, Settings } from 'lucide-react'
+import { LogOut, Settings, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -19,6 +19,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { ChatPanelProvider, useChatPanel } from '@/features/chat/ChatPanelProvider'
 import { useAuth } from '@/lib/auth/useAuth'
 
 export const Route = createRootRoute({
@@ -26,7 +27,46 @@ export const Route = createRootRoute({
 })
 
 function RootLayout() {
+  return (
+    <ChatPanelProvider>
+      <RootLayoutContent />
+    </ChatPanelProvider>
+  )
+}
+
+function RootLayoutContent() {
   const { user, isLoading, logout } = useAuth()
+  const { openPanelWithDefaultContext, togglePanel } = useChatPanel()
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const isSettingsPath = pathname.startsWith('/settings')
+  const isChatEligible = !isLoading && Boolean(user) && !isSettingsPath
+
+  useEffect(() => {
+    if (!isChatEligible) {
+      return
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isShortcut =
+        event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLowerCase() === 'j'
+
+      if (!isShortcut || isEditableElement(event.target)) {
+        return
+      }
+
+      event.preventDefault()
+      togglePanel()
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [isChatEligible, togglePanel])
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -55,7 +95,7 @@ function RootLayout() {
               </Link>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" className="rounded-full">
+                  <Button variant="ghost" size="icon-sm" className="rounded-full" aria-label="User menu">
                     <span className="inline-flex size-7 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
                       {(user.displayName?.[0] ?? user.email[0] ?? 'U').toUpperCase()}
                     </span>
@@ -105,7 +145,25 @@ function RootLayout() {
       <main className="mx-auto max-w-5xl px-6 py-8">
         <Outlet />
       </main>
+      {isChatEligible && (
+        <Button
+          type="button"
+          size="icon"
+          className="fixed right-5 bottom-5 z-40 size-12 rounded-full shadow-lg shadow-primary/20"
+          onClick={openPanelWithDefaultContext}
+          aria-label="Open chat"
+        >
+          <Sparkles className="size-5" />
+        </Button>
+      )}
       <TanStackRouterDevtools />
     </div>
   )
+}
+
+function isEditableElement(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
 }
