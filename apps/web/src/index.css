@@ -331,4 +331,16 @@
   .briefy-markdown tr:nth-child(even) {
     @apply bg-muted/20;
   }
+
+  .source-annotation-highlight {
+    @apply cursor-pointer rounded-[2px] bg-primary/30 transition-colors;
+  }
+
+  .source-annotation-highlight:hover {
+    @apply bg-primary/40;
+  }
+
+  .source-annotation-highlight-draft {
+    @apply rounded-[2px] bg-primary/20;
+  }
 }

@@ -1,5 +1,13 @@
-import { apiDelete, apiGet, apiPost } from './client'
-import type { CreateSourceRequest, Source, SourceActiveTopic, TopicSuggestion } from './types'
+import { apiDelete, apiGet, apiPatch, apiPost } from './client'
+import type {
+  CreateSourceAnnotationRequest,
+  CreateSourceRequest,
+  Source,
+  SourceActiveTopic,
+  SourceAnnotation,
+  TopicSuggestion,
+  UpdateSourceAnnotationRequest,
+} from './types'
 
 export async function createSource(request: CreateSourceRequest): Promise<Source> {
   return apiPost<Source>('/api/sources', request)
@@ -44,4 +52,27 @@ export async function applySourceTopics(sourceId: string, keepTopicLinkIds: stri
 
 export async function createManualSourceTopicSuggestion(sourceId: string, name: string): Promise<TopicSuggestion> {
   return apiPost<TopicSuggestion>(`/api/sources/${sourceId}/topics/manual`, { name })
+}
+
+export async function listSourceAnnotations(sourceId: string): Promise<SourceAnnotation[]> {
+  return apiGet<SourceAnnotation[]>(`/api/sources/${sourceId}/annotations`)
+}
+
+export async function createSourceAnnotation(
+  sourceId: string,
+  request: CreateSourceAnnotationRequest
+): Promise<SourceAnnotation> {
+  return apiPost<SourceAnnotation>(`/api/sources/${sourceId}/annotations`, request)
+}
+
+export async function updateSourceAnnotation(
+  sourceId: string,
+  annotationId: string,
+  request: UpdateSourceAnnotationRequest
+): Promise<SourceAnnotation> {
+  return apiPatch<SourceAnnotation>(`/api/sources/${sourceId}/annotations/${annotationId}`, request)
+}
+
+export async function deleteSourceAnnotation(sourceId: string, annotationId: string): Promise<void> {
+  await apiDelete(`/api/sources/${sourceId}/annotations/${annotationId}`)
 }

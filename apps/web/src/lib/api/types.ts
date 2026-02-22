@@ -36,6 +36,33 @@ export interface Source {
   updatedAt: string
 }
 
+export interface SourceAnnotation {
+  id: string
+  sourceId: string
+  body: string
+  anchorQuote: string
+  anchorPrefix: string
+  anchorSuffix: string
+  anchorStart: number
+  anchorEnd: number
+  status: 'active' | 'archived'
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateSourceAnnotationRequest {
+  body: string
+  anchorQuote: string
+  anchorPrefix: string
+  anchorSuffix: string
+  anchorStart: number
+  anchorEnd: number
+}
+
+export interface UpdateSourceAnnotationRequest {
+  body: string
+}
+
 export interface TopicSuggestion {
   topicLinkId: string
   topicId: string
