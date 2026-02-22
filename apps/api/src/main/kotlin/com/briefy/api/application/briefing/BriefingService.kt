@@ -58,6 +58,8 @@ class BriefingService(
             enrichmentIntent = intent.name,
             sources = sources
         )
+
+        // TODO: remove duplicate
         val planSteps = planDrafts.mapIndexed { index, draft ->
             BriefingPlanStep(
                 id = idGenerator.newId(),
