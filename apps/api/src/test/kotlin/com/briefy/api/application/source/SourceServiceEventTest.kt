@@ -1,5 +1,6 @@
 package com.briefy.api.application.source
 
+import com.briefy.api.application.annotation.SourceAnnotationService
 import com.briefy.api.domain.knowledgegraph.source.Content
 import com.briefy.api.domain.knowledgegraph.source.Metadata
 import com.briefy.api.domain.knowledgegraph.source.SharedSourceSnapshotRepository
@@ -55,6 +56,7 @@ class SourceServiceEventTest {
     private val currentUserProvider: CurrentUserProvider = mock()
     private val idGenerator: IdGenerator = mock()
     private val eventPublisher: ApplicationEventPublisher = mock()
+    private val sourceAnnotationService: SourceAnnotationService = mock()
 
     init {
         whenever(extractionProvider.id).thenReturn(ExtractionProviderId.JSOUP)
@@ -72,7 +74,8 @@ class SourceServiceEventTest {
         freshnessPolicy = freshnessPolicy,
         currentUserProvider = currentUserProvider,
         idGenerator = idGenerator,
-        eventPublisher = eventPublisher
+        eventPublisher = eventPublisher,
+        sourceAnnotationService = sourceAnnotationService
     )
 
     @Test

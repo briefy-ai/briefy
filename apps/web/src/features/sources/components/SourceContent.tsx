@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button'
 import { MarkdownContent } from '@/components/content/MarkdownContent'
 import { formatDuration, staggerDelay } from '@/lib/format'
 import type { Source } from '@/lib/api/types'
+import { SourceAnnotationsContent } from './SourceAnnotationsContent'
 
 interface SourceContentProps {
   source: Source
@@ -62,7 +63,11 @@ export function SourceContentSection({ source, showRawContent, onSeeRawContent }
                 )}
               </div>
             )}
-            <MarkdownContent content={source.content.text} variant="article" />
+            {source.status === 'active' ? (
+              <SourceAnnotationsContent sourceId={source.id} content={source.content.text} />
+            ) : (
+              <MarkdownContent content={source.content.text} variant="article" />
+            )}
           </div>
         </article>
       ) : null}

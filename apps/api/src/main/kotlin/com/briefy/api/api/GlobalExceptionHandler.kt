@@ -5,6 +5,9 @@ import com.briefy.api.application.briefing.BriefingNotFoundException
 import com.briefy.api.application.briefing.BriefingSourceAccessException
 import com.briefy.api.application.briefing.InvalidBriefingRequestException
 import com.briefy.api.application.briefing.InvalidBriefingStateException
+import com.briefy.api.application.annotation.InvalidSourceAnnotationStateException
+import com.briefy.api.application.annotation.SourceAnnotationNotFoundException
+import com.briefy.api.application.annotation.SourceAnnotationOverlapException
 import com.briefy.api.application.source.*
 import com.briefy.api.application.topic.InvalidTopicLinkStateException
 import com.briefy.api.application.topic.TopicAlreadyExistsException
@@ -80,6 +83,36 @@ class GlobalExceptionHandler {
                 status = HttpStatus.NOT_FOUND.value(),
                 error = "Not Found",
                 message = ex.message ?: "Source not found"
+            ))
+    }
+
+    @ExceptionHandler(SourceAnnotationNotFoundException::class)
+    fun handleSourceAnnotationNotFound(ex: SourceAnnotationNotFoundException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(
+                status = HttpStatus.NOT_FOUND.value(),
+                error = "Not Found",
+                message = ex.message ?: "Annotation not found"
+            ))
+    }
+
+    @ExceptionHandler(SourceAnnotationOverlapException::class)
+    fun handleSourceAnnotationOverlap(ex: SourceAnnotationOverlapException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse(
+                status = HttpStatus.CONFLICT.value(),
+                error = "Conflict",
+                message = ex.message ?: "Selected text overlaps an existing annotation"
+            ))
+    }
+
+    @ExceptionHandler(InvalidSourceAnnotationStateException::class)
+    fun handleInvalidSourceAnnotationState(ex: InvalidSourceAnnotationStateException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(
+                status = HttpStatus.BAD_REQUEST.value(),
+                error = "Bad Request",
+                message = ex.message ?: "Invalid annotation state"
             ))
     }
 

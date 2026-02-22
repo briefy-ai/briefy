@@ -7,6 +7,7 @@ import com.briefy.api.domain.knowledgegraph.source.event.SourceActivationReason
 import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFinalizedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFormattingRequestedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
+import com.briefy.api.application.annotation.SourceAnnotationService
 import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
 import com.briefy.api.domain.knowledgegraph.topic.TopicStatus
 import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkRepository
@@ -37,7 +38,8 @@ class SourceService(
     private val freshnessPolicy: FreshnessPolicy,
     private val currentUserProvider: CurrentUserProvider,
     private val idGenerator: IdGenerator,
-    private val eventPublisher: ApplicationEventPublisher
+    private val eventPublisher: ApplicationEventPublisher,
+    private val sourceAnnotationService: SourceAnnotationService
 ) {
     private val logger = LoggerFactory.getLogger(SourceService::class.java)
 
@@ -200,6 +202,7 @@ class SourceService(
             if (source.status != SourceStatus.ARCHIVED) {
                 source.archive()
                 sourceRepository.save(source)
+                sourceAnnotationService.archiveActiveAnnotationsForSource(source.id, userId)
                 eventPublisher.publishEvent(SourceArchivedEvent(sourceId = source.id, userId = userId))
             }
             return
@@ -222,6 +225,7 @@ class SourceService(
         if (source.status == SourceStatus.ARCHIVED) {
             source.restore()
             sourceRepository.save(source)
+            sourceAnnotationService.restoreSourceArchivedAnnotations(source.id, userId)
             eventPublisher.publishEvent(SourceRestoredEvent(sourceId = source.id, userId = userId))
         }
     }
@@ -247,12 +251,18 @@ class SourceService(
             throw BatchSourceNotFoundException()
         }
 
+        val archivedSourceIds = mutableListOf<UUID>()
         sources.forEach { source ->
             if (source.status != SourceStatus.ARCHIVED) {
                 source.archive()
+                archivedSourceIds.add(source.id)
             }
         }
         sourceRepository.saveAll(sources)
+
+        archivedSourceIds.forEach { sourceId ->
+            sourceAnnotationService.archiveActiveAnnotationsForSource(sourceId, userId)
+        }
     }
 
     companion object {
