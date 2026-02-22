@@ -254,7 +254,6 @@ class XApiExtractionProvider(
             ?.firstOrNull { it.id == authorId }
             ?.let { user ->
                 when {
-                    !user.name.isNullOrBlank() && !user.username.isNullOrBlank() -> "${user.name} (@${user.username})"
                     !user.username.isNullOrBlank() -> "@${user.username}"
                     else -> user.name
                 }
