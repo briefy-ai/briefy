@@ -93,6 +93,8 @@ export function useTopicSuggestions({
     setApplyLoading(true)
     try {
       await applySourceTopics(sourceId, selectedIds)
+      setSuggestions([])
+      setSelectedIds([])
       onTopicsApplied()
     } catch (e) {
       onError(extractErrorMessage(e, 'Failed to apply topic suggestions'))
