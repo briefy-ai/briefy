@@ -82,7 +82,7 @@ function FormattingPendingNotice({ onSeeRawContent }: { onSeeRawContent: () => v
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="flex items-center gap-2 text-sm font-medium" role="status">
-              <span className="size-3 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" aria-hidden="true" />
+              <span className="size-3 shrink-0 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" aria-hidden="true" />
               Source content is being formatted.
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
