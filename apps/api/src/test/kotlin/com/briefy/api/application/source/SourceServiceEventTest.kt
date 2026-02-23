@@ -2,6 +2,7 @@ package com.briefy.api.application.source
 
 import com.briefy.api.application.annotation.SourceAnnotationService
 import com.briefy.api.domain.knowledgegraph.source.Content
+import com.briefy.api.domain.knowledgegraph.source.FormattingState
 import com.briefy.api.domain.knowledgegraph.source.Metadata
 import com.briefy.api.domain.knowledgegraph.source.SharedSourceSnapshotRepository
 import com.briefy.api.domain.knowledgegraph.source.SharedSourceSnapshot
@@ -29,6 +30,7 @@ import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
@@ -494,6 +496,44 @@ class SourceServiceEventTest {
         assertTrue(formattingEvents.isEmpty())
     }
 
+    @Test
+    fun `retryFormatting resets metadata state to pending and publishes formatting request`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId)
+        source.metadata = source.metadata?.withFormattingState(FormattingState.FAILED, "llm_error")
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+
+        val response = service.retryFormatting(source.id)
+
+        assertEquals("active", response.status)
+        assertEquals(FormattingState.PENDING, source.metadata?.formattingState)
+        assertEquals(null, source.metadata?.formattingFailureReason)
+        val eventCaptor = argumentCaptor<Any>()
+        verify(eventPublisher).publishEvent(eventCaptor.capture())
+        val formattingEvent = eventCaptor.firstValue as SourceContentFormattingRequestedEvent
+        assertEquals(source.id, formattingEvent.sourceId)
+        assertEquals(userId, formattingEvent.userId)
+        assertEquals(ExtractionProviderId.JSOUP, formattingEvent.extractorId)
+        verify(extractionProviderResolver, never()).resolveProvider(any(), any())
+    }
+
+    @Test
+    fun `retryFormatting rejects when source formatting is not failed`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId)
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+
+        assertThrows<InvalidSourceStateException> {
+            service.retryFormatting(source.id)
+        }
+
+        verify(sourceRepository, never()).save(any())
+        verify(eventPublisher, never()).publishEvent(any<Any>())
+    }
+
     private fun createActiveSource(userId: UUID): Source {
         return Source.create(
             id = UUID.randomUUID(),
@@ -501,7 +541,19 @@ class SourceServiceEventTest {
             userId = userId
         ).apply {
             startExtraction()
-            completeExtraction(Content.from("example source content"), Metadata())
+            val content = Content.from("example source content")
+            completeExtraction(
+                content,
+                Metadata.from(
+                    title = "Example",
+                    author = "Author",
+                    publishedDate = Instant.parse("2025-01-01T00:00:00Z"),
+                    platform = "web",
+                    wordCount = content.wordCount,
+                    aiFormatted = false,
+                    extractionProvider = "jsoup"
+                )
+            )
         }
     }
 }

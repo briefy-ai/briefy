@@ -3,6 +3,7 @@ package com.briefy.api.application.source
 import com.briefy.api.application.settings.AiModelSelection
 import com.briefy.api.application.settings.UserAiSettingsService
 import com.briefy.api.domain.knowledgegraph.source.Content
+import com.briefy.api.domain.knowledgegraph.source.FormattingState
 import com.briefy.api.domain.knowledgegraph.source.Metadata
 import com.briefy.api.domain.knowledgegraph.source.SharedSourceSnapshot
 import com.briefy.api.domain.knowledgegraph.source.SharedSourceSnapshotRepository
@@ -15,6 +16,7 @@ import com.briefy.api.infrastructure.extraction.ExtractionProviderId
 import com.briefy.api.infrastructure.formatting.ExtractionContentFormatter
 import com.briefy.api.infrastructure.id.IdGenerator
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -84,6 +86,8 @@ class SourceContentFormatterServiceTest {
         assertEquals("# formatted markdown", source.content?.text)
         assertTrue(source.metadata?.aiFormatted == true)
         assertEquals("jsoup", source.metadata?.extractionProvider)
+        assertEquals(FormattingState.SUCCEEDED, source.metadata?.formattingState)
+        assertNull(source.metadata?.formattingFailureReason)
 
         verify(sharedSourceSnapshotRepository).markLatestAsNotLatest(any(), any())
         val snapshotCaptor = argumentCaptor<SharedSourceSnapshot>()
@@ -92,6 +96,8 @@ class SourceContentFormatterServiceTest {
         assertEquals(2, snapshotCaptor.firstValue.version)
         assertTrue(snapshotCaptor.firstValue.metadata?.aiFormatted == true)
         assertEquals("jsoup", snapshotCaptor.firstValue.metadata?.extractionProvider)
+        assertEquals(FormattingState.SUCCEEDED, snapshotCaptor.firstValue.metadata?.formattingState)
+        assertNull(snapshotCaptor.firstValue.metadata?.formattingFailureReason)
         val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
         verify(eventPublisher).publishEvent(eventCaptor.capture())
         assertEquals(sourceId, eventCaptor.firstValue.sourceId)
@@ -110,8 +116,10 @@ class SourceContentFormatterServiceTest {
 
         service.formatSourceContent(sourceId, userId, ExtractionProviderId.FIRECRAWL)
 
-        verify(sourceRepository, never()).save(any())
+        verify(sourceRepository).save(any())
         verify(sharedSourceSnapshotRepository, never()).save(any())
+        assertEquals(FormattingState.NOT_REQUIRED, source.metadata?.formattingState)
+        assertNull(source.metadata?.formattingFailureReason)
         val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
         verify(eventPublisher).publishEvent(eventCaptor.capture())
         assertEquals(sourceId, eventCaptor.firstValue.sourceId)
@@ -130,6 +138,8 @@ class SourceContentFormatterServiceTest {
 
         verify(jsoupFormatter, never()).format(any(), any(), any())
         verify(sourceRepository, never()).save(any())
+        assertEquals(FormattingState.SUCCEEDED, source.metadata?.formattingState)
+        assertNull(source.metadata?.formattingFailureReason)
         val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
         verify(eventPublisher).publishEvent(eventCaptor.capture())
         assertEquals(sourceId, eventCaptor.firstValue.sourceId)
@@ -192,6 +202,8 @@ class SourceContentFormatterServiceTest {
         assertEquals("xgpLjLHB5sA", source.metadata?.videoId)
         assertEquals("captions", source.metadata?.transcriptSource)
         assertTrue(source.metadata?.aiFormatted == true)
+        assertEquals(FormattingState.SUCCEEDED, source.metadata?.formattingState)
+        assertNull(source.metadata?.formattingFailureReason)
         val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
         verify(eventPublisher).publishEvent(eventCaptor.capture())
         assertEquals(sourceId, eventCaptor.firstValue.sourceId)
@@ -217,7 +229,9 @@ class SourceContentFormatterServiceTest {
         service.formatSourceContent(sourceId, userId, ExtractionProviderId.YOUTUBE)
 
         verify(youtubeFormatter, never()).format(any(), any(), any())
-        verify(sourceRepository, never()).save(any())
+        verify(sourceRepository).save(any())
+        assertEquals(FormattingState.NOT_REQUIRED, source.metadata?.formattingState)
+        assertNull(source.metadata?.formattingFailureReason)
         val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
         verify(eventPublisher).publishEvent(eventCaptor.capture())
         assertEquals(sourceId, eventCaptor.firstValue.sourceId)
@@ -240,8 +254,30 @@ class SourceContentFormatterServiceTest {
         service.formatSourceContent(sourceId, userId, ExtractionProviderId.JSOUP)
 
         verify(eventPublisher, never()).publishEvent(any<SourceContentFinalizedEvent>())
-        verify(sourceRepository, never()).save(any())
+        verify(sourceRepository).save(any())
+        assertEquals(FormattingState.FAILED, source.metadata?.formattingState)
+        assertEquals("llm_error", source.metadata?.formattingFailureReason)
         verify(sharedSourceSnapshotRepository, never()).save(any())
+    }
+
+    @Test
+    fun `marks formatting as failed when ai settings resolution fails`() {
+        val userId = UUID.randomUUID()
+        val sourceId = UUID.randomUUID()
+        val source = createActiveSource(sourceId, userId, "raw extracted content", false, "jsoup")
+
+        whenever(sourceRepository.findByIdAndUserId(sourceId, userId)).thenReturn(source)
+        whenever(jsoupFormatter.supports(ExtractionProviderId.JSOUP)).thenReturn(true)
+        whenever(userAiSettingsService.resolveUseCaseSelection(userId, UserAiSettingsService.SOURCE_FORMATTING))
+            .thenThrow(RuntimeException("settings_missing"))
+
+        service.formatSourceContent(sourceId, userId, ExtractionProviderId.JSOUP)
+
+        verify(sourceRepository).save(any())
+        verify(jsoupFormatter, never()).format(any(), any(), any())
+        verify(eventPublisher, never()).publishEvent(any<SourceContentFinalizedEvent>())
+        assertEquals(FormattingState.FAILED, source.metadata?.formattingState)
+        assertEquals("ai_settings_resolution_failed", source.metadata?.formattingFailureReason)
     }
 
     private fun createActiveSource(

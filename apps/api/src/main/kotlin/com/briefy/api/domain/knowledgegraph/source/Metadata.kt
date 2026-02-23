@@ -2,6 +2,8 @@ package com.briefy.api.domain.knowledgegraph.source
 
 import jakarta.persistence.Column
 import jakarta.persistence.Embeddable
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
 import java.time.Instant
 
 @Embeddable
@@ -27,6 +29,13 @@ data class Metadata(
     @Column(name = "metadata_extraction_provider", length = 50)
     val extractionProvider: String? = null,
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "metadata_formatting_state", length = 30)
+    val formattingState: FormattingState = FormattingState.fromAiFormatted(aiFormatted),
+
+    @Column(name = "metadata_formatting_failure_reason", length = 255)
+    val formattingFailureReason: String? = null,
+
     @Column(name = "metadata_video_id", length = 50)
     val videoId: String? = null,
 
@@ -42,6 +51,17 @@ data class Metadata(
     @Column(name = "metadata_transcript_language", length = 20)
     val transcriptLanguage: String? = null
 ) {
+    fun withFormattingState(
+        formattingState: FormattingState,
+        formattingFailureReason: String? = null
+    ): Metadata {
+        val normalizedFailureReason = formattingFailureReason?.trim()?.take(255)?.ifBlank { null }
+        return copy(
+            formattingState = formattingState,
+            formattingFailureReason = if (formattingState == FormattingState.FAILED) normalizedFailureReason else null
+        )
+    }
+
     companion object {
         private const val WORDS_PER_MINUTE = 200
 
@@ -53,6 +73,8 @@ data class Metadata(
             wordCount: Int,
             aiFormatted: Boolean,
             extractionProvider: String?,
+            formattingState: FormattingState = FormattingState.fromAiFormatted(aiFormatted),
+            formattingFailureReason: String? = null,
             videoId: String? = null,
             videoEmbedUrl: String? = null,
             videoDurationSeconds: Int? = null,
@@ -73,12 +95,31 @@ data class Metadata(
                 estimatedReadingTime = readingTime,
                 aiFormatted = aiFormatted,
                 extractionProvider = extractionProvider?.take(50),
+                formattingState = formattingState,
+                formattingFailureReason = if (formattingState == FormattingState.FAILED) {
+                    formattingFailureReason?.trim()?.take(255)?.ifBlank { null }
+                } else {
+                    null
+                },
                 videoId = videoId?.take(50),
                 videoEmbedUrl = videoEmbedUrl?.take(2048),
                 videoDurationSeconds = videoDurationSeconds,
                 transcriptSource = transcriptSource?.take(50),
                 transcriptLanguage = transcriptLanguage?.take(20)
             )
+        }
+    }
+}
+
+enum class FormattingState {
+    PENDING,
+    SUCCEEDED,
+    FAILED,
+    NOT_REQUIRED;
+
+    companion object {
+        fun fromAiFormatted(aiFormatted: Boolean): FormattingState {
+            return if (aiFormatted) SUCCEEDED else PENDING
         }
     }
 }

@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { deleteSource, restoreSource, retryExtraction } from '@/lib/api/sources'
+import { deleteSource, restoreSource, retryExtraction, retryFormatting } from '@/lib/api/sources'
 import { extractErrorMessage } from '@/lib/api/errorMessage'
 import { requireAuth } from '@/lib/auth/requireAuth'
 import { useChatPanel } from '@/features/chat/ChatPanelProvider'
@@ -41,6 +41,7 @@ function SourceDetailPage() {
   const { source, setSource, loading, error, setError } = useSourceData(sourceId)
   const [showRawContent, setShowRawContent] = useState(false)
   const [retrying, setRetrying] = useState(false)
+  const [retryFormattingLoading, setRetryFormattingLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
@@ -94,6 +95,19 @@ function SourceDetailPage() {
       setError(extractErrorMessage(e, 'Retry failed'))
     } finally {
       setRetrying(false)
+    }
+  }
+
+  async function handleRetryFormatting() {
+    setRetryFormattingLoading(true)
+    try {
+      const updated = await retryFormatting(sourceId)
+      setSource(updated)
+      setShowRawContent(false)
+    } catch (e) {
+      setError(extractErrorMessage(e, 'Formatting retry failed'))
+    } finally {
+      setRetryFormattingLoading(false)
     }
   }
 
@@ -246,6 +260,8 @@ function SourceDetailPage() {
         source={source}
         showRawContent={showRawContent}
         onSeeRawContent={() => setShowRawContent(true)}
+        onRetryFormatting={() => void handleRetryFormatting()}
+        retryFormattingLoading={retryFormattingLoading}
       />
 
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>

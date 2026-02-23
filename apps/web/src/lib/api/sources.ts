@@ -26,6 +26,10 @@ export async function retryExtraction(id: string): Promise<Source> {
   return apiPost<Source>(`/api/sources/${id}/retry`)
 }
 
+export async function retryFormatting(id: string): Promise<Source> {
+  return apiPost<Source>(`/api/sources/${id}/formatting/retry`)
+}
+
 export async function deleteSource(id: string): Promise<void> {
   await apiDelete(`/api/sources/${id}`)
 }
