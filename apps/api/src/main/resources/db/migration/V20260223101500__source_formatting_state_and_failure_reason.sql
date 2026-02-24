@@ -14,10 +14,12 @@ UPDATE sources
 SET metadata_formatting_state = CASE
     WHEN COALESCE(metadata_ai_formatted, FALSE) THEN 'SUCCEEDED'
     ELSE 'PENDING'
-END;
+END
+WHERE content_text IS NOT NULL;
 
 UPDATE shared_source_snapshots
 SET metadata_formatting_state = CASE
     WHEN COALESCE(metadata_ai_formatted, FALSE) THEN 'SUCCEEDED'
     ELSE 'PENDING'
-END;
+END
+WHERE content_text IS NOT NULL;

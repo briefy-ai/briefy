@@ -34,7 +34,7 @@ export function useSourceData(sourceId: string) {
     : false
 
   usePolling({
-    enabled: Boolean(source && isFormattingPending),
+    enabled: Boolean(source && source.status === 'active' && isFormattingPending),
     intervalMs: 2000,
     fetch: () => getSource(sourceId),
     onSuccess: (data) => setSource(data),
