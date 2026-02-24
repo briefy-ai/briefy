@@ -77,6 +77,8 @@ class SourceControllerTest {
             .andExpect(jsonPath("$.metadata.title").value("Test Article Title"))
             .andExpect(jsonPath("$.metadata.author").value("Test Author"))
             .andExpect(jsonPath("$.metadata.estimatedReadingTime").isNumber)
+            .andExpect(jsonPath("$.metadata.formattingState").value("pending"))
+            .andExpect(jsonPath("$.metadata.formattingFailureReason").isEmpty)
             .andExpect(jsonPath("$.reuse.usedCache").value(false))
             .andExpect(jsonPath("$.id").isString)
             .andExpect(jsonPath("$.createdAt").isString)
@@ -236,6 +238,22 @@ class SourceControllerTest {
 
         // Try to retry an active source
         mockMvc.perform(post("/api/sources/$id/retry"))
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `POST formatting retry returns 404 for unknown id`() {
+        mockMvc.perform(post("/api/sources/00000000-0000-0000-0000-000000000000/formatting/retry"))
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `POST formatting retry returns bad request when formatting is not failed`() {
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
+
+        val id = createSource("https://retry-formatting-test.com/article")
+
+        mockMvc.perform(post("/api/sources/$id/formatting/retry"))
             .andExpect(status().isBadRequest)
     }
 

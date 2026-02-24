@@ -173,6 +173,47 @@ class SourceService(
     }
 
     @Transactional
+    fun retryFormatting(id: UUID): SourceResponse {
+        val userId = currentUserProvider.requireUserId()
+        logger.info("[service] Retrying formatting userId={} sourceId={}", userId, id)
+        val source = sourceRepository.findByIdAndUserId(id, userId)
+            ?: throw SourceNotFoundException(id)
+
+        if (source.status != SourceStatus.ACTIVE) {
+            throw InvalidSourceStateException("Can only retry formatting for active sources. Current status: ${source.status}")
+        }
+
+        val metadata = source.metadata
+            ?: throw InvalidSourceStateException("Can only retry formatting when source metadata is available")
+        if (metadata.formattingState != FormattingState.FAILED) {
+            throw InvalidSourceStateException(
+                "Can only retry formatting for failed formatting. Current formatting state: ${metadata.formattingState}"
+            )
+        }
+
+        val provider = parseExtractionProvider(metadata.extractionProvider)
+            ?: throw InvalidSourceStateException("Cannot retry formatting because extraction provider is unavailable")
+
+        source.metadata = metadata.withFormattingState(FormattingState.PENDING)
+        source.updatedAt = Instant.now()
+        sourceRepository.save(source)
+        eventPublisher.publishEvent(
+            SourceContentFormattingRequestedEvent(
+                sourceId = source.id,
+                userId = source.userId,
+                extractorId = provider
+            )
+        )
+        logger.info(
+            "[service] Published formatting retry sourceId={} userId={} extractorId={}",
+            source.id,
+            source.userId,
+            provider
+        )
+        return source.toResponse()
+    }
+
+    @Transactional
     fun processQueuedExtraction(sourceId: UUID, userId: UUID): SourceResponse {
         val source = sourceRepository.findByIdAndUserId(sourceId, userId)
             ?: throw SourceNotFoundException(sourceId)
@@ -509,11 +550,21 @@ class SourceService(
     private fun maybeRequestAsyncFormatting(source: Source): Boolean {
         val metadata = source.metadata ?: return false
         if (metadata.aiFormatted) {
+            if (metadata.formattingState != FormattingState.SUCCEEDED || metadata.formattingFailureReason != null) {
+                source.metadata = metadata.withFormattingState(FormattingState.SUCCEEDED)
+                source.updatedAt = Instant.now()
+                sourceRepository.save(source)
+            }
             return false
         }
 
         val provider = parseExtractionProvider(metadata.extractionProvider)
         if (provider == null) {
+            if (metadata.formattingState != FormattingState.NOT_REQUIRED || metadata.formattingFailureReason != null) {
+                source.metadata = metadata.withFormattingState(FormattingState.NOT_REQUIRED)
+                source.updatedAt = Instant.now()
+                sourceRepository.save(source)
+            }
             logger.info(
                 "[service] Skip formatting request sourceId={} reason=unknown_or_missing_provider provider={}",
                 source.id,

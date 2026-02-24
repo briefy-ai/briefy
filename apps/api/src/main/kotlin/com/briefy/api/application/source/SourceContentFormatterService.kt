@@ -3,6 +3,7 @@ package com.briefy.api.application.source
 import com.briefy.api.application.settings.AiModelSelection
 import com.briefy.api.application.settings.UserAiSettingsService
 import com.briefy.api.domain.knowledgegraph.source.Content
+import com.briefy.api.domain.knowledgegraph.source.FormattingState
 import com.briefy.api.domain.knowledgegraph.source.Metadata
 import com.briefy.api.domain.knowledgegraph.source.SharedSourceSnapshot
 import com.briefy.api.domain.knowledgegraph.source.SharedSourceSnapshotRepository
@@ -53,12 +54,20 @@ class SourceContentFormatterService(
         }
 
         if (metadata.aiFormatted) {
+            if (metadata.formattingState != FormattingState.SUCCEEDED || metadata.formattingFailureReason != null) {
+                source.metadata = metadata.withFormattingState(FormattingState.SUCCEEDED)
+                source.updatedAt = Instant.now()
+                sourceRepository.save(source)
+            }
             logger.info("[formatter] skipped sourceId={} userId={} extractorId={} reason=already_formatted", sourceId, userId, extractorId)
             publishSourceContentFinalizedEvent(source.id, source.userId)
             return
         }
 
         if (extractorId == ExtractionProviderId.YOUTUBE && !metadata.transcriptSource.equals("captions", ignoreCase = true)) {
+            source.metadata = metadata.withFormattingState(FormattingState.NOT_REQUIRED)
+            source.updatedAt = Instant.now()
+            sourceRepository.save(source)
             logger.info(
                 "[formatter] skipped sourceId={} userId={} extractorId={} reason=youtube_non_caption_transcript transcriptSource={}",
                 sourceId,
@@ -72,25 +81,52 @@ class SourceContentFormatterService(
 
         val formatter = extractionContentFormatters.firstOrNull { it.supports(extractorId) }
         if (formatter == null) {
+            source.metadata = metadata.withFormattingState(FormattingState.NOT_REQUIRED)
+            source.updatedAt = Instant.now()
+            sourceRepository.save(source)
             logger.info("[formatter] skipped sourceId={} userId={} extractorId={} reason=unsupported_extractor", sourceId, userId, extractorId)
             publishSourceContentFinalizedEvent(source.id, source.userId)
             return
         }
 
-        val aiSelection = resolveModelSelection(sourceId, userId, extractorId)
-        if (aiSelection == null) {
+        val aiSelection = try {
+            resolveModelSelection(extractorId, userId)
+        } catch (e: Exception) {
+            source.metadata = metadata.withFormattingState(FormattingState.FAILED, REASON_AI_SETTINGS_RESOLUTION_FAILED)
+            source.updatedAt = Instant.now()
+            sourceRepository.save(source)
+            logger.warn(
+                "[formatter] formatting_failed sourceId={} userId={} extractorId={} reason={}",
+                sourceId,
+                userId,
+                extractorId,
+                REASON_AI_SETTINGS_RESOLUTION_FAILED,
+                e
+            )
             return
         }
 
         val formattedText = try {
             formatter.format(content.text, aiSelection.provider, aiSelection.model)
         } catch (e: Exception) {
-            logger.warn("[formatter] formatting_failed sourceId={} userId={} extractorId={} reason=llm_error", sourceId, userId, extractorId, e)
+            source.metadata = metadata.withFormattingState(FormattingState.FAILED, REASON_LLM_ERROR)
+            source.updatedAt = Instant.now()
+            sourceRepository.save(source)
+            logger.warn("[formatter] formatting_failed sourceId={} userId={} extractorId={} reason={}", sourceId, userId, extractorId, REASON_LLM_ERROR, e)
             return
         }
 
         if (formattedText.isBlank()) {
-            logger.warn("[formatter] formatting_failed sourceId={} userId={} extractorId={} reason=empty_formatted_content", sourceId, userId, extractorId)
+            source.metadata = metadata.withFormattingState(FormattingState.FAILED, REASON_EMPTY_FORMATTED_CONTENT)
+            source.updatedAt = Instant.now()
+            sourceRepository.save(source)
+            logger.warn(
+                "[formatter] formatting_failed sourceId={} userId={} extractorId={} reason={}",
+                sourceId,
+                userId,
+                extractorId,
+                REASON_EMPTY_FORMATTED_CONTENT
+            )
             return
         }
 
@@ -103,6 +139,8 @@ class SourceContentFormatterService(
             wordCount = formattedContent.wordCount,
             aiFormatted = true,
             extractionProvider = metadata.extractionProvider,
+            formattingState = FormattingState.SUCCEEDED,
+            formattingFailureReason = null,
             videoId = metadata.videoId,
             videoEmbedUrl = metadata.videoEmbedUrl,
             videoDurationSeconds = metadata.videoDurationSeconds,
@@ -196,26 +234,14 @@ class SourceContentFormatterService(
         )
     }
 
-    private fun resolveModelSelection(sourceId: UUID, userId: UUID, extractorId: ExtractionProviderId): AiModelSelection? {
+    private fun resolveModelSelection(extractorId: ExtractionProviderId, userId: UUID): AiModelSelection {
         if (extractorId == ExtractionProviderId.YOUTUBE) {
             return AiModelSelection(
                 provider = YOUTUBE_FORMATTER_PROVIDER,
                 model = YOUTUBE_FORMATTER_MODEL
             )
         }
-
-        return try {
-            userAiSettingsService.resolveUseCaseSelection(userId, UserAiSettingsService.SOURCE_FORMATTING)
-        } catch (e: Exception) {
-            logger.warn(
-                "[formatter] formatting_failed sourceId={} userId={} extractorId={} reason=ai_settings_resolution_failed",
-                sourceId,
-                userId,
-                extractorId,
-                e
-            )
-            null
-        }
+        return userAiSettingsService.resolveUseCaseSelection(userId, UserAiSettingsService.SOURCE_FORMATTING)
     }
 
     private fun publishSourceContentFinalizedEvent(sourceId: UUID, userId: UUID) {
@@ -230,5 +256,8 @@ class SourceContentFormatterService(
     companion object {
         private const val YOUTUBE_FORMATTER_PROVIDER = "google_genai"
         private const val YOUTUBE_FORMATTER_MODEL = "gemini-2.5-flash-lite"
+        private const val REASON_AI_SETTINGS_RESOLUTION_FAILED = "ai_settings_resolution_failed"
+        private const val REASON_LLM_ERROR = "llm_error"
+        private const val REASON_EMPTY_FORMATTED_CONTENT = "empty_formatted_content"
     }
 }

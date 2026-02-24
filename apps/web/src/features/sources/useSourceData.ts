@@ -25,10 +25,16 @@ export function useSourceData(sourceId: string) {
     void fetchSource()
   }, [fetchSource])
 
-  const isFormattingPending = source?.metadata?.aiFormatted === false
+  const metadata = source?.metadata ?? null
+  const formattingState = (metadata as (typeof metadata & { formattingState?: string }) | null)?.formattingState
+  const isFormattingPending = metadata
+    ? formattingState
+      ? formattingState === 'pending'
+      : metadata.aiFormatted === false
+    : false
 
   usePolling({
-    enabled: Boolean(source && isFormattingPending),
+    enabled: Boolean(source && source.status === 'active' && isFormattingPending),
     intervalMs: 2000,
     fetch: () => getSource(sourceId),
     onSuccess: (data) => setSource(data),

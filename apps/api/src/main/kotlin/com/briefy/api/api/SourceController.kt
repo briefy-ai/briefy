@@ -56,6 +56,14 @@ class SourceController(
         return ResponseEntity.ok(source)
     }
 
+    @PostMapping("/{id}/formatting/retry")
+    fun retryFormatting(@PathVariable id: UUID): ResponseEntity<SourceResponse> {
+        logger.info("[controller] Retry formatting request received sourceId={}", id)
+        val source = sourceService.retryFormatting(id)
+        logger.info("[controller] Retry formatting request completed sourceId={} status={}", source.id, source.status)
+        return ResponseEntity.ok(source)
+    }
+
     @DeleteMapping("/{id}")
     fun deleteSource(@PathVariable id: UUID): ResponseEntity<Unit> {
         logger.info("[controller] Delete source request received sourceId={}", id)

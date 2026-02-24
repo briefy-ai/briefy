@@ -8,12 +8,22 @@ interface SourceContentProps {
   source: Source
   showRawContent: boolean
   onSeeRawContent: () => void
+  onRetryFormatting: () => void
+  retryFormattingLoading: boolean
 }
 
-export function SourceContentSection({ source, showRawContent, onSeeRawContent }: SourceContentProps) {
+export function SourceContentSection({
+  source,
+  showRawContent,
+  onSeeRawContent,
+  onRetryFormatting,
+  retryFormattingLoading,
+}: SourceContentProps) {
   const isYouTubeSource = source.url.platform === 'youtube'
-  const isFormattingPending = source.metadata?.aiFormatted === false
-  const shouldGateContent = isFormattingPending && !showRawContent
+  const rawFormattingState = (source.metadata as (typeof source.metadata & { formattingState?: string }) | null)?.formattingState
+  const formattingState = rawFormattingState ?? (source.metadata?.aiFormatted === false ? 'pending' : 'succeeded')
+  const shouldGatePending = formattingState === 'pending' && !showRawContent
+  const shouldShowFormattingFailed = formattingState === 'failed' && !showRawContent
   const videoEmbedUrl = source.metadata?.videoEmbedUrl
 
   const transcriptMeta = [
@@ -50,8 +60,15 @@ export function SourceContentSection({ source, showRawContent, onSeeRawContent }
         </div>
       )}
 
-      {shouldGateContent ? (
+      {shouldGatePending ? (
         <FormattingPendingNotice onSeeRawContent={onSeeRawContent} />
+      ) : shouldShowFormattingFailed ? (
+        <FormattingFailedNotice
+          onRetryFormatting={onRetryFormatting}
+          onSeeRawContent={onSeeRawContent}
+          retryFormattingLoading={retryFormattingLoading}
+          failureReason={source.metadata?.formattingFailureReason}
+        />
       ) : source.content?.text ? (
         <article className="animate-slide-up" style={staggerDelay(3)}>
           <div className="border-t border-border/40 pt-8">
@@ -92,6 +109,43 @@ function FormattingPendingNotice({ onSeeRawContent }: { onSeeRawContent: () => v
           <Button type="button" variant="secondary" size="sm" onClick={onSeeRawContent}>
             See raw content
           </Button>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+interface FormattingFailedNoticeProps {
+  onRetryFormatting: () => void
+  onSeeRawContent: () => void
+  retryFormattingLoading: boolean
+  failureReason: string | null | undefined
+}
+
+function FormattingFailedNotice({
+  onRetryFormatting,
+  onSeeRawContent,
+  retryFormattingLoading,
+  failureReason,
+}: FormattingFailedNoticeProps) {
+  const detail = failureReason ? `Reason: ${failureReason.replaceAll('_', ' ')}` : 'Formatting did not complete.'
+
+  return (
+    <div className="animate-slide-up" style={staggerDelay(3)}>
+      <section className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-destructive">Source formatting failed.</p>
+            <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onRetryFormatting} disabled={retryFormattingLoading}>
+              {retryFormattingLoading ? 'Retrying...' : 'Retry formatting'}
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={onSeeRawContent}>
+              See raw content
+            </Button>
+          </div>
         </div>
       </section>
     </div>
