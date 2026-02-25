@@ -139,7 +139,7 @@ function removeMessageById(messages: ChatMessage[], id: string): ChatMessage[] {
 }
 
 export function mergeBriefingMessages(messages: ChatMessage[], briefing: BriefingResponse): ChatMessage[] {
-  let nextMessages = messages
+  let nextMessages: ChatMessage[] = messages.filter((message) => message.type !== 'intent_selector')
   const planPreviewId = `plan_preview:${briefing.id}`
   const stepProgressId = `step_progress:${briefing.id}`
 

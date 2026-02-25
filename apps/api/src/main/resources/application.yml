@@ -131,6 +131,10 @@ telegram:
       max-attempts: ${TELEGRAM_INGESTION_WORKER_MAX_ATTEMPTS:3}
 
 briefing:
+  planning:
+    enabled: ${BRIEFING_PLANNING_ENABLED:true}
+    provider: ${BRIEFING_PLANNING_PROVIDER:google_genai}
+    model: ${BRIEFING_PLANNING_MODEL:gemini-2.5-flash}
   generation:
     enabled: ${BRIEFING_GENERATION_ENABLED:true}
     worker:
