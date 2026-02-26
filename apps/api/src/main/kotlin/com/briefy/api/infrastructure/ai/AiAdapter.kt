@@ -30,7 +30,7 @@ class AiAdapter(
     private val minimaxChatApiKey: String,
     @param:Value("\${spring.ai.minimax.chat.base-url:https://api.minimax.chat}")
     private val minimaxChatBaseUrl: String,
-    @param:Value("\${spring.ai.minimax.chat.options.model:MiniMax-M2.5}")
+    @param:Value("\${spring.ai.minimax.chat.options.model:abab6.5g-chat}")
     private val minimaxDefaultModel: String,
     @param:Value("\${spring.ai.google.genai.api-key:}")
     private val googleGenAiApiKey: String
@@ -49,7 +49,7 @@ class AiAdapter(
         }
         if (minimaxChatApiKey.isNotBlank()) {
             models["minimax"] = MiniMaxChatModel(
-                MiniMaxApi(minimaxChatApiKey, minimaxChatBaseUrl, restClientBuilder),
+                MiniMaxApi(minimaxChatBaseUrl, minimaxChatApiKey, restClientBuilder),
                 MiniMaxChatOptions.builder().model(minimaxDefaultModel).build()
             )
         }

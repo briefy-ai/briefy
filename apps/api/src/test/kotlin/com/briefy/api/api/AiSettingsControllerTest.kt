@@ -81,11 +81,11 @@ class AiSettingsControllerTest {
         mockMvc.perform(
             put("/api/settings/ai/use-cases/source_formatting")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"provider":"minimax","model":"MiniMax-M2.5"}""")
+                .content("""{"provider":"minimax","model":"abab6.5g-chat"}""")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.useCases[1].provider").value("minimax"))
-            .andExpect(jsonPath("$.useCases[1].model").value("MiniMax-M2.5"))
+            .andExpect(jsonPath("$.useCases[1].model").value("abab6.5g-chat"))
     }
 
     @Test
@@ -93,7 +93,7 @@ class AiSettingsControllerTest {
         mockMvc.perform(
             put("/api/settings/ai/use-cases/source_formatting")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"provider":"minimax","model":"minimax/minimax-m2.5"}""")
+                .content("""{"provider":"minimax","model":"MiniMax-M2.5"}""")
         )
             .andExpect(status().isBadRequest)
     }

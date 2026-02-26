@@ -185,7 +185,12 @@ class UserAiSettingsService(
             "glm-5"
         )
         val MINIMAX_MODELS = listOf(
-            "MiniMax-M2.5"
+            "abab6.5g-chat",
+            "abab5.5-chat",
+            "abab5.5s-chat",
+            "abab6.5-chat",
+            "abab6.5t-chat",
+            "abab6.5s-chat"
         )
 
         private val USE_CASES = setOf(TOPIC_EXTRACTION, SOURCE_FORMATTING)
