@@ -24,6 +24,7 @@ import java.util.UUID
 @TestPropertySource(
     properties = [
         "spring.ai.zhipuai.api-key=test-zhipu-key",
+        "spring.ai.minimax.api-key=test-minimax-key",
         "spring.ai.google.genai.api-key=test-google-key"
     ]
 )
@@ -46,8 +47,9 @@ class AiSettingsControllerTest {
     fun `GET ai settings includes providers and use cases`() {
         mockMvc.perform(get("/api/settings/ai"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.providers[0].id").value("zhipuai"))
-            .andExpect(jsonPath("$.providers[1].id").value("google_genai"))
+            .andExpect(jsonPath("$.providers[?(@.id=='zhipuai')]").isNotEmpty)
+            .andExpect(jsonPath("$.providers[?(@.id=='google_genai')]").isNotEmpty)
+            .andExpect(jsonPath("$.providers[?(@.id=='minimax')]").isNotEmpty)
             .andExpect(jsonPath("$.useCases[0].id").value("topic_extraction"))
             .andExpect(jsonPath("$.useCases[1].id").value("source_formatting"))
     }
@@ -70,6 +72,28 @@ class AiSettingsControllerTest {
             put("/api/settings/ai/use-cases/topic_extraction")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"provider":"google_genai","model":"glm-4.7"}""")
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `PUT ai use case updates to minimax provider and model`() {
+        mockMvc.perform(
+            put("/api/settings/ai/use-cases/source_formatting")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"minimax","model":"MiniMax-M2.5"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.useCases[1].provider").value("minimax"))
+            .andExpect(jsonPath("$.useCases[1].model").value("MiniMax-M2.5"))
+    }
+
+    @Test
+    fun `PUT ai use case rejects invalid minimax model`() {
+        mockMvc.perform(
+            put("/api/settings/ai/use-cases/source_formatting")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"minimax","model":"minimax/minimax-m2.5"}""")
         )
             .andExpect(status().isBadRequest)
     }

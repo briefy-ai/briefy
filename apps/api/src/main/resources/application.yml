@@ -30,6 +30,12 @@ spring:
         base-url: ${ZHIPUAI_CHAT_BASE_URL:${ZHIPUAI_BASE_URL:https://api.z.ai/api/paas}}
         options:
           model: ${ZHIPUAI_CHAT_MODEL:glm-4.7-flash}
+    minimax:
+      api-key: ${MINIMAX_API_KEY:}
+      chat:
+        api-key: ${MINIMAX_CHAT_API_KEY:${MINIMAX_API_KEY:}}
+        options:
+          model: ${MINIMAX_CHAT_MODEL:MiniMax-M2.5}
     google:
       genai:
         api-key: ${GOOGLE_GENAI_API_KEY:}

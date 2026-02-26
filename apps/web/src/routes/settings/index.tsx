@@ -19,6 +19,7 @@ import {
 } from '@/lib/api/settings'
 import { requireAuth } from '@/lib/auth/requireAuth'
 import type {
+  AiProviderId,
   AiProviderDto,
   AiUseCaseId,
   AiUseCaseSettingDto,
@@ -51,9 +52,9 @@ function SettingsPage() {
   const [xApiEnabled, setXApiEnabled] = useState(false)
   const [xApiToken, setXApiToken] = useState('')
   const [showXApiToken, setShowXApiToken] = useState(false)
-  const [topicProvider, setTopicProvider] = useState<string>('zhipuai')
+  const [topicProvider, setTopicProvider] = useState<AiProviderId>('zhipuai')
   const [topicModel, setTopicModel] = useState<string>('')
-  const [formatterProvider, setFormatterProvider] = useState<string>('zhipuai')
+  const [formatterProvider, setFormatterProvider] = useState<AiProviderId>('zhipuai')
   const [formatterModel, setFormatterModel] = useState<string>('')
   const [telegramStatus, setTelegramStatus] = useState<TelegramLinkStatusResponse | null>(null)
   const [telegramLinkCode, setTelegramLinkCode] = useState<string | null>(null)
@@ -218,7 +219,7 @@ function SettingsPage() {
 
   const handleProviderChange = (
     useCase: AiUseCaseId,
-    providerId: string
+    providerId: AiProviderId
   ) => {
     const provider = aiProviders.find((item) => item.id === providerId)
     const fallbackModel = provider?.models[0]?.id ?? ''
@@ -245,7 +246,7 @@ function SettingsPage() {
     setSuccessMessage(null)
     try {
       const data = await updateAiUseCase(useCase, {
-        provider: provider as 'zhipuai' | 'google_genai',
+        provider,
         model,
       })
       setAiProviders(data.providers)
@@ -559,7 +560,7 @@ function SettingsPage() {
                   <label className="text-sm font-medium">Provider</label>
                   <Select
                     value={topicProvider}
-                    onValueChange={(value) => handleProviderChange('topic_extraction', value)}
+                    onValueChange={(value) => handleProviderChange('topic_extraction', value as AiProviderId)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a provider" />
@@ -615,7 +616,7 @@ function SettingsPage() {
                   <label className="text-sm font-medium">Provider</label>
                   <Select
                     value={formatterProvider}
-                    onValueChange={(value) => handleProviderChange('source_formatting', value)}
+                    onValueChange={(value) => handleProviderChange('source_formatting', value as AiProviderId)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select a provider" />
