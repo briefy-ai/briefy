@@ -13,10 +13,10 @@ import java.util.UUID
 class UserAiSettingsService(
     private val userAiSettingsRepository: UserAiSettingsRepository,
     private val idGenerator: IdGenerator,
-    @param:Value("\${spring.ai.model.chat:none}")
-    private val chatProvider: String,
     @param:Value("\${spring.ai.zhipuai.api-key:}")
     private val zhipuApiKey: String,
+    @param:Value("\${spring.ai.minimax.api-key:}")
+    private val minimaxApiKey: String,
     @param:Value("\${spring.ai.google.genai.api-key:}")
     private val googleGenAiApiKey: String
 ) {
@@ -107,14 +107,21 @@ class UserAiSettingsService(
                 label = "Google GenAI",
                 configured = isProviderConfigured(PROVIDER_GOOGLE_GENAI),
                 models = GOOGLE_GENAI_MODELS.map { AiModelDto(id = it, label = it) }
+            ),
+            AiProviderDto(
+                id = PROVIDER_MINIMAX,
+                label = "MiniMax",
+                configured = isProviderConfigured(PROVIDER_MINIMAX),
+                models = MINIMAX_MODELS.map { AiModelDto(id = it, label = it) }
             )
         )
     }
 
     private fun isProviderConfigured(provider: String): Boolean {
         return when (provider) {
-            PROVIDER_ZHIPUAI -> zhipuApiKey.isNotBlank() && chatProvider.equals("zhipuai", ignoreCase = true)
+            PROVIDER_ZHIPUAI -> zhipuApiKey.isNotBlank()
             PROVIDER_GOOGLE_GENAI -> googleGenAiApiKey.isNotBlank()
+            PROVIDER_MINIMAX -> minimaxApiKey.isNotBlank()
             else -> false
         }
     }
@@ -127,6 +134,7 @@ class UserAiSettingsService(
         val allowedModels = when (provider) {
             PROVIDER_ZHIPUAI -> ZHIPU_MODELS
             PROVIDER_GOOGLE_GENAI -> GOOGLE_GENAI_MODELS
+            PROVIDER_MINIMAX -> MINIMAX_MODELS
             else -> throw IllegalArgumentException("Unsupported provider '$provider'")
         }
         require(model in allowedModels) { "Model '$model' is not supported for provider '$provider'" }
@@ -159,6 +167,7 @@ class UserAiSettingsService(
 
         const val PROVIDER_ZHIPUAI = "zhipuai"
         const val PROVIDER_GOOGLE_GENAI = "google_genai"
+        const val PROVIDER_MINIMAX = "minimax"
 
         const val DEFAULT_TOPIC_PROVIDER = PROVIDER_ZHIPUAI
         const val DEFAULT_TOPIC_MODEL = "glm-4.7-flash"
@@ -174,6 +183,9 @@ class UserAiSettingsService(
             "glm-4.7-flash",
             "glm-4.7",
             "glm-5"
+        )
+        val MINIMAX_MODELS = listOf(
+            "MiniMax-M2.5"
         )
 
         private val USE_CASES = setOf(TOPIC_EXTRACTION, SOURCE_FORMATTING)

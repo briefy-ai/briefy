@@ -172,7 +172,7 @@ export interface TelegramLinkCodeResponse {
   instructions: string
 }
 
-export type AiProviderId = 'zhipuai' | 'google_genai'
+export type AiProviderId = 'zhipuai' | 'google_genai' | 'minimax'
 export type AiUseCaseId = 'topic_extraction' | 'source_formatting'
 
 export interface AiModelDto {

@@ -1,10 +1,15 @@
 package com.briefy.api.infrastructure.ai
 
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.ObjectProvider
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.prompt.DefaultChatOptions
+import org.springframework.ai.minimax.MiniMaxChatModel
+import org.springframework.ai.minimax.MiniMaxChatOptions
+import org.springframework.ai.minimax.api.MiniMaxApi
+import org.springframework.ai.zhipuai.ZhiPuAiChatModel
+import org.springframework.ai.zhipuai.ZhiPuAiChatOptions
+import org.springframework.ai.zhipuai.api.ZhiPuAiApi
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
@@ -13,13 +18,43 @@ import java.nio.charset.StandardCharsets
 
 @Component
 class AiAdapter(
-    private val chatModelProvider: ObjectProvider<ChatModel>,
     private val restClientBuilder: RestClient.Builder,
     private val aiCallObserver: AiCallObserver,
+    @param:Value("\${spring.ai.zhipuai.chat.api-key:}")
+    private val zhipuChatApiKey: String,
+    @param:Value("\${spring.ai.zhipuai.chat.base-url:https://api.z.ai/api/paas}")
+    private val zhipuChatBaseUrl: String,
+    @param:Value("\${spring.ai.zhipuai.chat.options.model:glm-4.7-flash}")
+    private val zhipuDefaultModel: String,
+    @param:Value("\${spring.ai.minimax.chat.api-key:}")
+    private val minimaxChatApiKey: String,
+    @param:Value("\${spring.ai.minimax.chat.base-url:https://api.minimax.chat}")
+    private val minimaxChatBaseUrl: String,
+    @param:Value("\${spring.ai.minimax.chat.options.model:MiniMax-M2.5}")
+    private val minimaxDefaultModel: String,
     @param:Value("\${spring.ai.google.genai.api-key:}")
     private val googleGenAiApiKey: String
 ) {
     private val logger = LoggerFactory.getLogger(AiAdapter::class.java)
+    private val springChatModels: Map<String, ChatModel> by lazy {
+        val models = mutableMapOf<String, ChatModel>()
+        if (zhipuChatApiKey.isNotBlank()) {
+            models["zhipuai"] = ZhiPuAiChatModel(
+                ZhiPuAiApi.builder()
+                    .apiKey(zhipuChatApiKey)
+                    .baseUrl(zhipuChatBaseUrl)
+                    .build(),
+                ZhiPuAiChatOptions.builder().model(zhipuDefaultModel).build()
+            )
+        }
+        if (minimaxChatApiKey.isNotBlank()) {
+            models["minimax"] = MiniMaxChatModel(
+                MiniMaxApi(minimaxChatApiKey, minimaxChatBaseUrl, restClientBuilder),
+                MiniMaxChatOptions.builder().model(minimaxDefaultModel).build()
+            )
+        }
+        models
+    }
 
     fun complete(
         provider: String,
@@ -48,17 +83,28 @@ class AiAdapter(
             systemPrompt = systemPrompt
         ) {
             when (provider.trim().lowercase()) {
-                "zhipuai" -> completeWithSpringChatModel(prompt = prompt, systemPrompt = systemPrompt, model = model)
+                "zhipuai", "minimax" -> completeWithSpringChatModel(
+                    provider = provider,
+                    prompt = prompt,
+                    systemPrompt = systemPrompt,
+                    model = model
+                )
                 "google_genai" -> completeWithGoogleGenAi(prompt = prompt, systemPrompt = systemPrompt, model = model)
                 else -> throw IllegalArgumentException("Unsupported AI provider '$provider'")
             }
         }
     }
 
-    private fun completeWithSpringChatModel(prompt: String, systemPrompt: String?, model: String): String {
-        val chatModel = chatModelProvider.ifAvailable
+    private fun completeWithSpringChatModel(
+        provider: String,
+        prompt: String,
+        systemPrompt: String?,
+        model: String
+    ): String {
+        val chatModel = springChatModels[provider.trim().lowercase()]
             ?: throw IllegalStateException(
-                "ZhipuAI chat model is not configured. Set LLM_PROVIDER=zhipuai and ZHIPUAI_API_KEY."
+                "Spring AI chat model is not configured for provider '$provider'. " +
+                    "Set the matching provider API key."
             )
 
         val promptSpec = ChatClient.builder(chatModel).build().prompt().also {

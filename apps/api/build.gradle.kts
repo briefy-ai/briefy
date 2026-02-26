@@ -45,6 +45,7 @@ dependencies {
 	implementation("org.flywaydb:flyway-database-postgresql")
 	implementation("org.jetbrains.kotlin:kotlin-reflect")
 	implementation("org.springframework.ai:spring-ai-starter-model-zhipuai")
+	implementation("org.springframework.ai:spring-ai-starter-model-minimax")
 	implementation("org.jsoup:jsoup:1.17.2")
 	implementation("com.github.f4b6a3:uuid-creator:6.1.1")
 	implementation("org.telegram:telegrambots-springboot-webhook-starter:9.3.0")
