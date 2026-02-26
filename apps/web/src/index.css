@@ -332,6 +332,11 @@
     @apply bg-muted/20;
   }
 
+  .briefy-markdown img {
+    width: 100%;
+    height: auto;
+  }
+
   .source-annotation-highlight {
     @apply cursor-pointer rounded-[2px] bg-primary/30 transition-colors;
   }
