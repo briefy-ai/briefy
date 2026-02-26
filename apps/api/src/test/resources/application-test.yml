@@ -24,5 +24,7 @@ ai:
     enabled: false
 
 briefing:
+  planning:
+    enabled: false
   generation:
     enabled: false
