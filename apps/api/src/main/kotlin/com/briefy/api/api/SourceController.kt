@@ -64,6 +64,14 @@ class SourceController(
         return ResponseEntity.ok(source)
     }
 
+    @PostMapping("/{id}/topics/retry")
+    fun retryTopicExtraction(@PathVariable id: UUID): ResponseEntity<SourceResponse> {
+        logger.info("[controller] Retry topic extraction request received sourceId={}", id)
+        val source = sourceService.retryTopicExtraction(id)
+        logger.info("[controller] Retry topic extraction request completed sourceId={} status={}", source.id, source.status)
+        return ResponseEntity.ok(source)
+    }
+
     @DeleteMapping("/{id}")
     fun deleteSource(@PathVariable id: UUID): ResponseEntity<Unit> {
         logger.info("[controller] Delete source request received sourceId={}", id)

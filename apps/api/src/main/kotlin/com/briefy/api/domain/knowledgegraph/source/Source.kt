@@ -34,7 +34,14 @@ class Source(
     val createdAt: Instant = Instant.now(),
 
     @Column(name = "updated_at", nullable = false)
-    var updatedAt: Instant = Instant.now()
+    var updatedAt: Instant = Instant.now(),
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "topic_extraction_state", nullable = false, length = 30)
+    var topicExtractionState: TopicExtractionState = TopicExtractionState.PENDING,
+
+    @Column(name = "topic_extraction_failure_reason", length = 255)
+    var topicExtractionFailureReason: String? = null
 ) {
     fun startExtraction() {
         transitionTo(SourceStatus.EXTRACTING)
@@ -60,6 +67,24 @@ class Source(
 
     fun restore() {
         transitionTo(SourceStatus.ACTIVE)
+    }
+
+    fun markTopicExtractionPending() {
+        topicExtractionState = TopicExtractionState.PENDING
+        topicExtractionFailureReason = null
+        updatedAt = Instant.now()
+    }
+
+    fun markTopicExtractionSucceeded() {
+        topicExtractionState = TopicExtractionState.SUCCEEDED
+        topicExtractionFailureReason = null
+        updatedAt = Instant.now()
+    }
+
+    fun markTopicExtractionFailed(reason: String?) {
+        topicExtractionState = TopicExtractionState.FAILED
+        topicExtractionFailureReason = reason?.trim()?.take(255)?.ifBlank { null }
+        updatedAt = Instant.now()
     }
 
     private fun transitionTo(newStatus: SourceStatus) {
