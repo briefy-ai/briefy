@@ -1,5 +1,6 @@
 package com.briefy.api.api
 
+import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.infrastructure.extraction.ExtractionProvider
 import com.briefy.api.infrastructure.extraction.ExtractionProviderId
 import com.briefy.api.infrastructure.extraction.ExtractionProviderResolver
@@ -33,6 +34,9 @@ class SourceControllerTest {
 
     @Autowired
     lateinit var mockMvc: MockMvc
+
+    @Autowired
+    lateinit var sourceRepository: SourceRepository
 
     @MockitoBean
     lateinit var extractionProviderResolver: ExtractionProviderResolver
@@ -255,6 +259,38 @@ class SourceControllerTest {
 
         mockMvc.perform(post("/api/sources/$id/formatting/retry"))
             .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `POST topic extraction retry returns 404 for unknown id`() {
+        mockMvc.perform(post("/api/sources/00000000-0000-0000-0000-000000000000/topics/retry"))
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `POST topic extraction retry returns bad request when topic extraction is not failed`() {
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
+
+        val id = createSource("https://retry-topic-extraction-test.com/article")
+
+        mockMvc.perform(post("/api/sources/$id/topics/retry"))
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `POST topic extraction retry resets state to pending`() {
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
+        val id = createSource("https://retry-topic-extraction-failed-test.com/article")
+        val sourceId = UUID.fromString(id)
+        val source = sourceRepository.findByIdAndUserId(sourceId, testUserId)
+            ?: error("source not found")
+        source.markTopicExtractionFailed("generation_failed")
+        sourceRepository.save(source)
+
+        mockMvc.perform(post("/api/sources/$id/topics/retry"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.topicExtractionState").value("pending"))
+            .andExpect(jsonPath("$.topicExtractionFailureReason").isEmpty)
     }
 
     @Test

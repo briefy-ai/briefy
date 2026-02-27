@@ -1,6 +1,7 @@
 package com.briefy.api.application.topic
 
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivatedEvent
+import com.briefy.api.domain.knowledgegraph.source.event.SourceTopicExtractionRequestedEvent
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Component
@@ -21,6 +22,21 @@ class TopicSuggestionEventHandler(
             event.sourceId,
             event.userId,
             event.activationReason
+        )
+        topicSuggestionService.generateForSource(
+            sourceId = event.sourceId,
+            userId = event.userId
+        )
+    }
+
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    fun onTopicExtractionRequested(event: SourceTopicExtractionRequestedEvent) {
+        logger.info(
+            "[event] SourceTopicExtractionRequested sourceId={} userId={} occurredAt={}",
+            event.sourceId,
+            event.userId,
+            event.occurredAt
         )
         topicSuggestionService.generateForSource(
             sourceId = event.sourceId,

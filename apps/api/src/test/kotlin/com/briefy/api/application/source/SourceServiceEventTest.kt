@@ -9,6 +9,7 @@ import com.briefy.api.domain.knowledgegraph.source.SharedSourceSnapshot
 import com.briefy.api.domain.knowledgegraph.source.SharedSourceSnapshotStatus
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
+import com.briefy.api.domain.knowledgegraph.source.TopicExtractionState
 import com.briefy.api.domain.knowledgegraph.source.SourceType
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivatedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceActivationReason
@@ -16,6 +17,7 @@ import com.briefy.api.domain.knowledgegraph.source.event.SourceArchivedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFinalizedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFormattingRequestedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
+import com.briefy.api.domain.knowledgegraph.source.event.SourceTopicExtractionRequestedEvent
 import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
 import com.briefy.api.domain.knowledgegraph.topic.Topic
 import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkRepository
@@ -528,6 +530,43 @@ class SourceServiceEventTest {
 
         assertThrows<InvalidSourceStateException> {
             service.retryFormatting(source.id)
+        }
+
+        verify(sourceRepository, never()).save(any())
+        verify(eventPublisher, never()).publishEvent(any<Any>())
+    }
+
+    @Test
+    fun `retryTopicExtraction resets state to pending and publishes retry event`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId).apply {
+            markTopicExtractionFailed("generation_failed")
+        }
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+
+        val response = service.retryTopicExtraction(source.id)
+
+        assertEquals("active", response.status)
+        assertEquals(TopicExtractionState.PENDING, source.topicExtractionState)
+        assertEquals(null, source.topicExtractionFailureReason)
+        val eventCaptor = argumentCaptor<Any>()
+        verify(eventPublisher).publishEvent(eventCaptor.capture())
+        val retryEvent = eventCaptor.firstValue as SourceTopicExtractionRequestedEvent
+        assertEquals(source.id, retryEvent.sourceId)
+        assertEquals(userId, retryEvent.userId)
+    }
+
+    @Test
+    fun `retryTopicExtraction rejects when topic extraction is not failed`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId)
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+
+        assertThrows<InvalidSourceStateException> {
+            service.retryTopicExtraction(source.id)
         }
 
         verify(sourceRepository, never()).save(any())
