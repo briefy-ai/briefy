@@ -96,6 +96,12 @@ class UrlTest {
     }
 
     @Test
+    fun `detectPlatform identifies posthog`() {
+        assertEquals("posthog", Url.detectPlatform("https://posthog.com/blog/forward-deployed-engineer"))
+        assertEquals("posthog", Url.detectPlatform("https://eu.posthog.com/docs"))
+    }
+
+    @Test
     fun `detectPlatform returns web for unknown hosts`() {
         assertEquals("web", Url.detectPlatform("https://example.com/article"))
     }

@@ -2,6 +2,8 @@ package com.briefy.api.api
 
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.infrastructure.extraction.ExtractionProvider
+import com.briefy.api.infrastructure.extraction.ExtractionProviderException
+import com.briefy.api.infrastructure.extraction.ExtractionFailureReason
 import com.briefy.api.infrastructure.extraction.ExtractionProviderId
 import com.briefy.api.infrastructure.extraction.ExtractionProviderResolver
 import com.briefy.api.infrastructure.extraction.ExtractionResult
@@ -148,18 +150,21 @@ class SourceControllerTest {
 
     @Test
     fun `POST returns 422 when extraction fails`() {
-        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
-            .thenThrow(RuntimeException("Connection refused"))
-
-        // First call to create a unique URL that will fail on extraction
-        `when`(extractionProvider.extract(any())).thenThrow(RuntimeException("Connection refused"))
+        `when`(extractionProvider.extract(any())).thenThrow(
+            ExtractionProviderException(
+                providerId = ExtractionProviderId.FIRECRAWL,
+                reason = ExtractionFailureReason.UNSUPPORTED,
+                message = "Firecrawl API key is required to extract PostHog URLs. Enable Firecrawl in Settings and provide an API key."
+            )
+        )
 
         mockMvc.perform(
             post("/api/sources")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"url": "https://unreachable-test.com"}""")
+                .content("""{"url": "https://posthog.com/blog/forward-deployed-engineer"}""")
         )
             .andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.message").value("Firecrawl API key is required to extract PostHog URLs. Enable Firecrawl in Settings and provide an API key."))
     }
 
     @Test

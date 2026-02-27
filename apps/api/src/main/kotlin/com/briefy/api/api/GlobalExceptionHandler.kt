@@ -14,6 +14,7 @@ import com.briefy.api.application.topic.TopicAlreadyExistsException
 import com.briefy.api.application.topic.TopicAlreadyLinkedToSourceException
 import com.briefy.api.application.topic.TopicLinkNotFoundException
 import com.briefy.api.application.topic.TopicNotFoundException
+import com.briefy.api.infrastructure.extraction.ExtractionProviderException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -259,11 +260,12 @@ class GlobalExceptionHandler {
     @ExceptionHandler(ExtractionFailedException::class)
     fun handleExtractionFailed(ex: ExtractionFailedException): ResponseEntity<ErrorResponse> {
         logger.error("[exception] Extraction failed", ex)
+        val providerMessage = (ex.cause as? ExtractionProviderException)?.message
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
             .body(ErrorResponse(
                 status = HttpStatus.UNPROCESSABLE_ENTITY.value(),
                 error = "Unprocessable Entity",
-                message = ex.message ?: "Failed to extract content from URL"
+                message = providerMessage ?: ex.message ?: "Failed to extract content from URL"
             ))
     }
 
