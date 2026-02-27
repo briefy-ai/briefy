@@ -21,6 +21,7 @@ data class Url(
         private val PLATFORM_PATTERNS = mapOf(
             "youtube" to listOf("youtube.com", "youtu.be"),
             "twitter" to listOf("twitter.com", "x.com"),
+            "posthog" to listOf("posthog.com"),
             "reddit" to listOf("reddit.com"),
             "medium" to listOf("medium.com"),
             "substack" to listOf("substack.com"),

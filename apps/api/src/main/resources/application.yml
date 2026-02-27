@@ -67,6 +67,11 @@ extraction:
   firecrawl:
     base-url: ${FIRECRAWL_BASE_URL:https://api.firecrawl.dev}
     wait-for-ms: ${FIRECRAWL_WAIT_FOR_MS:1000}
+    agent:
+      model: ${FIRECRAWL_AGENT_MODEL:spark-1-mini}
+      poll-interval-ms: ${FIRECRAWL_AGENT_POLL_INTERVAL_MS:500}
+      max-wait-ms: ${FIRECRAWL_AGENT_MAX_WAIT_MS:45000}
+      max-credits: ${FIRECRAWL_AGENT_MAX_CREDITS:0}
   x-api:
     base-url: ${X_API_BASE_URL:https://api.x.com}
     timeout-ms: ${X_API_TIMEOUT_MS:10000}

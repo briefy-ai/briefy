@@ -23,6 +23,10 @@ class ExtractionProviderResolver(
             return extractionProviderFactory.youtube()
         }
 
+        if (isPosthogPlatform(platform)) {
+            return resolveForPosthogPlatform(userId, platform)
+        }
+
         if (isXPlatform(platform)) {
             return resolveForXPlatform(userId, platform)
         }
@@ -98,6 +102,45 @@ class ExtractionProviderResolver(
         return extractionProviderFactory.jsoup()
     }
 
+    private fun resolveForPosthogPlatform(userId: UUID, platform: String): ExtractionProvider {
+        if (!userSettingsService.isFirecrawlEnabled(userId)) {
+            logger.info(
+                "[resolver] Extraction provider resolution failed userId={} platform={} provider={} reason=posthog_requires_firecrawl_configuration",
+                userId,
+                platform,
+                ExtractionProviderId.FIRECRAWL
+            )
+            throw ExtractionProviderException(
+                providerId = ExtractionProviderId.FIRECRAWL,
+                reason = ExtractionFailureReason.UNSUPPORTED,
+                message = "Firecrawl API key is required to extract PostHog URLs. Enable Firecrawl in Settings and provide an API key."
+            )
+        }
+
+        val apiKey = userSettingsService.getFirecrawlApiKey(userId)
+        if (apiKey.isNullOrBlank()) {
+            logger.info(
+                "[resolver] Extraction provider resolution failed userId={} platform={} provider={} reason=posthog_missing_firecrawl_key",
+                userId,
+                platform,
+                ExtractionProviderId.FIRECRAWL
+            )
+            throw ExtractionProviderException(
+                providerId = ExtractionProviderId.FIRECRAWL,
+                reason = ExtractionFailureReason.UNSUPPORTED,
+                message = "Firecrawl API key is required to extract PostHog URLs. Enable Firecrawl in Settings and provide an API key."
+            )
+        }
+
+        logger.info(
+            "[resolver] Extraction provider resolved userId={} platform={} provider={} reason=posthog_firecrawl_agent",
+            userId,
+            platform,
+            ExtractionProviderId.FIRECRAWL
+        )
+        return extractionProviderFactory.firecrawlAgent(apiKey)
+    }
+
     private fun shouldTryFirecrawl(platform: String): Boolean {
         return platform.lowercase() !in excludedPlatforms
     }
@@ -106,8 +149,13 @@ class ExtractionProviderResolver(
         return platform.lowercase() in xPlatforms
     }
 
+    private fun isPosthogPlatform(platform: String): Boolean {
+        return platform.lowercase() in posthogPlatforms
+    }
+
     companion object {
         private val excludedPlatforms = setOf("twitter", "x")
         private val xPlatforms = setOf("twitter", "x")
+        private val posthogPlatforms = setOf("posthog")
     }
 }

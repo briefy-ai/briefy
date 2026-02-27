@@ -157,6 +157,7 @@ class UserSettingsService(
 
         private val FIRECRAWL_PLATFORMS = listOf(
             "web",
+            "posthog",
             "medium",
             "substack",
             "arxiv",

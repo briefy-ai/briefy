@@ -2,8 +2,11 @@ package com.briefy.api.infrastructure.extraction
 
 import com.briefy.api.application.settings.UserSettingsService
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.util.UUID
 
@@ -14,6 +17,7 @@ class ExtractionProviderResolverTest {
     private val userId = UUID.randomUUID()
     private val jsoupProvider: ExtractionProvider = mock()
     private val firecrawlProvider: ExtractionProvider = mock()
+    private val firecrawlAgentProvider: ExtractionProvider = mock()
     private val xApiProvider: ExtractionProvider = mock()
     private val youtubeProvider: ExtractionProvider = mock()
 
@@ -66,5 +70,28 @@ class ExtractionProviderResolverTest {
         val provider = resolver.resolveProvider(userId, "web")
 
         assertSame(jsoupProvider, provider)
+    }
+
+    @Test
+    fun `returns firecrawl agent for posthog when configured`() {
+        whenever(settingsService.isFirecrawlEnabled(userId)).thenReturn(true)
+        whenever(settingsService.getFirecrawlApiKey(userId)).thenReturn("fc-key")
+        whenever(factory.firecrawlAgent("fc-key")).thenReturn(firecrawlAgentProvider)
+
+        val provider = resolver.resolveProvider(userId, "posthog")
+
+        assertSame(firecrawlAgentProvider, provider)
+    }
+
+    @Test
+    fun `throws when posthog and firecrawl is not configured`() {
+        whenever(settingsService.isFirecrawlEnabled(userId)).thenReturn(false)
+
+        val exception = org.junit.jupiter.api.assertThrows<ExtractionProviderException> {
+            resolver.resolveProvider(userId, "posthog")
+        }
+
+        assertTrue(exception.message!!.contains("Firecrawl API key is required"))
+        verify(factory, never()).jsoup()
     }
 }
