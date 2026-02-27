@@ -4,6 +4,7 @@ import com.briefy.api.application.settings.UserAiSettingsService
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
+import com.briefy.api.domain.knowledgegraph.source.TopicExtractionState
 import com.briefy.api.domain.knowledgegraph.topic.Topic
 import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
 import com.briefy.api.domain.knowledgegraph.topic.TopicStatus
@@ -49,15 +50,9 @@ class TopicSuggestionService(
 
         val candidates = try {
             generateCandidates(source, userId, existingActiveTopics)
-        } catch (e: IllegalStateException) {
-            logger.info(
-                "[topic-suggestions] skipped sourceId={} userId={} reason={}",
-                sourceId,
-                userId,
-                e.message
-            )
-            return
         } catch (e: Exception) {
+            source.markTopicExtractionFailed(REASON_GENERATION_FAILED)
+            sourceRepository.save(source)
             logger.warn(
                 "[topic-suggestions] generation failed sourceId={} userId={} reason={}",
                 sourceId,
@@ -68,6 +63,10 @@ class TopicSuggestionService(
         }
 
         if (candidates.isEmpty()) {
+            if (source.topicExtractionState != TopicExtractionState.SUCCEEDED || source.topicExtractionFailureReason != null) {
+                source.markTopicExtractionSucceeded()
+                sourceRepository.save(source)
+            }
             logger.info("[topic-suggestions] no suggestions sourceId={} userId={}", sourceId, userId)
             return
         }
@@ -109,6 +108,10 @@ class TopicSuggestionService(
             candidates.size,
             createdLinks
         )
+        if (source.topicExtractionState != TopicExtractionState.SUCCEEDED || source.topicExtractionFailureReason != null) {
+            source.markTopicExtractionSucceeded()
+            sourceRepository.save(source)
+        }
     }
 
     private fun generateCandidates(source: Source, userId: UUID, existingActiveTopics: List<Topic>): List<TopicCandidate> {
@@ -281,5 +284,6 @@ class TopicSuggestionService(
         private const val MAX_CONTENT_CHARS = 8_000
         private const val MAX_TOPIC_NAME_LENGTH = 200
         private const val MAX_EXISTING_TOPICS_IN_PROMPT = 100
+        private const val REASON_GENERATION_FAILED = "generation_failed"
     }
 }

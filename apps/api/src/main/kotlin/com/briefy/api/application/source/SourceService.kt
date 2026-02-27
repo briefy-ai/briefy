@@ -7,6 +7,7 @@ import com.briefy.api.domain.knowledgegraph.source.event.SourceActivationReason
 import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFinalizedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceContentFormattingRequestedEvent
 import com.briefy.api.domain.knowledgegraph.source.event.SourceRestoredEvent
+import com.briefy.api.domain.knowledgegraph.source.event.SourceTopicExtractionRequestedEvent
 import com.briefy.api.application.annotation.SourceAnnotationService
 import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
 import com.briefy.api.domain.knowledgegraph.topic.TopicStatus
@@ -214,6 +215,34 @@ class SourceService(
     }
 
     @Transactional
+    fun retryTopicExtraction(id: UUID): SourceResponse {
+        val userId = currentUserProvider.requireUserId()
+        logger.info("[service] Retrying topic extraction userId={} sourceId={}", userId, id)
+        val source = sourceRepository.findByIdAndUserId(id, userId)
+            ?: throw SourceNotFoundException(id)
+
+        if (source.status != SourceStatus.ACTIVE) {
+            throw InvalidSourceStateException("Can only retry topic extraction for active sources. Current status: ${source.status}")
+        }
+        if (source.topicExtractionState != TopicExtractionState.FAILED) {
+            throw InvalidSourceStateException(
+                "Can only retry topic extraction for failed extractions. Current topic extraction state: ${source.topicExtractionState}"
+            )
+        }
+
+        source.markTopicExtractionPending()
+        sourceRepository.save(source)
+        eventPublisher.publishEvent(
+            SourceTopicExtractionRequestedEvent(
+                sourceId = source.id,
+                userId = source.userId
+            )
+        )
+        logger.info("[service] Published topic extraction retry sourceId={} userId={}", source.id, source.userId)
+        return source.toResponse()
+    }
+
+    @Transactional
     fun processQueuedExtraction(sourceId: UUID, userId: UUID): SourceResponse {
         val source = sourceRepository.findByIdAndUserId(sourceId, userId)
             ?: throw SourceNotFoundException(sourceId)
@@ -408,6 +437,7 @@ class SourceService(
             )
 
             source.completeExtraction(content, metadata)
+            source.markTopicExtractionPending()
             sourceRepository.save(source)
             saveSharedSnapshot(source, Instant.now())
             eventPublisher.publishEvent(
@@ -514,6 +544,7 @@ class SourceService(
             sourceType = latestSnapshot.sourceType,
             userId = userId
         )
+        source.markTopicExtractionPending()
         sourceRepository.save(source)
         eventPublisher.publishEvent(
             SourceActivatedEvent(

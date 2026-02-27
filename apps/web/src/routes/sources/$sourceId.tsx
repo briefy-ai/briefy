@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { deleteSource, restoreSource, retryExtraction, retryFormatting } from '@/lib/api/sources'
+import { deleteSource, restoreSource, retryExtraction, retryFormatting, retryTopicExtraction } from '@/lib/api/sources'
 import { extractErrorMessage } from '@/lib/api/errorMessage'
 import { requireAuth } from '@/lib/auth/requireAuth'
 import { useChatPanel } from '@/features/chat/ChatPanelProvider'
@@ -42,6 +42,7 @@ function SourceDetailPage() {
   const [showRawContent, setShowRawContent] = useState(false)
   const [retrying, setRetrying] = useState(false)
   const [retryFormattingLoading, setRetryFormattingLoading] = useState(false)
+  const [retryTopicExtractionLoading, setRetryTopicExtractionLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
@@ -111,6 +112,18 @@ function SourceDetailPage() {
     }
   }
 
+  async function handleRetryTopicExtraction() {
+    setRetryTopicExtractionLoading(true)
+    try {
+      const updated = await retryTopicExtraction(sourceId)
+      setSource(updated)
+    } catch (e) {
+      setError(extractErrorMessage(e, 'Topic extraction retry failed'))
+    } finally {
+      setRetryTopicExtractionLoading(false)
+    }
+  }
+
   async function handleDelete() {
     setDeleting(true)
     try {
@@ -171,6 +184,10 @@ function SourceDetailPage() {
 
   const showActiveTopicsSection = isActive && (activeTopics.loading || activeTopics.topics.length > 0)
   const showSuggestionSection = isActive && !activeTopics.loading && activeTopics.topics.length === 0
+  const showTopicExtractionFailed = isActive
+    && !activeTopics.loading
+    && activeTopics.topics.length === 0
+    && source.topicExtractionState === 'failed'
 
   return (
     <div className="mx-auto max-w-2xl animate-fade-in">
@@ -217,6 +234,30 @@ function SourceDetailPage() {
               ) : (
                 'Retry extraction'
               )}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {showTopicExtractionFailed && (
+        <div className="mb-6 animate-scale-in">
+          <div className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3">
+            <div>
+              <p className="text-sm text-destructive">Topic extraction failed.</p>
+              {source.topicExtractionFailureReason && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Reason: {source.topicExtractionFailureReason.replaceAll('_', ' ')}
+                </p>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleRetryTopicExtraction()}
+              disabled={retryTopicExtractionLoading}
+              className="ml-4 shrink-0"
+            >
+              {retryTopicExtractionLoading ? 'Retrying...' : 'Retry topic extraction'}
             </Button>
           </div>
         </div>
