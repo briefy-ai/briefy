@@ -15,4 +15,4 @@ RUN apt-get update && \
 WORKDIR /app
 COPY --from=build /app/build/libs/*.jar app.jar
 EXPOSE 8080
-ENTRYPOINT ["java", "-Djava.net.preferIPv4Stack=true", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-Djava.net.preferIPv6Addresses=false", "-jar", "app.jar"]
