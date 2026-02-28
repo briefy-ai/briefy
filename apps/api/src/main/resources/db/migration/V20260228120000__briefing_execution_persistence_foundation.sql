@@ -4,6 +4,7 @@ CREATE TABLE briefing_runs (
     execution_fingerprint VARCHAR(128) NOT NULL,
     status VARCHAR(20) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     started_at TIMESTAMP,
     ended_at TIMESTAMP,
     deadline_at TIMESTAMP,
