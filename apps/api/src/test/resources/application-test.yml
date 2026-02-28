@@ -26,5 +26,8 @@ ai:
 briefing:
   planning:
     enabled: false
+  execution:
+    enabled: false
+    mode: sequential
   generation:
     enabled: false
