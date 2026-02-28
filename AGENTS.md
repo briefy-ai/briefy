@@ -46,11 +46,12 @@ CI currently runs backend tests on PRs and pushes to `main` via `.github/workflo
 - Prefer environment variables over hardcoded credentials in code and tests.
 
 ## Agent Notes File
-- Use `AGENT_NOTES.md` as the persistent notetaking file for agent collaboration.
-- Write down non-obvious findings about the codebase and behavior.
-- Write down mistakes made during implementation/review and how they were corrected.
-- Write down user preferences (likes/dislikes) and implications for future work.
-- Append concise, dated entries rather than rewriting history.
+Read `AGENT_NOTES.md` at the start of each session. Append to the existing sections — never create duplicate headers.
+
+Three sections, strictly scoped:
+- **Mistakes Log** — real errors made during implementation and how to prevent them. Format: `[date] what failed -> fix -> prevention`.
+- **Non-Obvious Code Findings** — surprising behaviors a new agent wouldn't see from reading the code. Not implementation summaries (those go in Obsidian). Format: `[date] finding (why it matters) [paths]`.
+- **User Preferences** — stable signals about how the user wants to work or what they dislike. Only write entries the user explicitly stated. Format: `[date] preference -> implication`.
 
 ## Context Source (Obsidian)
 - Treat the Obsidian note `00 - index` as the primary source of project context, decisions, and navigation to related notes.
