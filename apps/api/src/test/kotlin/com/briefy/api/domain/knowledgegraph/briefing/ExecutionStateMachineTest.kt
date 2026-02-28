@@ -23,10 +23,13 @@ class ExecutionStateMachineTest {
     @Test
     fun `subagent transitions include skipped_no_output and retry_wait paths`() {
         assertTrue(SubagentRunStatus.PENDING.canTransitionTo(SubagentRunStatus.RUNNING))
+        assertTrue(SubagentRunStatus.PENDING.canTransitionTo(SubagentRunStatus.CANCELLED))
         assertTrue(SubagentRunStatus.RUNNING.canTransitionTo(SubagentRunStatus.SUCCEEDED))
         assertTrue(SubagentRunStatus.RUNNING.canTransitionTo(SubagentRunStatus.SKIPPED_NO_OUTPUT))
+        assertTrue(SubagentRunStatus.RUNNING.canTransitionTo(SubagentRunStatus.SKIPPED))
         assertTrue(SubagentRunStatus.RUNNING.canTransitionTo(SubagentRunStatus.RETRY_WAIT))
         assertTrue(SubagentRunStatus.RUNNING.canTransitionTo(SubagentRunStatus.FAILED))
+        assertTrue(SubagentRunStatus.RUNNING.canTransitionTo(SubagentRunStatus.CANCELLED))
         assertTrue(SubagentRunStatus.RETRY_WAIT.canTransitionTo(SubagentRunStatus.RUNNING))
         assertTrue(SubagentRunStatus.RETRY_WAIT.canTransitionTo(SubagentRunStatus.CANCELLED))
 
@@ -39,6 +42,7 @@ class ExecutionStateMachineTest {
     fun `synthesis transitions follow gate and terminal rules`() {
         assertTrue(SynthesisRunStatus.NOT_STARTED.canTransitionTo(SynthesisRunStatus.RUNNING))
         assertTrue(SynthesisRunStatus.NOT_STARTED.canTransitionTo(SynthesisRunStatus.SKIPPED))
+        assertTrue(SynthesisRunStatus.NOT_STARTED.canTransitionTo(SynthesisRunStatus.CANCELLED))
         assertTrue(SynthesisRunStatus.RUNNING.canTransitionTo(SynthesisRunStatus.SUCCEEDED))
         assertTrue(SynthesisRunStatus.RUNNING.canTransitionTo(SynthesisRunStatus.FAILED))
         assertTrue(SynthesisRunStatus.RUNNING.canTransitionTo(SynthesisRunStatus.CANCELLED))

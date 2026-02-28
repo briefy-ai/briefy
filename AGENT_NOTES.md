@@ -53,3 +53,4 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 - [2026-02-25 09:21] Prefers simple, deterministic V1 behavior over heavier infra/modeling when both are viable.
 - [2026-02-28 16:34] Keep schema scope to mandatory tables per slice; track deferred items (e.g., `subagent_tool_calls`) explicitly in Obsidian instead of adding speculative columns now.
 - [2026-02-28 20:05] Slice 2 preference: keep execution state-machine implementation isolated from current `BriefingGenerationJob` runtime wiring; land contracts/transitions first in a single focused PR, then wire in later slices.
+- [2026-02-28 20:22] For run event idempotency, catching `DataIntegrityViolationException` inside `@Transactional` is unreliable due deferred flush/invalid session semantics; use a conflict-safe insert (`ON CONFLICT (event_id) DO NOTHING`) and then validate run coordinates on conflict.

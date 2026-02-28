@@ -3,7 +3,6 @@ package com.briefy.api.application.briefing
 import com.briefy.api.domain.knowledgegraph.briefing.*
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.fasterxml.jackson.databind.ObjectMapper
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -681,25 +680,27 @@ class ExecutionStateTransitionService(
         attempt: Int? = null,
         payloadJson: String? = null
     ) {
-        try {
-            runEventRepository.save(
-                RunEvent(
-                    id = idGenerator.newId(),
-                    eventId = eventId,
-                    briefingRunId = briefingRunId,
-                    subagentRunId = subagentRunId,
-                    eventType = eventType,
-                    occurredAt = occurredAt,
-                    attempt = attempt,
-                    payloadJson = payloadJson,
-                    createdAt = occurredAt
-                )
+        val inserted = runEventRepository.insertIgnoreOnEventIdConflict(
+            id = idGenerator.newId(),
+            eventId = eventId,
+            briefingRunId = briefingRunId,
+            subagentRunId = subagentRunId,
+            eventType = eventType,
+            occurredAt = occurredAt,
+            attempt = attempt,
+            payloadJson = payloadJson,
+            createdAt = occurredAt
+        )
+        if (inserted == 1) {
+            return
+        }
+
+        val existing = runEventRepository.findByEventId(eventId)
+            ?: throw ExecutionIllegalTransitionException("eventId=$eventId was not inserted and could not be loaded")
+        if (existing.briefingRunId != briefingRunId || existing.subagentRunId != subagentRunId) {
+            throw ExecutionIllegalTransitionException(
+                "eventId=$eventId already used with different run coordinates"
             )
-        } catch (ex: DataIntegrityViolationException) {
-            if (runEventRepository.existsByEventId(eventId)) {
-                return
-            }
-            throw ex
         }
     }
 
