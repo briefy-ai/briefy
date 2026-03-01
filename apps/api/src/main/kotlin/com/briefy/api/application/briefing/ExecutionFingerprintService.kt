@@ -21,7 +21,9 @@ class ExecutionFingerprintService(
             "version" to 1,
             "briefingId" to briefing.id.toString(),
             "enrichmentIntent" to briefing.enrichmentIntent.name,
-            "sources" to orderedSources.map { source ->
+            "sources" to orderedSources
+                .sortedBy { it.id }
+                .map { source ->
                 linkedMapOf(
                     "sourceId" to source.id.toString(),
                     "title" to (source.metadata?.title ?: source.url.normalized),

@@ -266,6 +266,77 @@ class BriefingExecutionOrchestrationIT {
         assertEquals(BriefingRunStatus.SUCCEEDED, allRuns.first().status)
     }
 
+    @Test
+    fun `active cancelling run does not dispatch additional subagent or synthesis work`() {
+        val userId = insertUser("execution-orchestration-cancelling@example.com")
+        val sources = listOf(createSource(userId, "source-1", "Evidence one"))
+        val briefing = createApprovedBriefing(userId)
+        linkSources(briefing.id, userId, sources)
+        val planSteps = createPlanSteps(
+            briefing.id,
+            listOf("Task one", "Task two")
+        )
+
+        val now = Instant.now()
+        val run = briefingRunRepository.save(
+            BriefingRun(
+                id = UUID.randomUUID(),
+                briefingId = briefing.id,
+                executionFingerprint = "prefilled-fingerprint",
+                status = BriefingRunStatus.CANCELLING,
+                createdAt = now,
+                updatedAt = now,
+                totalPersonas = planSteps.size,
+                requiredForSynthesis = 1,
+                nonEmptySucceededCount = 0
+            )
+        )
+
+        subagentRunRepository.saveAll(
+            planSteps.map { step ->
+                SubagentRun(
+                    id = UUID.randomUUID(),
+                    briefingRunId = run.id,
+                    briefingId = briefing.id,
+                    personaKey = "step-${step.stepOrder}",
+                    status = SubagentRunStatus.PENDING,
+                    attempt = 1,
+                    maxAttempts = 3,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            }
+        )
+        synthesisRunRepository.save(
+            SynthesisRun(
+                id = UUID.randomUUID(),
+                briefingRunId = run.id,
+                status = SynthesisRunStatus.NOT_STARTED,
+                createdAt = now,
+                updatedAt = now
+            )
+        )
+
+        assertThrows<BriefingGenerationFailedException> {
+            briefingGenerationService.generateApprovedBriefing(briefing.id, userId)
+        }
+
+        val refreshedBriefing = briefingRepository.findById(briefing.id).orElseThrow()
+        assertEquals(BriefingStatus.FAILED, refreshedBriefing.status)
+        assertTrue(refreshedBriefing.errorJson?.contains("cancelled") == true)
+
+        val refreshedRun = briefingRunRepository.findById(run.id).orElseThrow()
+        assertEquals(BriefingRunStatus.CANCELLING, refreshedRun.status)
+        assertEquals(0, refreshedRun.nonEmptySucceededCount)
+
+        val subagents = subagentRunRepository.findByBriefingRunIdOrderByCreatedAtAsc(run.id)
+        assertTrue(subagents.all { it.status == SubagentRunStatus.PENDING })
+
+        val synthesis = synthesisRunRepository.findByBriefingRunId(run.id) ?: error("Expected synthesis run")
+        assertEquals(SynthesisRunStatus.NOT_STARTED, synthesis.status)
+        verify(synthesisExecutionRunner, never()).run(any())
+    }
+
     private fun insertUser(email: String): UUID {
         val userId = UUID.randomUUID()
         jdbcTemplate.update(

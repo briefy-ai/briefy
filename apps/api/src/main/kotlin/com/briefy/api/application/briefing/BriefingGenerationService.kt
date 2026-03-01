@@ -85,7 +85,8 @@ class BriefingGenerationService(
                 briefing = briefing,
                 planSteps = planSteps,
                 code = BriefingRunFailureCode.ORCHESTRATION_ERROR.dbValue,
-                message = error.message ?: "Briefing orchestration failed"
+                message = error.message ?: "Briefing orchestration failed",
+                cause = error
             )
         }
 
@@ -146,7 +147,8 @@ class BriefingGenerationService(
                 briefing = briefing,
                 planSteps = planSteps,
                 code = "generation_failed",
-                message = error.message ?: "Briefing generation failed"
+                message = error.message ?: "Briefing generation failed",
+                cause = error
             )
         }
 
@@ -190,7 +192,8 @@ class BriefingGenerationService(
         briefing: Briefing,
         planSteps: List<BriefingPlanStep>,
         code: String,
-        message: String
+        message: String,
+        cause: Throwable? = null
     ): Nothing {
         val now = Instant.now()
         planSteps.forEach { step ->
@@ -209,7 +212,7 @@ class BriefingGenerationService(
         briefing.failGeneration(objectMapper.writeValueAsString(errorPayload), now)
         briefingRepository.save(briefing)
 
-        throw BriefingGenerationFailedException(message)
+        throw BriefingGenerationFailedException(message, cause)
     }
 
     private fun persistReferences(

@@ -40,6 +40,12 @@ class BriefingExecutionOrchestratorService(
             orderedSources = orderedSources,
             planSteps = planSteps
         )
+        if (bootstrapped.briefingRun.status == BriefingRunStatus.CANCELLING) {
+            return ExecutionOrchestrationOutcome.failed(
+                failureCode = BriefingRunFailureCode.CANCELLED,
+                failureMessage = "Execution run is cancelling; refusing to dispatch additional work"
+            )
+        }
 
         val stepByPersonaKey = planSteps.associateBy { personaKeyForStep(it) }
 
