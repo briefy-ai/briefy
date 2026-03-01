@@ -37,7 +37,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 - [2026-02-18 22:53] Spring OTLP exporter for Langfuse must be a dedicated bean, not a system-property set at startup; system-property approach causes init-order drops where spans are produced but never exported (`AiObservabilityExporterConfig.kt`).
 - [2026-02-19 10:24] `SourceContentFinalizedEvent` is the canonical downstream trigger for finalized source text. Emitted by `SourceService` on immediate-final paths and by `SourceContentFormatterService` on success/skip/fallback paths — but NOT on transient formatter failures.
 - [2026-02-19 10:54] `EmbeddingProperties` validates fixed provider/model/dimension at startup and fails fast on accidental overrides. There are no runtime toggles for embedding config (`EmbeddingProperties.kt`).
-- [2026-02-28 20:05] Slice 2 execution state-machine core adds dedicated execution entities/enums/converters/repositories and `ExecutionStateTransitionService`; transitions are validated before state mutation and each accepted transition persists an idempotent `run_events.event_id`.
+- [2026-02-28 20:05] Briefing execution state-machine core adds dedicated execution entities/enums/converters/repositories and `ExecutionStateTransitionService`; transitions are validated before state mutation and each accepted transition persists an idempotent `run_events.event_id`.
 
 ## User Preferences
 
@@ -51,6 +51,10 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 - [2026-02-22 18:41] Annotation popover: annotation body as primary visual focus, metadata/actions secondary; use softer translucent + blur card treatment.
 - [2026-02-23 09:35] Formatting/loading failures should be surfaced immediately with an in-card retry option, not left on indefinite loading spinners.
 - [2026-02-25 09:21] Prefers simple, deterministic V1 behavior over heavier infra/modeling when both are viable.
-- [2026-02-28 16:34] Keep schema scope to mandatory tables per slice; track deferred items (e.g., `subagent_tool_calls`) explicitly in Obsidian instead of adding speculative columns now.
-- [2026-02-28 20:05] Slice 2 preference: keep execution state-machine implementation isolated from current `BriefingGenerationJob` runtime wiring; land contracts/transitions first in a single focused PR, then wire in later slices.
+- [2026-02-28 16:34] Keep schema scope to mandatory tables per execution feature milestone; track deferred items (e.g., `subagent_tool_calls`) explicitly in Obsidian instead of adding speculative columns now.
+- [2026-02-28 20:05] Briefing execution state-machine preference: keep contracts/transitions isolated from current `BriefingGenerationJob` runtime wiring in an initial focused PR, then wire runtime integration in follow-up feature PRs.
 - [2026-02-28 20:22] For run event idempotency, catching `DataIntegrityViolationException` inside `@Transactional` is unreliable due deferred flush/invalid session semantics; use a conflict-safe insert (`ON CONFLICT (event_id) DO NOTHING`) and then validate run coordinates on conflict.
+- [2026-02-28 20:56] New briefing execution orchestration IT initially used `postgres:16-alpine`, which fails Flyway migration `V20260219100000__source_embeddings_pgvector.sql` (`extension "vector" is not available`) -> use `pgvector/pgvector:pg16` consistently for backend ITs that run full migrations.
+- [2026-02-28 20:56] Briefing execution orchestration wiring landed behind `briefing.execution.enabled`; legacy engine remains as fallback path for safe rollout while execution runtime becomes the source of truth when enabled.
+- [2026-02-28 20:58] Avoid using standalone "Slice X" naming in PRs, file names, or agent notes; always tie work to the concrete feature/domain because a feature can span multiple slices and slice-only labels lose traceability after merges.
+- [2026-02-28 21:19] Hard workflow rule: never push implementation commits directly to `main`; always create a feature branch and open a PR, even for small changes.

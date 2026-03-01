@@ -1,10 +1,12 @@
 package com.briefy.api.application.briefing
 
 import com.briefy.api.domain.knowledgegraph.briefing.*
+import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -18,11 +20,14 @@ class BriefingGenerationService(
     private val briefingReferenceRepository: BriefingReferenceRepository,
     private val sourceRepository: SourceRepository,
     private val briefingGenerationEngine: BriefingGenerationEngine,
+    private val briefingExecutionOrchestratorService: BriefingExecutionOrchestratorService,
     private val idGenerator: IdGenerator,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    @param:Value("\${briefing.execution.enabled:true}")
+    private val executionEnabled: Boolean = true
 ) {
 
-    @Transactional
+    @Transactional(noRollbackFor = [BriefingGenerationFailedException::class])
     fun generateApprovedBriefing(briefingId: UUID, userId: UUID) {
         val briefing = briefingRepository.findByIdAndUserId(briefingId, userId) ?: return
         if (briefing.status != BriefingStatus.APPROVED && briefing.status != BriefingStatus.GENERATING) {
@@ -43,20 +48,79 @@ class BriefingGenerationService(
 
         val planSteps = briefingPlanStepRepository.findByBriefingIdOrderByStepOrderAsc(briefing.id)
 
-        val now = Instant.now()
         if (briefing.status == BriefingStatus.APPROVED) {
-            briefing.startGeneration(now)
+            briefing.startGeneration(Instant.now())
+            briefingRepository.save(briefing)
         }
+
+        if (executionEnabled) {
+            generateWithExecutionOrchestrator(
+                briefing = briefing,
+                orderedSources = orderedSources,
+                planSteps = planSteps
+            )
+            return
+        }
+
+        generateWithLegacyEngine(
+            briefing = briefing,
+            orderedSources = orderedSources,
+            planSteps = planSteps
+        )
+    }
+
+    private fun generateWithExecutionOrchestrator(
+        briefing: Briefing,
+        orderedSources: List<Source>,
+        planSteps: List<BriefingPlanStep>
+    ) {
+        val outcome = runCatching {
+            briefingExecutionOrchestratorService.executeApprovedBriefing(
+                briefing = briefing,
+                orderedSources = orderedSources,
+                planSteps = planSteps
+            )
+        }.getOrElse { error ->
+            failAndThrow(
+                briefing = briefing,
+                planSteps = planSteps,
+                code = BriefingRunFailureCode.ORCHESTRATION_ERROR.dbValue,
+                message = error.message ?: "Briefing orchestration failed",
+                cause = error
+            )
+        }
+
+        if (outcome.status == ExecutionOrchestrationOutcome.Status.FAILED || outcome.generationResult == null) {
+            failAndThrow(
+                briefing = briefing,
+                planSteps = planSteps,
+                code = outcome.failureCode?.dbValue ?: BriefingRunFailureCode.ORCHESTRATION_ERROR.dbValue,
+                message = outcome.failureMessage ?: "Briefing orchestration failed"
+            )
+        }
+
+        persistSuccessResult(
+            briefing = briefing,
+            orderedSources = orderedSources,
+            generationResult = outcome.generationResult
+        )
+    }
+
+    private fun generateWithLegacyEngine(
+        briefing: Briefing,
+        orderedSources: List<Source>,
+        planSteps: List<BriefingPlanStep>
+    ) {
+        val now = Instant.now()
         planSteps.forEach { step ->
             if (step.status == BriefingPlanStepStatus.PLANNED) {
                 step.markRunning(now)
             }
         }
-        briefingRepository.save(briefing)
         briefingPlanStepRepository.saveAll(planSteps)
 
-        try {
-            val generationResult = briefingGenerationEngine.generate(
+        val generationResult = runCatching {
+            briefingGenerationEngine.generate(
                 BriefingGenerationRequest(
                     briefingId = briefing.id,
                     userId = briefing.userId,
@@ -78,47 +142,77 @@ class BriefingGenerationService(
                     }
                 )
             )
-
-            val references = persistReferences(briefing, generationResult.references)
-            val citations = buildCitations(orderedSources, references)
-            val citationsJson = objectMapper.writeValueAsString(citations)
-            val conflictHighlights = generationResult.conflictHighlights
-                .filter { it.confidence >= CONFLICT_CONFIDENCE_THRESHOLD }
-                .take(MAX_CONFLICT_HIGHLIGHTS)
-            val conflictHighlightsJson = if (conflictHighlights.isEmpty()) {
-                null
-            } else {
-                objectMapper.writeValueAsString(conflictHighlights)
-            }
-
-            val contentWithCitations = appendCitationsBlock(generationResult.markdownBody, citations)
-            briefing.completeGeneration(contentWithCitations, citationsJson, conflictHighlightsJson)
-            briefingRepository.save(briefing)
-
-            planSteps.forEach { step ->
-                if (step.status == BriefingPlanStepStatus.RUNNING) {
-                    step.markSucceeded()
-                }
-            }
-            briefingPlanStepRepository.saveAll(planSteps)
-        } catch (ex: Exception) {
-            planSteps.forEach { step ->
-                if (step.status == BriefingPlanStepStatus.RUNNING) {
-                    step.markFailed()
-                }
-            }
-            briefingPlanStepRepository.saveAll(planSteps)
-
-            val errorPayload = BriefingErrorResponse(
+        }.getOrElse { error ->
+            failAndThrow(
+                briefing = briefing,
+                planSteps = planSteps,
                 code = "generation_failed",
-                message = ex.message ?: "Briefing generation failed",
-                retryable = true,
-                details = null
+                message = error.message ?: "Briefing generation failed",
+                cause = error
             )
-            briefing.failGeneration(objectMapper.writeValueAsString(errorPayload))
-            briefingRepository.save(briefing)
-            throw ex
         }
+
+        persistSuccessResult(
+            briefing = briefing,
+            orderedSources = orderedSources,
+            generationResult = generationResult
+        )
+
+        planSteps.forEach { step ->
+            if (step.status == BriefingPlanStepStatus.RUNNING) {
+                step.markSucceeded()
+            }
+        }
+        briefingPlanStepRepository.saveAll(planSteps)
+    }
+
+    private fun persistSuccessResult(
+        briefing: Briefing,
+        orderedSources: List<Source>,
+        generationResult: BriefingGenerationResult
+    ) {
+        val references = persistReferences(briefing, generationResult.references)
+        val citations = buildCitations(orderedSources, references)
+        val citationsJson = objectMapper.writeValueAsString(citations)
+        val conflictHighlights = generationResult.conflictHighlights
+            .filter { it.confidence >= CONFLICT_CONFIDENCE_THRESHOLD }
+            .take(MAX_CONFLICT_HIGHLIGHTS)
+        val conflictHighlightsJson = if (conflictHighlights.isEmpty()) {
+            null
+        } else {
+            objectMapper.writeValueAsString(conflictHighlights)
+        }
+
+        val contentWithCitations = appendCitationsBlock(generationResult.markdownBody, citations)
+        briefing.completeGeneration(contentWithCitations, citationsJson, conflictHighlightsJson)
+        briefingRepository.save(briefing)
+    }
+
+    private fun failAndThrow(
+        briefing: Briefing,
+        planSteps: List<BriefingPlanStep>,
+        code: String,
+        message: String,
+        cause: Throwable? = null
+    ): Nothing {
+        val now = Instant.now()
+        planSteps.forEach { step ->
+            if (step.status == BriefingPlanStepStatus.RUNNING) {
+                step.markFailed(now)
+            }
+        }
+        briefingPlanStepRepository.saveAll(planSteps)
+
+        val errorPayload = BriefingErrorResponse(
+            code = code,
+            message = message,
+            retryable = true,
+            details = null
+        )
+        briefing.failGeneration(objectMapper.writeValueAsString(errorPayload), now)
+        briefingRepository.save(briefing)
+
+        throw BriefingGenerationFailedException(message, cause)
     }
 
     private fun persistReferences(
@@ -155,7 +249,7 @@ class BriefingGenerationService(
     }
 
     private fun buildCitations(
-        sources: List<com.briefy.api.domain.knowledgegraph.source.Source>,
+        sources: List<Source>,
         references: List<BriefingReference>
     ): List<BriefingCitationResponse> {
         val citations = mutableListOf<BriefingCitationResponse>()

@@ -27,6 +27,7 @@ class BriefingGenerationServiceTest {
     private val briefingReferenceRepository: BriefingReferenceRepository = mock()
     private val sourceRepository: SourceRepository = mock()
     private val briefingGenerationEngine: BriefingGenerationEngine = mock()
+    private val briefingExecutionOrchestratorService: BriefingExecutionOrchestratorService = mock()
     private val idGenerator: IdGenerator = mock()
     private val objectMapper = ObjectMapper()
 
@@ -37,8 +38,10 @@ class BriefingGenerationServiceTest {
         briefingReferenceRepository = briefingReferenceRepository,
         sourceRepository = sourceRepository,
         briefingGenerationEngine = briefingGenerationEngine,
+        briefingExecutionOrchestratorService = briefingExecutionOrchestratorService,
         idGenerator = idGenerator,
-        objectMapper = objectMapper
+        objectMapper = objectMapper,
+        executionEnabled = false
     )
 
     @Test
