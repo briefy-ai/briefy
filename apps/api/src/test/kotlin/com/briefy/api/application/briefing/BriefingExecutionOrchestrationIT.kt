@@ -326,14 +326,15 @@ class BriefingExecutionOrchestrationIT {
         assertTrue(refreshedBriefing.errorJson?.contains("cancelled") == true)
 
         val refreshedRun = briefingRunRepository.findById(run.id).orElseThrow()
-        assertEquals(BriefingRunStatus.CANCELLING, refreshedRun.status)
+        assertEquals(BriefingRunStatus.CANCELLED, refreshedRun.status)
+        assertEquals(BriefingRunFailureCode.CANCELLED, refreshedRun.failureCode)
         assertEquals(0, refreshedRun.nonEmptySucceededCount)
 
         val subagents = subagentRunRepository.findByBriefingRunIdOrderByCreatedAtAsc(run.id)
-        assertTrue(subagents.all { it.status == SubagentRunStatus.PENDING })
+        assertTrue(subagents.all { it.status == SubagentRunStatus.CANCELLED })
 
         val synthesis = synthesisRunRepository.findByBriefingRunId(run.id) ?: error("Expected synthesis run")
-        assertEquals(SynthesisRunStatus.NOT_STARTED, synthesis.status)
+        assertEquals(SynthesisRunStatus.CANCELLED, synthesis.status)
         verify(synthesisExecutionRunner, never()).run(any())
     }
 
