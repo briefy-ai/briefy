@@ -40,6 +40,13 @@ class BriefingExecutionOrchestratorService(
             orderedSources = orderedSources,
             planSteps = planSteps
         )
+        if (bootstrapped.briefingRun.status == BriefingRunStatus.CANCELLING) {
+            finalizeCancellingRun(bootstrapped)
+            return ExecutionOrchestrationOutcome.failed(
+                failureCode = BriefingRunFailureCode.CANCELLED,
+                failureMessage = "Execution run is cancelling; refusing to dispatch additional work"
+            )
+        }
 
         val stepByPersonaKey = planSteps.associateBy { personaKeyForStep(it) }
 
@@ -286,6 +293,34 @@ class BriefingExecutionOrchestratorService(
                 step.markFailed(occurredAt)
             }
         }
+    }
+
+    private fun finalizeCancellingRun(runGraph: RunGraph) {
+        val occurredAt = Instant.now()
+
+        runGraph.subagentRuns
+            .filter { it.status == SubagentRunStatus.PENDING || it.status == SubagentRunStatus.RUNNING || it.status == SubagentRunStatus.RETRY_WAIT }
+            .forEach { subagentRun ->
+                executionStateTransitionService.cancelSubagentRun(
+                    subagentRunId = subagentRun.id,
+                    eventId = nextEventId(),
+                    occurredAt = occurredAt
+                )
+            }
+
+        if (runGraph.synthesisRun.status == SynthesisRunStatus.NOT_STARTED || runGraph.synthesisRun.status == SynthesisRunStatus.RUNNING) {
+            executionStateTransitionService.cancelSynthesisRun(
+                synthesisRunId = runGraph.synthesisRun.id,
+                eventId = nextEventId(),
+                occurredAt = occurredAt
+            )
+        }
+
+        executionStateTransitionService.markBriefingRunCancelled(
+            runId = runGraph.briefingRun.id,
+            eventId = nextEventId(),
+            occurredAt = occurredAt
+        )
     }
 
     private fun bootstrapOrLoadRunGraph(

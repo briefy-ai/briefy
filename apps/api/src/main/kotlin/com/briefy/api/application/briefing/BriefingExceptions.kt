@@ -10,4 +10,4 @@ class InvalidBriefingStateException(message: String) : RuntimeException(message)
 
 class BriefingSourceAccessException : RuntimeException("One or more sources are missing or not accessible")
 
-class BriefingGenerationFailedException(message: String) : RuntimeException(message)
+class BriefingGenerationFailedException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
