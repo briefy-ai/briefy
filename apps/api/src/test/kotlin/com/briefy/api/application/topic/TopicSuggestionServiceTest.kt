@@ -19,6 +19,8 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.springframework.transaction.support.TransactionCallback
+import org.springframework.transaction.support.TransactionTemplate
 import java.util.UUID
 
 class TopicSuggestionServiceTest {
@@ -29,6 +31,13 @@ class TopicSuggestionServiceTest {
     private val userAiSettingsService: UserAiSettingsService = mock()
     private val idGenerator: IdGenerator = mock()
 
+    @Suppress("UNCHECKED_CAST")
+    private val transactionTemplate: TransactionTemplate = mock<TransactionTemplate>().also { tm ->
+        whenever(tm.execute<Any?>(any())).thenAnswer { inv ->
+            (inv.arguments[0] as TransactionCallback<Any?>).doInTransaction(mock())
+        }
+    }
+
     private val service = TopicSuggestionService(
         sourceRepository = sourceRepository,
         topicRepository = topicRepository,
@@ -36,7 +45,8 @@ class TopicSuggestionServiceTest {
         aiAdapter = aiAdapter,
         userAiSettingsService = userAiSettingsService,
         objectMapper = jacksonObjectMapper(),
-        idGenerator = idGenerator
+        idGenerator = idGenerator,
+        transactionTemplate = transactionTemplate
     )
 
     @Test
