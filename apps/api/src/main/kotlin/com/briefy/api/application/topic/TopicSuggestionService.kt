@@ -18,7 +18,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.UUID
@@ -31,28 +31,35 @@ class TopicSuggestionService(
     private val aiAdapter: AiAdapter,
     private val userAiSettingsService: UserAiSettingsService,
     private val objectMapper: ObjectMapper,
-    private val idGenerator: IdGenerator
+    private val idGenerator: IdGenerator,
+    private val transactionTemplate: TransactionTemplate
 ) {
     private val logger = LoggerFactory.getLogger(TopicSuggestionService::class.java)
 
-    @Transactional
+    // Not @Transactional: the AI call must not hold a DB connection during retries.
+    // Three short transactions: read → [AI call] → write.
     fun generateForSource(sourceId: UUID, userId: UUID) {
-        val source = sourceRepository.findByIdAndUserId(sourceId, userId) ?: return
-        if (source.status != SourceStatus.ACTIVE || source.content == null) {
-            return
-        }
-
-        val existingActiveTopics = topicRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(
-            userId,
-            TopicStatus.ACTIVE
-        )
+        // Phase 1: load what is needed for the AI call
+        val loaded = transactionTemplate.execute {
+            val source = sourceRepository.findByIdAndUserId(sourceId, userId)
+                ?: return@execute null
+            if (source.status != SourceStatus.ACTIVE || source.content == null)
+                return@execute null
+            source to topicRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, TopicStatus.ACTIVE)
+        } ?: return
+        val (source, existingActiveTopics) = loaded
         val existingTopicsById = existingActiveTopics.associateBy { it.id }
 
+        // Phase 2: AI call — no transaction held
         val candidates = try {
             generateCandidates(source, userId, existingActiveTopics)
         } catch (e: Exception) {
-            source.markTopicExtractionFailed(REASON_GENERATION_FAILED)
-            sourceRepository.save(source)
+            transactionTemplate.execute {
+                sourceRepository.findByIdAndUserId(sourceId, userId)?.let { s ->
+                    s.markTopicExtractionFailed(REASON_GENERATION_FAILED)
+                    sourceRepository.save(s)
+                }
+            }
             logger.warn(
                 "[topic-suggestions] generation failed sourceId={} userId={} reason={}",
                 sourceId,
@@ -62,55 +69,56 @@ class TopicSuggestionService(
             return
         }
 
+        // Phase 3: persist results
         if (candidates.isEmpty()) {
-            if (source.topicExtractionState != TopicExtractionState.SUCCEEDED || source.topicExtractionFailureReason != null) {
-                source.markTopicExtractionSucceeded()
-                sourceRepository.save(source)
+            transactionTemplate.execute {
+                sourceRepository.findByIdAndUserId(sourceId, userId)?.let { s ->
+                    if (s.topicExtractionState != TopicExtractionState.SUCCEEDED || s.topicExtractionFailureReason != null) {
+                        s.markTopicExtractionSucceeded()
+                        sourceRepository.save(s)
+                    }
+                }
             }
             logger.info("[topic-suggestions] no suggestions sourceId={} userId={}", sourceId, userId)
             return
         }
 
-        var createdLinks = 0
-        val processedTopicIds = mutableSetOf<UUID>()
-        candidates.forEach { candidate ->
-            val topic = resolveTopicCandidate(userId, candidate, existingTopicsById) ?: return@forEach
-            if (!processedTopicIds.add(topic.id)) {
-                return@forEach
+        transactionTemplate.execute {
+            val s = sourceRepository.findByIdAndUserId(sourceId, userId)
+                ?: return@execute null
+            var createdLinks = 0
+            val processedTopicIds = mutableSetOf<UUID>()
+            candidates.forEach { candidate ->
+                val topic = resolveTopicCandidate(userId, candidate, existingTopicsById) ?: return@forEach
+                if (!processedTopicIds.add(topic.id)) return@forEach
+                val existingLink = topicLinkRepository.findByUserIdAndTopicIdAndTargetTypeAndTargetIdAndStatusIn(
+                    userId = userId,
+                    topicId = topic.id,
+                    targetType = TopicLinkTargetType.SOURCE,
+                    targetId = s.id,
+                    statuses = listOf(TopicLinkStatus.SUGGESTED, TopicLinkStatus.ACTIVE)
+                )
+                if (existingLink != null) return@forEach
+                topicLinkRepository.save(
+                    TopicLink.suggestedForSource(
+                        id = idGenerator.newId(),
+                        topicId = topic.id,
+                        sourceId = s.id,
+                        userId = userId,
+                        confidence = candidate.confidence
+                    )
+                )
+                createdLinks++
             }
-
-            val existingLink = topicLinkRepository.findByUserIdAndTopicIdAndTargetTypeAndTargetIdAndStatusIn(
-                userId = userId,
-                topicId = topic.id,
-                targetType = TopicLinkTargetType.SOURCE,
-                targetId = source.id,
-                statuses = listOf(TopicLinkStatus.SUGGESTED, TopicLinkStatus.ACTIVE)
+            logger.info(
+                "[topic-suggestions] generated sourceId={} userId={} candidates={} createdLinks={}",
+                sourceId, userId, candidates.size, createdLinks
             )
-            if (existingLink != null) {
-                return@forEach
+            if (s.topicExtractionState != TopicExtractionState.SUCCEEDED || s.topicExtractionFailureReason != null) {
+                s.markTopicExtractionSucceeded()
+                sourceRepository.save(s)
             }
-
-            val link = TopicLink.suggestedForSource(
-                id = idGenerator.newId(),
-                topicId = topic.id,
-                sourceId = source.id,
-                userId = userId,
-                confidence = candidate.confidence
-            )
-            topicLinkRepository.save(link)
-            createdLinks++
-        }
-
-        logger.info(
-            "[topic-suggestions] generated sourceId={} userId={} candidates={} createdLinks={}",
-            sourceId,
-            userId,
-            candidates.size,
-            createdLinks
-        )
-        if (source.topicExtractionState != TopicExtractionState.SUCCEEDED || source.topicExtractionFailureReason != null) {
-            source.markTopicExtractionSucceeded()
-            sourceRepository.save(source)
+            null
         }
     }
 

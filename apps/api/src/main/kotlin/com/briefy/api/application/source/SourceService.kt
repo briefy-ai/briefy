@@ -224,9 +224,11 @@ class SourceService(
         if (source.status != SourceStatus.ACTIVE) {
             throw InvalidSourceStateException("Can only retry topic extraction for active sources. Current status: ${source.status}")
         }
-        if (source.topicExtractionState != TopicExtractionState.FAILED) {
+        val isStuckPending = source.topicExtractionState == TopicExtractionState.PENDING
+            && Duration.between(source.updatedAt, Instant.now()) > Duration.ofMinutes(2)
+        if (source.topicExtractionState != TopicExtractionState.FAILED && !isStuckPending) {
             throw InvalidSourceStateException(
-                "Can only retry topic extraction for failed extractions. Current topic extraction state: ${source.topicExtractionState}"
+                "Can only retry topic extraction for failed or stuck-pending (>2 min) extractions. Current topic extraction state: ${source.topicExtractionState}"
             )
         }
 

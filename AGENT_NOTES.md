@@ -39,6 +39,8 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 - [2026-02-19 10:54] `EmbeddingProperties` validates fixed provider/model/dimension at startup and fails fast on accidental overrides. There are no runtime toggles for embedding config (`EmbeddingProperties.kt`).
 - [2026-02-28 20:05] Briefing execution state-machine core adds dedicated execution entities/enums/converters/repositories and `ExecutionStateTransitionService`; transitions are validated before state mutation and each accepted transition persists an idempotent `run_events.event_id`.
 
+- [2026-03-01] `generateForSource` in `TopicSuggestionService` was `@Transactional`, holding a DB connection for the entire Spring AI retry loop. When the AI provider (Z.ai) went down, Spring AI retried 9+ times with ~3-minute backoff, keeping the transaction open for 20+ minutes until Railway killed the container, leaving `topic_extraction_state = PENDING` with no recovery path. Fix: remove `@Transactional`, use `TransactionTemplate` for three short transactions (read → [AI call] → write). Tests: mock `TransactionTemplate` with `thenAnswer` to pass-through the `TransactionCallback`. (`TopicSuggestionService.kt`, `TopicSuggestionServiceTest.kt`)
+
 ## User Preferences
 
 - [2026-02-07 20:19] "Delete" semantics for Sources must mean archive (DEC-012), including batch flows -> keep UI copy and API naming explicit about archive semantics behind delete actions.

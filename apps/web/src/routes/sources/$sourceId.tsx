@@ -189,6 +189,12 @@ function SourceDetailPage() {
     && activeTopics.topics.length === 0
     && source.topicExtractionState === 'failed'
 
+  const showTopicExtractionStuck = isActive
+    && !activeTopics.loading
+    && activeTopics.topics.length === 0
+    && source.topicExtractionState === 'pending'
+    && new Date().getTime() - new Date(source.updatedAt).getTime() > 2 * 60 * 1000
+
   return (
     <div className="mx-auto max-w-2xl animate-fade-in">
       <BackLink />
@@ -250,6 +256,23 @@ function SourceDetailPage() {
                 </p>
               )}
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleRetryTopicExtraction()}
+              disabled={retryTopicExtractionLoading}
+              className="ml-4 shrink-0"
+            >
+              {retryTopicExtractionLoading ? 'Retrying...' : 'Retry topic extraction'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {showTopicExtractionStuck && (
+        <div className="mb-6 animate-scale-in">
+          <div className="flex items-center justify-between rounded-lg border border-muted bg-muted/30 px-4 py-3">
+            <p className="text-sm text-muted-foreground">Topic extraction is taking longer than expected.</p>
             <Button
               variant="outline"
               size="sm"
