@@ -273,10 +273,14 @@ class SourceControllerTest {
     }
 
     @Test
-    fun `POST topic extraction retry returns bad request when topic extraction is not failed`() {
+    fun `POST topic extraction retry returns bad request when topic extraction already succeeded`() {
         `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
-
         val id = createSource("https://retry-topic-extraction-test.com/article")
+        val sourceId = UUID.fromString(id)
+        val source = sourceRepository.findByIdAndUserId(sourceId, testUserId)
+            ?: error("source not found")
+        source.markTopicExtractionSucceeded()
+        sourceRepository.save(source)
 
         mockMvc.perform(post("/api/sources/$id/topics/retry"))
             .andExpect(status().isBadRequest)
