@@ -36,3 +36,4 @@ pgdata/
 .pnpm-store/
 .agents/
 .claude/
+.cursor/

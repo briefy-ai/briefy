@@ -10,6 +10,31 @@ class DeterministicSequentialSubagentExecutionRunner(
 
     override fun execute(context: SubagentExecutionContext): SubagentExecutionResult {
         val normalizedTask = context.task.lowercase()
+        if (normalizedTask.contains("[transient:timeout]")) {
+            return SubagentExecutionResult.Failed(
+                errorCode = "timeout",
+                errorMessage = "Deterministic transient timeout"
+            )
+        }
+        if (normalizedTask.contains("[transient:429]")) {
+            val retryAfter = parseRetryAfterSeconds(normalizedTask)
+            return SubagentExecutionResult.Failed(
+                errorCode = "http_429",
+                errorMessage = retryAfter?.let { "retry_after=$it" } ?: "Deterministic transient 429"
+            )
+        }
+        if (normalizedTask.contains("[transient:5xx]")) {
+            return SubagentExecutionResult.Failed(
+                errorCode = "http_5xx",
+                errorMessage = "Deterministic transient server error"
+            )
+        }
+        if (normalizedTask.contains("[transient:network]")) {
+            return SubagentExecutionResult.Failed(
+                errorCode = "network_error",
+                errorMessage = "Deterministic transient network error"
+            )
+        }
         if (normalizedTask.contains("[fail]") || normalizedTask.contains("force_fail")) {
             return SubagentExecutionResult.Failed(
                 errorCode = "deterministic_failure",
@@ -53,5 +78,19 @@ class DeterministicSequentialSubagentExecutionRunner(
 
     companion object {
         private const val MAX_EXCERPT_CHARS = 320
+    }
+
+    private fun parseRetryAfterSeconds(normalizedTask: String): Long? {
+        val marker = "[transient:429:"
+        val markerIndex = normalizedTask.indexOf(marker)
+        if (markerIndex == -1) {
+            return null
+        }
+        val valueStart = markerIndex + marker.length
+        val valueEnd = normalizedTask.indexOf("]", valueStart)
+        if (valueEnd == -1) {
+            return null
+        }
+        return normalizedTask.substring(valueStart, valueEnd).toLongOrNull()
     }
 }

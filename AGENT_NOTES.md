@@ -60,3 +60,4 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 - [2026-02-28 20:56] Briefing execution orchestration wiring landed behind `briefing.execution.enabled`; legacy engine remains as fallback path for safe rollout while execution runtime becomes the source of truth when enabled.
 - [2026-02-28 20:58] Avoid using standalone "Slice X" naming in PRs, file names, or agent notes; always tie work to the concrete feature/domain because a feature can span multiple slices and slice-only labels lose traceability after merges.
 - [2026-02-28 21:19] Hard workflow rule: never push implementation commits directly to `main`; always create a feature branch and open a PR, even for small changes.
+- [2026-03-03] When we simplify implementation for speed, explicitly document deferred tradeoffs/TODOs in code or Obsidian so we can safely return later -> always add a dated deferred-work checklist for intentional simplifications.

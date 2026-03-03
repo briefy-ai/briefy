@@ -338,6 +338,127 @@ class BriefingExecutionOrchestrationIT {
         verify(synthesisExecutionRunner, never()).run(any())
     }
 
+    @Test
+    fun `B3 - retry_wait subagent resumes and succeeds on next attempt`() {
+        val userId = insertUser("execution-orchestration-b3@example.com")
+        val sources = listOf(createSource(userId, "source-1", "Evidence one"))
+        val briefing = createApprovedBriefing(userId)
+        linkSources(briefing.id, userId, sources)
+        val planSteps = createPlanSteps(briefing.id, listOf("Recover after transient"))
+
+        val now = Instant.now()
+        val run = briefingRunRepository.save(
+            BriefingRun(
+                id = UUID.randomUUID(),
+                briefingId = briefing.id,
+                executionFingerprint = "prefilled-fingerprint",
+                status = BriefingRunStatus.RUNNING,
+                createdAt = now,
+                updatedAt = now,
+                deadlineAt = now.plusSeconds(180),
+                totalPersonas = planSteps.size,
+                requiredForSynthesis = 1,
+                nonEmptySucceededCount = 0
+            )
+        )
+
+        val subagent = subagentRunRepository.save(
+            SubagentRun(
+                id = UUID.randomUUID(),
+                briefingRunId = run.id,
+                briefingId = briefing.id,
+                personaKey = "step-1",
+                status = SubagentRunStatus.RETRY_WAIT,
+                attempt = 1,
+                maxAttempts = 3,
+                createdAt = now,
+                updatedAt = now
+            )
+        )
+        synthesisRunRepository.save(
+            SynthesisRun(
+                id = UUID.randomUUID(),
+                briefingRunId = run.id,
+                status = SynthesisRunStatus.NOT_STARTED,
+                createdAt = now,
+                updatedAt = now
+            )
+        )
+
+        briefingGenerationService.generateApprovedBriefing(briefing.id, userId)
+
+        val refreshedSubagent = subagentRunRepository.findById(subagent.id).orElseThrow()
+        assertEquals(SubagentRunStatus.SUCCEEDED, refreshedSubagent.status)
+        assertEquals(2, refreshedSubagent.attempt)
+
+        val refreshedRun = briefingRunRepository.findById(run.id).orElseThrow()
+        assertEquals(BriefingRunStatus.SUCCEEDED, refreshedRun.status)
+    }
+
+    @Test
+    fun `A3 - expired global deadline marks run timed_out and cancels children`() {
+        val userId = insertUser("execution-orchestration-a3@example.com")
+        val sources = listOf(createSource(userId, "source-1", "Evidence one"))
+        val briefing = createApprovedBriefing(userId)
+        linkSources(briefing.id, userId, sources)
+        val planSteps = createPlanSteps(briefing.id, listOf("Task one", "Task two"))
+
+        val now = Instant.now()
+        val run = briefingRunRepository.save(
+            BriefingRun(
+                id = UUID.randomUUID(),
+                briefingId = briefing.id,
+                executionFingerprint = "prefilled-fingerprint",
+                status = BriefingRunStatus.RUNNING,
+                createdAt = now.minusSeconds(300),
+                updatedAt = now.minusSeconds(300),
+                deadlineAt = now.minusSeconds(1),
+                totalPersonas = planSteps.size,
+                requiredForSynthesis = 1,
+                nonEmptySucceededCount = 0
+            )
+        )
+
+        subagentRunRepository.saveAll(
+            planSteps.map { step ->
+                SubagentRun(
+                    id = UUID.randomUUID(),
+                    briefingRunId = run.id,
+                    briefingId = briefing.id,
+                    personaKey = "step-${step.stepOrder}",
+                    status = SubagentRunStatus.PENDING,
+                    attempt = 1,
+                    maxAttempts = 3,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            }
+        )
+        synthesisRunRepository.save(
+            SynthesisRun(
+                id = UUID.randomUUID(),
+                briefingRunId = run.id,
+                status = SynthesisRunStatus.NOT_STARTED,
+                createdAt = now,
+                updatedAt = now
+            )
+        )
+
+        assertThrows<BriefingGenerationFailedException> {
+            briefingGenerationService.generateApprovedBriefing(briefing.id, userId)
+        }
+
+        val refreshedRun = briefingRunRepository.findById(run.id).orElseThrow()
+        assertEquals(BriefingRunStatus.FAILED, refreshedRun.status)
+        assertEquals(BriefingRunFailureCode.GLOBAL_TIMEOUT, refreshedRun.failureCode)
+
+        val subagents = subagentRunRepository.findByBriefingRunIdOrderByCreatedAtAsc(run.id)
+        assertTrue(subagents.all { it.status == SubagentRunStatus.CANCELLED })
+
+        val synthesis = synthesisRunRepository.findByBriefingRunId(run.id) ?: error("Expected synthesis run")
+        assertEquals(SynthesisRunStatus.CANCELLED, synthesis.status)
+    }
+
     private fun insertUser(email: String): UUID {
         val userId = UUID.randomUUID()
         jdbcTemplate.update(
