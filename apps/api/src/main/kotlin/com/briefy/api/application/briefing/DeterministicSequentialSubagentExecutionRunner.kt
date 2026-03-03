@@ -16,7 +16,7 @@ class DeterministicSequentialSubagentExecutionRunner(
                 errorMessage = "Deterministic transient timeout"
             )
         }
-        if (normalizedTask.contains("[transient:429]")) {
+        if (normalizedTask.contains("[transient:429")) {
             val retryAfter = parseRetryAfterSeconds(normalizedTask)
             return SubagentExecutionResult.Failed(
                 errorCode = "http_429",

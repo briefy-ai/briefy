@@ -66,27 +66,34 @@ class BriefingExecutionOrchestratorService(
         }
 
         val mutablePlanSteps = planSteps.toMutableList()
-        bootstrapped.subagentRuns.forEach { subagentRun ->
-            val step = stepByPersonaKey[subagentRun.personaKey]
-                ?: return@forEach
+        try {
+            bootstrapped.subagentRuns.forEach { subagentRun ->
+                val step = stepByPersonaKey[subagentRun.personaKey]
+                    ?: return@forEach
 
-            when (subagentRun.status) {
-                SubagentRunStatus.PENDING, SubagentRunStatus.RUNNING, SubagentRunStatus.RETRY_WAIT -> {
-                    executeSubagent(
-                        briefingRunId = bootstrapped.briefingRun.id,
-                        subagentRun = subagentRun,
-                        step = step,
-                        briefing = briefing,
-                        orderedSources = orderedSources
-                    )
+                when (subagentRun.status) {
+                    SubagentRunStatus.PENDING, SubagentRunStatus.RUNNING, SubagentRunStatus.RETRY_WAIT -> {
+                        executeSubagent(
+                            briefingRunId = bootstrapped.briefingRun.id,
+                            subagentRun = subagentRun,
+                            step = step,
+                            briefing = briefing,
+                            orderedSources = orderedSources
+                        )
+                    }
+
+                    SubagentRunStatus.SUCCEEDED -> ensureStepTerminal(step, true)
+                    SubagentRunStatus.FAILED,
+                    SubagentRunStatus.SKIPPED,
+                    SubagentRunStatus.SKIPPED_NO_OUTPUT,
+                    SubagentRunStatus.CANCELLED -> ensureStepTerminal(step, false)
                 }
-
-                SubagentRunStatus.SUCCEEDED -> ensureStepTerminal(step, true)
-                SubagentRunStatus.FAILED,
-                SubagentRunStatus.SKIPPED,
-                SubagentRunStatus.SKIPPED_NO_OUTPUT,
-                SubagentRunStatus.CANCELLED -> ensureStepTerminal(step, false)
             }
+        } catch (ex: ExecutionDeadlineExceededException) {
+            return ExecutionOrchestrationOutcome.failed(
+                failureCode = BriefingRunFailureCode.GLOBAL_TIMEOUT,
+                failureMessage = "Execution run exceeded global timeout"
+            )
         }
 
         briefingPlanStepStatusesPersist(mutablePlanSteps)
@@ -262,14 +269,9 @@ class BriefingExecutionOrchestratorService(
             val run = briefingRunRepository.findById(briefingRunId)
                 .orElseThrow { ExecutionRunNotFoundException("BriefingRun", briefingRunId) }
             if (isRunPastDeadline(run)) {
-                executionStateTransitionService.markBriefingRunTimedOut(
-                    runId = run.id,
-                    eventId = nextEventId(),
-                    failureMessage = "Global timeout reached while executing subagent ${subagentRun.personaKey}",
-                    occurredAt = Instant.now()
-                )
-                return
-            }
+            handleGlobalTimeout(buildRunGraph(run))
+            throw ExecutionDeadlineExceededException()
+        }
             if (run.status == BriefingRunStatus.CANCELLING) {
                 if (subagentRunRepository.findById(subagentRun.id).orElseThrow().status.let { !it.isTerminal() }) {
                     executionStateTransitionService.cancelSubagentRun(
@@ -520,6 +522,19 @@ class BriefingExecutionOrchestratorService(
             synthesisRun = synthesisRun
         )
     }
+
+    private fun buildRunGraph(run: BriefingRun): RunGraph {
+        val subagentRuns = subagentRunRepository.findByBriefingRunIdOrderByCreatedAtAsc(run.id)
+        val synthesisRun = synthesisRunRepository.findByBriefingRunId(run.id)
+            ?: throw ExecutionIllegalTransitionException("Synthesis run missing for run ${run.id}")
+        return RunGraph(
+            briefingRun = run,
+            subagentRuns = subagentRuns,
+            synthesisRun = synthesisRun
+        )
+    }
+
+    private class ExecutionDeadlineExceededException : RuntimeException()
 
     private fun findActiveRun(briefingId: UUID): BriefingRun? {
         return briefingRunRepository.findTopByBriefingIdAndStatusInOrderByCreatedAtDesc(
