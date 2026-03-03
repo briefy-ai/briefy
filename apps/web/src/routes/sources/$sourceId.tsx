@@ -14,7 +14,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { deleteSource, provideSourceContent, restoreSource, retryExtraction, retryFormatting, retryTopicExtraction } from '@/lib/api/sources'
+import {
+  deleteSource,
+  markSourceRead,
+  provideSourceContent,
+  restoreSource,
+  retryExtraction,
+  retryFormatting,
+  retryTopicExtraction,
+} from '@/lib/api/sources'
 import { extractErrorMessage } from '@/lib/api/errorMessage'
 import { requireAuth } from '@/lib/auth/requireAuth'
 import { useChatPanel } from '@/features/chat/ChatPanelProvider'
@@ -49,6 +57,7 @@ function SourceDetailPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [pasteContentOpen, setPasteContentOpen] = useState(false)
   const [pastingContent, setPastingContent] = useState(false)
+  const [markingRead, setMarkingRead] = useState(false)
 
   const isActive = source?.status === 'active'
   const onError = useCallback((msg: string) => setError(msg), [setError])
@@ -160,6 +169,19 @@ function SourceDetailPage() {
       setPasteContentOpen(false)
     } finally {
       setPastingContent(false)
+    }
+  }
+
+  async function handleMarkAsRead() {
+    if (!source) return
+    setMarkingRead(true)
+    try {
+      const updated = await markSourceRead(sourceId)
+      setSource(updated)
+    } catch (e) {
+      setError(extractErrorMessage(e, 'Failed to mark source as read'))
+    } finally {
+      setMarkingRead(false)
     }
   }
 
@@ -353,6 +375,25 @@ function SourceDetailPage() {
         onRetryFormatting={() => void handleRetryFormatting()}
         retryFormattingLoading={retryFormattingLoading}
       />
+
+      {source.status === 'active' && !source.read && (
+        <div className="mt-6 rounded-lg border border-border/50 bg-card/40 p-4 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between gap-3">
+            <p>
+              Marking this source as read hides the unread badge in your library and lets you focus on new material.
+            </p>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void handleMarkAsRead()}
+              disabled={markingRead}
+            >
+              {markingRead ? 'Marking...' : 'Mark as read'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       <PasteContentDialog
         open={pasteContentOpen}

@@ -36,6 +36,9 @@ class Source(
     @Column(name = "updated_at", nullable = false)
     var updatedAt: Instant = Instant.now(),
 
+    @Column(name = "is_read", nullable = false)
+    var isRead: Boolean = false,
+
     @Enumerated(EnumType.STRING)
     @Column(name = "topic_extraction_state", nullable = false, length = 30)
     var topicExtractionState: TopicExtractionState = TopicExtractionState.PENDING,
@@ -50,6 +53,7 @@ class Source(
     fun completeExtraction(content: Content, metadata: Metadata) {
         this.content = content
         this.metadata = metadata
+        markUnread()
         transitionTo(SourceStatus.ACTIVE)
     }
 
@@ -78,6 +82,7 @@ class Source(
         }
         this.content = content
         this.metadata = metadata
+        markUnread()
         markTopicExtractionPending()
     }
 
@@ -97,6 +102,17 @@ class Source(
         topicExtractionState = TopicExtractionState.FAILED
         topicExtractionFailureReason = reason?.trim()?.take(255)?.ifBlank { null }
         updatedAt = Instant.now()
+    }
+
+    fun markRead(): Boolean {
+        if (isRead) return false
+        isRead = true
+        updatedAt = Instant.now()
+        return true
+    }
+
+    fun markUnread() {
+        isRead = false
     }
 
     private fun transitionTo(newStatus: SourceStatus) {

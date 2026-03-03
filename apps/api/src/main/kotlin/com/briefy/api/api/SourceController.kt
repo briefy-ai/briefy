@@ -86,6 +86,14 @@ class SourceController(
         return ResponseEntity.ok(source)
     }
 
+    @PostMapping("/{id}/mark-read")
+    fun markSourceRead(@PathVariable id: UUID): ResponseEntity<SourceResponse> {
+        logger.info("[controller] Mark source read request received sourceId={}", id)
+        val source = sourceService.markSourceRead(id)
+        logger.info("[controller] Mark source read request completed sourceId={} status={} read={}", source.id, source.status, source.read)
+        return ResponseEntity.ok(source)
+    }
+
     @DeleteMapping("/{id}")
     fun deleteSource(@PathVariable id: UUID): ResponseEntity<Unit> {
         logger.info("[controller] Delete source request received sourceId={}", id)

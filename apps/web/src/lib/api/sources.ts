@@ -34,6 +34,10 @@ export async function retryTopicExtraction(id: string): Promise<Source> {
   return apiPost<Source>(`/api/sources/${id}/topics/retry`)
 }
 
+export async function markSourceRead(id: string): Promise<Source> {
+  return apiPost<Source>(`/api/sources/${id}/mark-read`)
+}
+
 export async function deleteSource(id: string): Promise<void> {
   await apiDelete(`/api/sources/${id}`)
 }
