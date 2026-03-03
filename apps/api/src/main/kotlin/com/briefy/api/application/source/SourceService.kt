@@ -366,6 +366,13 @@ class SourceService(
                     activationReason = SourceActivationReason.MANUAL_CONTENT_OVERRIDE
                 )
             )
+        } else {
+            eventPublisher.publishEvent(
+                SourceTopicExtractionRequestedEvent(
+                    sourceId = source.id,
+                    userId = userId
+                )
+            )
         }
 
         eventPublisher.publishEvent(

@@ -157,6 +157,7 @@ function SourceDetailPage() {
       setPasteContentOpen(false)
     } catch (e) {
       setError(extractErrorMessage(e, 'Failed to apply content'))
+      setPasteContentOpen(false)
     } finally {
       setPastingContent(false)
     }

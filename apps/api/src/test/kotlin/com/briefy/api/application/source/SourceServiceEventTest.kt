@@ -620,7 +620,7 @@ class SourceServiceEventTest {
         service.provideManualContent(source.id, ProvideSourceContentCommand(rawText = "updated content"))
 
         val eventCaptor = argumentCaptor<Any>()
-        verify(eventPublisher).publishEvent(eventCaptor.capture())
+        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture())
         assertTrue(eventCaptor.allValues.none { it is SourceActivatedEvent })
     }
 
@@ -635,11 +635,14 @@ class SourceServiceEventTest {
         service.provideManualContent(source.id, ProvideSourceContentCommand(rawText = "updated content"))
 
         val eventCaptor = argumentCaptor<Any>()
-        verify(eventPublisher).publishEvent(eventCaptor.capture())
+        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture())
         val formattingEvent = eventCaptor.allValues.filterIsInstance<SourceContentFormattingRequestedEvent>().single()
         assertEquals(source.id, formattingEvent.sourceId)
         assertEquals(userId, formattingEvent.userId)
         assertEquals(ExtractionProviderId.JSOUP, formattingEvent.extractorId)
+        val topicEvent = eventCaptor.allValues.filterIsInstance<SourceTopicExtractionRequestedEvent>().single()
+        assertEquals(source.id, topicEvent.sourceId)
+        assertEquals(userId, topicEvent.userId)
     }
 
     private fun createFailedSource(userId: UUID): Source {
