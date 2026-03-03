@@ -1,5 +1,6 @@
 package com.briefy.api.api
 
+import com.briefy.api.application.topic.TopicSuggestionEventHandler
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.infrastructure.extraction.ExtractionProvider
 import com.briefy.api.infrastructure.extraction.ExtractionProviderException
@@ -45,6 +46,9 @@ class SourceControllerTest {
 
     @MockitoBean
     lateinit var currentUserProvider: CurrentUserProvider
+
+    @MockitoBean
+    lateinit var topicSuggestionEventHandler: TopicSuggestionEventHandler
 
     private val objectMapper: ObjectMapper = jacksonObjectMapper()
     private val testUserId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
