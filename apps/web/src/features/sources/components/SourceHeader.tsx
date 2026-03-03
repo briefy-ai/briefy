@@ -1,6 +1,13 @@
-import { ClipboardPaste, ExternalLink, MessageSquarePlus, RotateCcw } from 'lucide-react'
+import { ClipboardPaste, EllipsisVertical, ExternalLink, MessageSquarePlus, RotateCcw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { extractDomain, staggerDelay } from '@/lib/format'
 import type { Source } from '@/lib/api/types'
 
@@ -84,41 +91,36 @@ export function SourceHeader({
             <MessageSquarePlus className="size-4" aria-hidden="true" />
             Generate Briefing
           </Button>
-          {source.status === 'active' && onPasteContent && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onPasteContent}
-              aria-label="Paste content manually"
-            >
-              <ClipboardPaste className="size-4" aria-hidden="true" />
-              Paste content
-            </Button>
-          )}
-          {source.status !== 'archived' && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onDelete}
-              disabled={deleting}
-            >
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          )}
-          {source.status === 'archived' && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onRestore}
-              disabled={restoring}
-            >
-              <RotateCcw className="size-4" aria-hidden="true" />
-              {restoring ? 'Restoring...' : 'Restore'}
-            </Button>
-          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8" aria-label="More actions">
+                <EllipsisVertical className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {source.status === 'active' && onPasteContent && (
+                <>
+                  <DropdownMenuItem onClick={onPasteContent}>
+                    <ClipboardPaste className="size-4" aria-hidden="true" />
+                    Paste content
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              {source.status !== 'archived' && (
+                <DropdownMenuItem variant="destructive" onClick={onDelete} disabled={deleting}>
+                  <Trash2 className="size-4" aria-hidden="true" />
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </DropdownMenuItem>
+              )}
+              {source.status === 'archived' && (
+                <DropdownMenuItem onClick={onRestore} disabled={restoring}>
+                  <RotateCcw className="size-4" aria-hidden="true" />
+                  {restoring ? 'Restoring...' : 'Restore'}
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
