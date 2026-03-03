@@ -174,7 +174,7 @@ class SourceContentFormatterService(
         formattedMetadata: Metadata,
         extractorId: ExtractionProviderId
     ) {
-        if (source.metadata?.extractionProvider == "manual") {
+        if (source.metadata?.extractionProvider == Metadata.EXTRACTION_PROVIDER_MANUAL) {
             logger.info("[formatter] snapshot_skipped sourceId={} extractorId={} reason=manual_content", source.id, extractorId)
             return
         }

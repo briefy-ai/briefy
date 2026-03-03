@@ -351,7 +351,7 @@ class SourceService(
             platform = source.url.platform,
             wordCount = content.wordCount,
             aiFormatted = false,
-            extractionProvider = "manual"
+            extractionProvider = Metadata.EXTRACTION_PROVIDER_MANUAL
         )
 
         val wasFailed = source.status == SourceStatus.FAILED

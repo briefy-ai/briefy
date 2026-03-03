@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -22,22 +22,21 @@ export function PasteContentDialog({ open, onOpenChange, onSubmit, loading }: Pa
   const [rawText, setRawText] = useState('')
   const [title, setTitle] = useState('')
 
+  useEffect(() => {
+    if (!open) {
+      setRawText('')
+      setTitle('')
+    }
+  }, [open])
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!rawText.trim()) return
     onSubmit(rawText, title.trim() || undefined)
   }
 
-  function handleOpenChange(next: boolean) {
-    if (!next) {
-      setRawText('')
-      setTitle('')
-    }
-    onOpenChange(next)
-  }
-
   return (
-    <AlertDialog open={open} onOpenChange={handleOpenChange}>
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-lg">
         <form onSubmit={handleSubmit}>
           <AlertDialogHeader>
