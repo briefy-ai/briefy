@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -20,7 +21,6 @@ interface PasteContentDialogProps {
 export function PasteContentDialog({ open, onOpenChange, onSubmit, loading }: PasteContentDialogProps) {
   const [rawText, setRawText] = useState('')
   const [title, setTitle] = useState('')
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -52,14 +52,12 @@ export function PasteContentDialog({ open, onOpenChange, onSubmit, loading }: Pa
               <label htmlFor="paste-title" className="mb-1.5 block text-sm font-medium">
                 Title <span className="text-muted-foreground font-normal">(optional)</span>
               </label>
-              <input
+              <Input
                 id="paste-title"
-                type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Article title"
                 disabled={loading}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
               />
             </div>
             <div>
@@ -67,7 +65,6 @@ export function PasteContentDialog({ open, onOpenChange, onSubmit, loading }: Pa
                 Content
               </label>
               <textarea
-                ref={textareaRef}
                 id="paste-content"
                 value={rawText}
                 onChange={(e) => setRawText(e.target.value)}

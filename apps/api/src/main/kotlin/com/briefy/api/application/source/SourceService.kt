@@ -342,12 +342,6 @@ class SourceService(
         val userId = currentUserProvider.requireUserId()
         val source = sourceRepository.findByIdAndUserId(id, userId) ?: throw SourceNotFoundException(id)
 
-        if (source.status != SourceStatus.ACTIVE && source.status != SourceStatus.FAILED) {
-            throw InvalidSourceStateException(
-                "Can only provide manual content for active or failed sources. Current status: ${source.status}"
-            )
-        }
-
         val content = Content.from(command.rawText)
         val existing = source.metadata
         val metadata = Metadata.from(
