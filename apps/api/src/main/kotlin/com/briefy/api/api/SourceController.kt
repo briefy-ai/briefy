@@ -48,6 +48,20 @@ class SourceController(
         return ResponseEntity.ok(source)
     }
 
+    @PostMapping("/{id}/content")
+    fun provideManualContent(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: ProvideSourceContentRequest
+    ): ResponseEntity<SourceResponse> {
+        logger.info("[controller] Provide manual content request received sourceId={}", id)
+        val source = sourceService.provideManualContent(
+            id,
+            ProvideSourceContentCommand(rawText = request.rawText, title = request.title)
+        )
+        logger.info("[controller] Provide manual content request completed sourceId={} status={}", source.id, source.status)
+        return ResponseEntity.ok(source)
+    }
+
     @PostMapping("/{id}/retry")
     fun retryExtraction(@PathVariable id: UUID): ResponseEntity<SourceResponse> {
         logger.info("[controller] Retry extraction request received sourceId={}", id)
@@ -173,4 +187,10 @@ data class TopicSuggestionApplyRequest(
 data class CreateManualTopicRequest(
     @field:NotBlank(message = "name must not be blank")
     val name: String
+)
+
+data class ProvideSourceContentRequest(
+    @field:NotBlank(message = "rawText is required")
+    val rawText: String,
+    val title: String? = null
 )

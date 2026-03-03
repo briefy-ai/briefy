@@ -62,6 +62,17 @@ export async function createManualSourceTopicSuggestion(sourceId: string, name: 
   return apiPost<TopicSuggestion>(`/api/sources/${sourceId}/topics/manual`, { name })
 }
 
+export async function provideSourceContent(
+  id: string,
+  rawText: string,
+  title?: string
+): Promise<Source> {
+  return apiPost<Source>(`/api/sources/${id}/content`, {
+    rawText,
+    ...(title ? { title } : {}),
+  })
+}
+
 export async function listSourceAnnotations(sourceId: string): Promise<SourceAnnotation[]> {
   return apiGet<SourceAnnotation[]>(`/api/sources/${sourceId}/annotations`)
 }

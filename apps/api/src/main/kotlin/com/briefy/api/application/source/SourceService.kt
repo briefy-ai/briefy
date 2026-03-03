@@ -337,6 +337,55 @@ class SourceService(
         }
     }
 
+    @Transactional
+    fun provideManualContent(id: UUID, command: ProvideSourceContentCommand): SourceResponse {
+        val userId = currentUserProvider.requireUserId()
+        val source = sourceRepository.findByIdAndUserId(id, userId) ?: throw SourceNotFoundException(id)
+
+        val content = Content.from(command.rawText)
+        val existing = source.metadata
+        val metadata = Metadata.from(
+            title = command.title ?: existing?.title,
+            author = existing?.author,
+            publishedDate = existing?.publishedDate,
+            platform = source.url.platform,
+            wordCount = content.wordCount,
+            aiFormatted = false,
+            extractionProvider = Metadata.EXTRACTION_PROVIDER_MANUAL
+        )
+
+        val wasFailed = source.status == SourceStatus.FAILED
+        source.acceptManualContent(content, metadata)
+        sourceRepository.save(source)
+
+        if (wasFailed) {
+            eventPublisher.publishEvent(
+                SourceActivatedEvent(
+                    sourceId = source.id,
+                    userId = userId,
+                    activationReason = SourceActivationReason.MANUAL_CONTENT_OVERRIDE
+                )
+            )
+        } else {
+            eventPublisher.publishEvent(
+                SourceTopicExtractionRequestedEvent(
+                    sourceId = source.id,
+                    userId = userId
+                )
+            )
+        }
+
+        eventPublisher.publishEvent(
+            SourceContentFormattingRequestedEvent(
+                sourceId = source.id,
+                userId = userId,
+                extractorId = ExtractionProviderId.JSOUP
+            )
+        )
+
+        return source.toResponse()
+    }
+
     companion object {
         private const val MAX_BATCH_ARCHIVE_SOURCE_IDS = 100
         private val HARD_DELETE_ELIGIBLE_STATUSES = setOf(

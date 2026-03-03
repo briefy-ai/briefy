@@ -573,6 +573,89 @@ class SourceServiceEventTest {
         verify(eventPublisher, never()).publishEvent(any<Any>())
     }
 
+    @Test
+    fun `provideManualContent on failed source publishes SourceActivatedEvent with MANUAL_CONTENT_OVERRIDE`() {
+        val userId = UUID.randomUUID()
+        val source = createFailedSource(userId)
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+
+        service.provideManualContent(source.id, ProvideSourceContentCommand(rawText = "manually pasted content"))
+
+        val eventCaptor = argumentCaptor<Any>()
+        verify(eventPublisher, atLeastOnce()).publishEvent(eventCaptor.capture())
+        val activatedEvent = eventCaptor.allValues.filterIsInstance<SourceActivatedEvent>().single()
+        assertEquals(source.id, activatedEvent.sourceId)
+        assertEquals(userId, activatedEvent.userId)
+        assertEquals(SourceActivationReason.MANUAL_CONTENT_OVERRIDE, activatedEvent.activationReason)
+    }
+
+    @Test
+    fun `provideManualContent on failed source publishes SourceContentFormattingRequestedEvent with JSOUP`() {
+        val userId = UUID.randomUUID()
+        val source = createFailedSource(userId)
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+
+        service.provideManualContent(source.id, ProvideSourceContentCommand(rawText = "manually pasted content"))
+
+        val eventCaptor = argumentCaptor<Any>()
+        verify(eventPublisher, atLeastOnce()).publishEvent(eventCaptor.capture())
+        val formattingEvent = eventCaptor.allValues.filterIsInstance<SourceContentFormattingRequestedEvent>().single()
+        assertEquals(source.id, formattingEvent.sourceId)
+        assertEquals(userId, formattingEvent.userId)
+        assertEquals(ExtractionProviderId.JSOUP, formattingEvent.extractorId)
+    }
+
+    @Test
+    fun `provideManualContent on active source does not publish SourceActivatedEvent`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId)
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+
+        service.provideManualContent(source.id, ProvideSourceContentCommand(rawText = "updated content"))
+
+        val eventCaptor = argumentCaptor<Any>()
+        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture())
+        assertTrue(eventCaptor.allValues.none { it is SourceActivatedEvent })
+    }
+
+    @Test
+    fun `provideManualContent on active source publishes SourceContentFormattingRequestedEvent`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId)
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+
+        service.provideManualContent(source.id, ProvideSourceContentCommand(rawText = "updated content"))
+
+        val eventCaptor = argumentCaptor<Any>()
+        verify(eventPublisher, times(2)).publishEvent(eventCaptor.capture())
+        val formattingEvent = eventCaptor.allValues.filterIsInstance<SourceContentFormattingRequestedEvent>().single()
+        assertEquals(source.id, formattingEvent.sourceId)
+        assertEquals(userId, formattingEvent.userId)
+        assertEquals(ExtractionProviderId.JSOUP, formattingEvent.extractorId)
+        val topicEvent = eventCaptor.allValues.filterIsInstance<SourceTopicExtractionRequestedEvent>().single()
+        assertEquals(source.id, topicEvent.sourceId)
+        assertEquals(userId, topicEvent.userId)
+    }
+
+    private fun createFailedSource(userId: UUID): Source {
+        return Source.create(
+            id = UUID.randomUUID(),
+            rawUrl = "https://example.com/paywalled-article",
+            userId = userId
+        ).apply {
+            startExtraction()
+            failExtraction()
+        }
+    }
+
     private fun createActiveSource(userId: UUID): Source {
         return Source.create(
             id = UUID.randomUUID(),

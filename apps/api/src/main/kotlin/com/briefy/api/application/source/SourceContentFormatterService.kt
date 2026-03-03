@@ -174,6 +174,11 @@ class SourceContentFormatterService(
         formattedMetadata: Metadata,
         extractorId: ExtractionProviderId
     ) {
+        if (source.metadata?.extractionProvider == Metadata.EXTRACTION_PROVIDER_MANUAL) {
+            logger.info("[formatter] snapshot_skipped sourceId={} extractorId={} reason=manual_content", source.id, extractorId)
+            return
+        }
+
         val latestSnapshot = sharedSourceSnapshotRepository.findFirstByUrlNormalizedAndIsLatestTrue(source.url.normalized)
         if (latestSnapshot == null) {
             logger.info("[formatter] snapshot_skipped sourceId={} extractorId={} reason=no_latest_snapshot", source.id, extractorId)

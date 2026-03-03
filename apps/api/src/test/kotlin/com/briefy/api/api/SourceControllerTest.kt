@@ -489,6 +489,93 @@ class SourceControllerTest {
             .andExpect(status().isBadRequest)
     }
 
+    @Test
+    fun `POST content updates active source content`() {
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
+        val id = createSource("https://manual-content-active-test.com/article")
+
+        mockMvc.perform(
+            post("/api/sources/$id/content")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"rawText": "Manually pasted article content with enough words"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("active"))
+            .andExpect(jsonPath("$.content.text").value("Manually pasted article content with enough words"))
+            .andExpect(jsonPath("$.metadata.extractionProvider").value("manual"))
+            .andExpect(jsonPath("$.metadata.formattingState").value("pending"))
+    }
+
+    @Test
+    fun `POST content activates failed source with provided content`() {
+        val failedSource = com.briefy.api.domain.knowledgegraph.source.Source.create(
+            id = UUID.randomUUID(),
+            rawUrl = "https://manual-content-failed-test.com/article",
+            userId = testUserId
+        )
+        failedSource.startExtraction()
+        failedSource.failExtraction()
+        sourceRepository.save(failedSource)
+
+        mockMvc.perform(
+            post("/api/sources/${failedSource.id}/content")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"rawText": "Manually pasted content for failed source", "title": "Custom Title"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("active"))
+            .andExpect(jsonPath("$.content.text").value("Manually pasted content for failed source"))
+            .andExpect(jsonPath("$.metadata.title").value("Custom Title"))
+            .andExpect(jsonPath("$.metadata.extractionProvider").value("manual"))
+    }
+
+    @Test
+    fun `POST content returns 404 for unknown source id`() {
+        mockMvc.perform(
+            post("/api/sources/00000000-0000-0000-0000-000000000000/content")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"rawText": "some content"}""")
+        )
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `POST content returns 400 for blank rawText`() {
+        mockMvc.perform(
+            post("/api/sources/00000000-0000-0000-0000-000000000000/content")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"rawText": ""}""")
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `POST content returns 400 for invalid source state`() {
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
+        val id = createSource("https://manual-content-archived-test.com/article")
+
+        // Archive the source
+        mockMvc.perform(delete("/api/sources/$id"))
+            .andExpect(status().isNoContent)
+
+        // Verify it's gone (hard deleted since no dependencies)
+        // Create a new source and archive it via batch to get ARCHIVED state
+        val id2 = createSource("https://manual-content-archived-test2.com/article")
+        mockMvc.perform(
+            post("/api/sources/archive-batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"sourceIds":["$id2"]}""")
+        )
+            .andExpect(status().isNoContent)
+
+        mockMvc.perform(
+            post("/api/sources/$id2/content")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"rawText": "some content"}""")
+        )
+            .andExpect(status().isBadRequest)
+    }
+
     private fun createSource(url: String): String {
         val result = mockMvc.perform(
             post("/api/sources")

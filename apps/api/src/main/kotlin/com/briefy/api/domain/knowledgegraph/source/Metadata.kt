@@ -63,6 +63,7 @@ data class Metadata(
     }
 
     companion object {
+        const val EXTRACTION_PROVIDER_MANUAL = "manual"
         private const val WORDS_PER_MINUTE = 200
 
         fun from(
