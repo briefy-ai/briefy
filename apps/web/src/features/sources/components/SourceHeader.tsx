@@ -1,4 +1,4 @@
-import { ExternalLink, MessageSquarePlus, RotateCcw } from 'lucide-react'
+import { ClipboardPaste, ExternalLink, MessageSquarePlus, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { extractDomain, staggerDelay } from '@/lib/format'
@@ -20,6 +20,7 @@ interface SourceHeaderProps {
   onGenerateBriefing: () => void
   onDelete: () => void
   onRestore: () => void
+  onPasteContent?: () => void
   deleting: boolean
   restoring: boolean
 }
@@ -29,6 +30,7 @@ export function SourceHeader({
   onGenerateBriefing,
   onDelete,
   onRestore,
+  onPasteContent,
   deleting,
   restoring,
 }: SourceHeaderProps) {
@@ -82,6 +84,18 @@ export function SourceHeader({
             <MessageSquarePlus className="size-4" aria-hidden="true" />
             Generate Briefing
           </Button>
+          {source.status === 'active' && onPasteContent && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onPasteContent}
+              aria-label="Paste content manually"
+            >
+              <ClipboardPaste className="size-4" aria-hidden="true" />
+              Paste content
+            </Button>
+          )}
           {source.status !== 'archived' && (
             <Button
               type="button"

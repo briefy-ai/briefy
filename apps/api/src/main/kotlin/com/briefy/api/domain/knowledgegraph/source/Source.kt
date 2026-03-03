@@ -69,6 +69,19 @@ class Source(
         transitionTo(SourceStatus.ACTIVE)
     }
 
+    fun acceptManualContent(content: Content, metadata: Metadata) {
+        require(status == SourceStatus.FAILED || status == SourceStatus.ACTIVE) {
+            "Cannot provide manual content for source in status $status"
+        }
+        if (status == SourceStatus.FAILED) {
+            status = SourceStatus.ACTIVE
+        }
+        this.content = content
+        this.metadata = metadata
+        markTopicExtractionPending()
+        updatedAt = Instant.now()
+    }
+
     fun markTopicExtractionPending() {
         topicExtractionState = TopicExtractionState.PENDING
         topicExtractionFailureReason = null

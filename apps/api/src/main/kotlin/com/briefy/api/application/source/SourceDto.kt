@@ -8,6 +8,11 @@ data class CreateSourceCommand(
     val url: String
 )
 
+data class ProvideSourceContentCommand(
+    val rawText: String,
+    val title: String? = null
+)
+
 data class SourceResponse(
     val id: UUID,
     val url: UrlDto,

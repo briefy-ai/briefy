@@ -14,7 +14,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { deleteSource, restoreSource, retryExtraction, retryFormatting, retryTopicExtraction } from '@/lib/api/sources'
+import { deleteSource, provideSourceContent, restoreSource, retryExtraction, retryFormatting, retryTopicExtraction } from '@/lib/api/sources'
 import { extractErrorMessage } from '@/lib/api/errorMessage'
 import { requireAuth } from '@/lib/auth/requireAuth'
 import { useChatPanel } from '@/features/chat/ChatPanelProvider'
@@ -25,6 +25,7 @@ import { SourceHeader } from '@/features/sources/components/SourceHeader'
 import { ActiveTopicsSection } from '@/features/sources/components/ActiveTopicsSection'
 import { TopicSuggestionsSection } from '@/features/sources/components/TopicSuggestionsSection'
 import { SourceContentSection } from '@/features/sources/components/SourceContent'
+import { PasteContentDialog } from '@/features/sources/components/PasteContentDialog'
 
 export const Route = createFileRoute('/sources/$sourceId')({
   beforeLoad: async () => {
@@ -46,6 +47,8 @@ function SourceDetailPage() {
   const [deleting, setDeleting] = useState(false)
   const [restoring, setRestoring] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const [pasteContentOpen, setPasteContentOpen] = useState(false)
+  const [pastingContent, setPastingContent] = useState(false)
 
   const isActive = source?.status === 'active'
   const onError = useCallback((msg: string) => setError(msg), [setError])
@@ -146,6 +149,19 @@ function SourceDetailPage() {
     }
   }
 
+  async function handlePasteContent(rawText: string, title?: string) {
+    setPastingContent(true)
+    try {
+      const updated = await provideSourceContent(sourceId, rawText, title)
+      setSource(updated)
+      setPasteContentOpen(false)
+    } catch (e) {
+      setError(extractErrorMessage(e, 'Failed to apply content'))
+    } finally {
+      setPastingContent(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="mx-auto max-w-2xl animate-fade-in">
@@ -207,6 +223,7 @@ function SourceDetailPage() {
             sourceTitle: source.metadata?.title ?? source.url.normalized,
           })
         }
+        onPasteContent={() => setPasteContentOpen(true)}
         onDelete={() => setConfirmDeleteOpen(true)}
         onRestore={() => void handleRestore()}
         deleting={deleting}
@@ -225,22 +242,30 @@ function SourceDetailPage() {
         <div className="mb-6 animate-scale-in">
           <div className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3">
             <p className="text-sm text-destructive">Content extraction failed.</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRetry}
-              disabled={retrying}
-              className="ml-4 shrink-0"
-            >
-              {retrying ? (
-                <span className="flex items-center gap-2" role="status">
-                  <span className="size-3 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" aria-hidden="true" />
-                  Retrying...
-                </span>
-              ) : (
-                'Retry extraction'
-              )}
-            </Button>
+            <div className="ml-4 flex shrink-0 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPasteContentOpen(true)}
+              >
+                Paste content
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRetry}
+                disabled={retrying}
+              >
+                {retrying ? (
+                  <span className="flex items-center gap-2" role="status">
+                    <span className="size-3 rounded-full border-2 border-foreground/30 border-t-foreground animate-spin" aria-hidden="true" />
+                    Retrying...
+                  </span>
+                ) : (
+                  'Retry extraction'
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -326,6 +351,13 @@ function SourceDetailPage() {
         onSeeRawContent={() => setShowRawContent(true)}
         onRetryFormatting={() => void handleRetryFormatting()}
         retryFormattingLoading={retryFormattingLoading}
+      />
+
+      <PasteContentDialog
+        open={pasteContentOpen}
+        onOpenChange={setPasteContentOpen}
+        onSubmit={handlePasteContent}
+        loading={pastingContent}
       />
 
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
