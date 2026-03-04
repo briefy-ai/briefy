@@ -19,6 +19,7 @@ import { Route as SourcesIndexRouteImport } from './routes/sources/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as TopicsTopicIdRouteImport } from './routes/topics/$topicId'
 import { Route as SourcesSourceIdRouteImport } from './routes/sources/$sourceId'
+import { Route as ShareTokenRouteImport } from './routes/share/$token'
 import { Route as BriefingsBriefingIdRouteImport } from './routes/briefings/$briefingId'
 
 const SignupRoute = SignupRouteImport.update({
@@ -71,6 +72,11 @@ const SourcesSourceIdRoute = SourcesSourceIdRouteImport.update({
   path: '/sources/$sourceId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ShareTokenRoute = ShareTokenRouteImport.update({
+  id: '/share/$token',
+  path: '/share/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BriefingsBriefingIdRoute = BriefingsBriefingIdRouteImport.update({
   id: '/briefings/$briefingId',
   path: '/briefings/$briefingId',
@@ -84,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/briefings/$briefingId': typeof BriefingsBriefingIdRoute
+  '/share/$token': typeof ShareTokenRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
   '/topics/$topicId': typeof TopicsTopicIdRoute
   '/settings/': typeof SettingsIndexRoute
@@ -97,6 +104,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/briefings/$briefingId': typeof BriefingsBriefingIdRoute
+  '/share/$token': typeof ShareTokenRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
   '/topics/$topicId': typeof TopicsTopicIdRoute
   '/settings': typeof SettingsIndexRoute
@@ -111,6 +119,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/briefings/$briefingId': typeof BriefingsBriefingIdRoute
+  '/share/$token': typeof ShareTokenRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
   '/topics/$topicId': typeof TopicsTopicIdRoute
   '/settings/': typeof SettingsIndexRoute
@@ -126,6 +135,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/briefings/$briefingId'
+    | '/share/$token'
     | '/sources/$sourceId'
     | '/topics/$topicId'
     | '/settings/'
@@ -139,6 +149,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/briefings/$briefingId'
+    | '/share/$token'
     | '/sources/$sourceId'
     | '/topics/$topicId'
     | '/settings'
@@ -152,6 +163,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/signup'
     | '/briefings/$briefingId'
+    | '/share/$token'
     | '/sources/$sourceId'
     | '/topics/$topicId'
     | '/settings/'
@@ -166,6 +178,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
   BriefingsBriefingIdRoute: typeof BriefingsBriefingIdRoute
+  ShareTokenRoute: typeof ShareTokenRoute
   SourcesSourceIdRoute: typeof SourcesSourceIdRoute
   TopicsTopicIdRoute: typeof TopicsTopicIdRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -245,6 +258,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SourcesSourceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/share/$token': {
+      id: '/share/$token'
+      path: '/share/$token'
+      fullPath: '/share/$token'
+      preLoaderRoute: typeof ShareTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/briefings/$briefingId': {
       id: '/briefings/$briefingId'
       path: '/briefings/$briefingId'
@@ -262,6 +282,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,
   BriefingsBriefingIdRoute: BriefingsBriefingIdRoute,
+  ShareTokenRoute: ShareTokenRoute,
   SourcesSourceIdRoute: SourcesSourceIdRoute,
   TopicsTopicIdRoute: TopicsTopicIdRoute,
   SettingsIndexRoute: SettingsIndexRoute,

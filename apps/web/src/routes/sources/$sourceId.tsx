@@ -34,6 +34,7 @@ import { ActiveTopicsSection } from '@/features/sources/components/ActiveTopicsS
 import { TopicSuggestionsSection } from '@/features/sources/components/TopicSuggestionsSection'
 import { SourceContentSection } from '@/features/sources/components/SourceContent'
 import { PasteContentDialog } from '@/features/sources/components/PasteContentDialog'
+import { ShareDialog } from '@/features/sources/components/ShareDialog'
 
 export const Route = createFileRoute('/sources/$sourceId')({
   beforeLoad: async () => {
@@ -58,6 +59,7 @@ function SourceDetailPage() {
   const [pasteContentOpen, setPasteContentOpen] = useState(false)
   const [pastingContent, setPastingContent] = useState(false)
   const [markingRead, setMarkingRead] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const isActive = source?.status === 'active'
   const onError = useCallback((msg: string) => setError(msg), [setError])
@@ -247,6 +249,7 @@ function SourceDetailPage() {
           })
         }
         onPasteContent={() => setPasteContentOpen(true)}
+        onShare={() => setShareOpen(true)}
         onDelete={() => setConfirmDeleteOpen(true)}
         onRestore={() => void handleRestore()}
         deleting={deleting}
@@ -400,6 +403,12 @@ function SourceDetailPage() {
         onOpenChange={setPasteContentOpen}
         onSubmit={handlePasteContent}
         loading={pastingContent}
+      />
+
+      <ShareDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        sourceId={sourceId}
       />
 
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
