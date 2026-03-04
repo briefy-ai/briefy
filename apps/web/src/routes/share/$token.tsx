@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { MarkdownContent } from '@/components/content/MarkdownContent'
 import { ApiClientError } from '@/lib/api/client'
 import { resolveShareLink, type SharedSourceResponse } from '@/lib/api/shareLinks'
 
@@ -125,9 +126,7 @@ function SharedSourcePage() {
       </div>
 
       {source.content ? (
-        <div className="prose prose-sm max-w-none text-foreground/90 whitespace-pre-wrap leading-relaxed">
-          {source.content}
-        </div>
+        <MarkdownContent content={source.content} variant="article" />
       ) : (
         <p className="text-sm text-muted-foreground italic">No content available.</p>
       )}
