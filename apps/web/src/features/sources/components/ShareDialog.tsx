@@ -47,6 +47,12 @@ export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) 
   const [justCreated, setJustCreated] = useState<ShareLinkDto | null>(null)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    }
+  }, [])
+
   const loadLinks = useCallback(async () => {
     setLoadingLinks(true)
     try {
