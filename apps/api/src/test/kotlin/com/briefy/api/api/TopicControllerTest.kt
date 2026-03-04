@@ -100,7 +100,7 @@ class TopicControllerTest {
 
         mockMvc.perform(get("/api/sources"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$[?(@.id=='$sourceId' && @.pendingSuggestedTopicsCount==1)]").isNotEmpty)
+            .andExpect(jsonPath("$.items[?(@.id=='$sourceId' && @.pendingSuggestedTopicsCount==1)]").isNotEmpty)
 
         mockMvc.perform(
             post("/api/sources/$sourceId/topics/apply")
@@ -111,7 +111,7 @@ class TopicControllerTest {
 
         mockMvc.perform(get("/api/sources"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$[?(@.id=='$sourceId' && @.pendingSuggestedTopicsCount==0)]").isNotEmpty)
+            .andExpect(jsonPath("$.items[?(@.id=='$sourceId' && @.pendingSuggestedTopicsCount==0)]").isNotEmpty)
     }
 
     @Test

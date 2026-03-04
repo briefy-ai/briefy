@@ -40,6 +40,13 @@ export interface Source {
   updatedAt: string
 }
 
+export interface PaginatedSourcesResponse {
+  items: Source[]
+  nextCursor: string | null
+  hasMore: boolean
+  limit: number
+}
+
 export interface SourceAnnotation {
   id: string
   sourceId: string

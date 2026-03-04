@@ -11,6 +11,7 @@ import com.briefy.api.infrastructure.extraction.ExtractionResult
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.BeforeEach
 import org.mockito.Mockito.`when`
@@ -181,7 +182,9 @@ class SourceControllerTest {
         // List all
         mockMvc.perform(get("/api/sources"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$").isArray)
+            .andExpect(jsonPath("$.items").isArray)
+            .andExpect(jsonPath("$.limit").value(20))
+            .andExpect(jsonPath("$.hasMore").isBoolean)
     }
 
     @Test
@@ -191,20 +194,67 @@ class SourceControllerTest {
 
         mockMvc.perform(get("/api/sources"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$[?(@.id=='$id' && @.pendingSuggestedTopicsCount==0)]").isNotEmpty)
+            .andExpect(jsonPath("$.items[?(@.id=='$id' && @.pendingSuggestedTopicsCount==0)]").isNotEmpty)
     }
 
     @Test
     fun `GET list filters by status`() {
         mockMvc.perform(get("/api/sources").param("status", "active"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$").isArray)
+            .andExpect(jsonPath("$.items").isArray)
     }
 
     @Test
     fun `GET list returns bad request for invalid status`() {
         mockMvc.perform(get("/api/sources").param("status", "unknown"))
             .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `GET list supports cursor pagination without duplicates`() {
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
+
+        createSource("https://cursor-page-1.com/article")
+        Thread.sleep(5)
+        createSource("https://cursor-page-2.com/article")
+        Thread.sleep(5)
+        createSource("https://cursor-page-3.com/article")
+
+        val firstPageJson = mockMvc.perform(get("/api/sources").param("status", "active").param("limit", "2"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items.length()").value(2))
+            .andReturn()
+            .response
+            .contentAsString
+
+        val firstPage = objectMapper.readTree(firstPageJson)
+        val firstPageIds = firstPage.get("items").map { it.get("id").asText() }
+        val nextCursor = firstPage.get("nextCursor").asText()
+        assertTrue(nextCursor.isNotBlank())
+
+        val secondPageJson = mockMvc.perform(
+            get("/api/sources")
+                .param("status", "active")
+                .param("limit", "2")
+                .param("cursor", nextCursor)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items.length()").value(2))
+            .andReturn()
+            .response
+            .contentAsString
+
+        val secondPage = objectMapper.readTree(secondPageJson)
+        val secondPageIds = secondPage.get("items").map { it.get("id").asText() }
+        assertTrue(secondPageIds.none { firstPageIds.contains(it) })
+        assertTrue(secondPage.has("hasMore"))
+    }
+
+    @Test
+    fun `GET list returns bad request for invalid cursor`() {
+        mockMvc.perform(get("/api/sources").param("cursor", "invalid-cursor"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.message").value("Invalid cursor"))
     }
 
     @Test
@@ -316,12 +366,12 @@ class SourceControllerTest {
 
         mockMvc.perform(get("/api/sources"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$").isArray)
-            .andExpect(jsonPath("$[?(@.id=='$id')]").isEmpty)
+            .andExpect(jsonPath("$.items").isArray)
+            .andExpect(jsonPath("$.items[?(@.id=='$id')]").isEmpty)
 
         mockMvc.perform(get("/api/sources").param("status", "archived"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$[?(@.id=='$id')]").isEmpty)
+            .andExpect(jsonPath("$.items[?(@.id=='$id')]").isEmpty)
 
         mockMvc.perform(get("/api/sources/$id"))
             .andExpect(status().isNotFound)
@@ -466,7 +516,7 @@ class SourceControllerTest {
 
         mockMvc.perform(get("/api/sources").param("status", "archived"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$[?(@.id=='$idA' && @.pendingSuggestedTopicsCount==0)]").isNotEmpty)
+            .andExpect(jsonPath("$.items[?(@.id=='$idA' && @.pendingSuggestedTopicsCount==0)]").isNotEmpty)
     }
 
     @Test

@@ -2,6 +2,7 @@ import { apiDelete, apiGet, apiPatch, apiPost } from './client'
 import type {
   CreateSourceAnnotationRequest,
   CreateSourceRequest,
+  PaginatedSourcesResponse,
   Source,
   SourceActiveTopic,
   SourceAnnotation,
@@ -13,9 +14,23 @@ export async function createSource(request: CreateSourceRequest): Promise<Source
   return apiPost<Source>('/api/sources', request)
 }
 
-export async function listSources(status?: string): Promise<Source[]> {
-  const params = status ? `?status=${encodeURIComponent(status)}` : ''
-  return apiGet<Source[]>(`/api/sources${params}`)
+export async function listSources(options?: {
+  status?: string
+  limit?: number
+  cursor?: string
+}): Promise<PaginatedSourcesResponse> {
+  const params = new URLSearchParams()
+  if (options?.status) {
+    params.set('status', options.status)
+  }
+  if (options?.limit !== undefined) {
+    params.set('limit', String(options.limit))
+  }
+  if (options?.cursor) {
+    params.set('cursor', options.cursor)
+  }
+  const query = params.toString()
+  return apiGet<PaginatedSourcesResponse>(`/api/sources${query ? `?${query}` : ''}`)
 }
 
 export async function getSource(id: string): Promise<Source> {

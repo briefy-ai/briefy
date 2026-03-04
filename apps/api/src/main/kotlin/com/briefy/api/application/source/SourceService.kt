@@ -20,6 +20,7 @@ import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
+import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
@@ -43,6 +44,8 @@ class SourceService(
     private val sourceAnnotationService: SourceAnnotationService
 ) {
     private val logger = LoggerFactory.getLogger(SourceService::class.java)
+    private val defaultSourceListLimit = 20
+    private val maxSourceListLimit = 100
 
     @Transactional
     fun submitSource(command: CreateSourceCommand): SourceResponse {
@@ -124,21 +127,51 @@ class SourceService(
     }
 
     @Transactional(readOnly = true)
-    fun listSources(status: SourceStatus? = null): List<SourceResponse> {
+    fun listSources(status: SourceStatus? = null, limit: Int? = null, cursor: String? = null): SourcePageResponse {
         val userId = currentUserProvider.requireUserId()
         val effectiveStatus = status ?: SourceStatus.ACTIVE
-        logger.info("[service] Listing sources userId={} status={}", userId, effectiveStatus)
-        val sources = sourceRepository.findByUserIdAndStatus(userId, effectiveStatus)
-        logger.info("[service] Listed sources userId={} count={}", userId, sources.size)
+        val normalizedLimit = normalizeListLimit(limit)
+        val decodedCursor = cursor?.let { SourcePageCursorCodec.decode(it) }
+        logger.info(
+            "[service] Listing sources userId={} status={} limit={} hasCursor={}",
+            userId,
+            effectiveStatus,
+            normalizedLimit,
+            decodedCursor != null
+        )
+        val pageSize = normalizedLimit + 1
+        val sources = sourceRepository.findPageByUserIdAndStatus(
+            userId = userId,
+            status = effectiveStatus,
+            cursorUpdatedAt = decodedCursor?.updatedAt,
+            cursorId = decodedCursor?.id,
+            pageable = PageRequest.of(0, pageSize)
+        )
+        val hasMore = sources.size > normalizedLimit
+        val pageItems = if (hasMore) sources.dropLast(1) else sources
+        logger.info("[service] Listed sources userId={} count={} hasMore={}", userId, pageItems.size, hasMore)
         val pendingSuggestionsBySourceId = if (effectiveStatus == SourceStatus.ACTIVE) {
-            loadPendingSuggestionCountsBySourceId(userId, sources)
+            loadPendingSuggestionCountsBySourceId(userId, pageItems)
         } else {
             emptyMap()
         }
 
-        return sources.map { source ->
+        val items = pageItems.map { source ->
             source.toResponse(pendingSuggestedTopicsCount = pendingSuggestionsBySourceId[source.id] ?: 0L)
         }
+        val nextCursor = if (hasMore && pageItems.isNotEmpty()) {
+            val lastSource = pageItems.last()
+            SourcePageCursorCodec.encode(SourcePageCursor(updatedAt = lastSource.updatedAt, id = lastSource.id))
+        } else {
+            null
+        }
+
+        return SourcePageResponse(
+            items = items,
+            nextCursor = nextCursor,
+            hasMore = hasMore,
+            limit = normalizedLimit
+        )
     }
 
     @Transactional(readOnly = true)
@@ -399,6 +432,14 @@ class SourceService(
             TopicLinkStatus.SUGGESTED,
             TopicLinkStatus.ACTIVE
         )
+    }
+
+    private fun normalizeListLimit(limit: Int?): Int {
+        if (limit == null) {
+            return defaultSourceListLimit
+        }
+        require(limit > 0) { "limit must be greater than 0" }
+        return limit.coerceAtMost(maxSourceListLimit)
     }
 
     private fun loadPendingSuggestionCountsBySourceId(userId: UUID, sources: List<Source>): Map<UUID, Long> {
