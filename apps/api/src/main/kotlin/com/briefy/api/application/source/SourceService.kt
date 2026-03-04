@@ -140,13 +140,21 @@ class SourceService(
             decodedCursor != null
         )
         val pageSize = normalizedLimit + 1
-        val sources = sourceRepository.findPageByUserIdAndStatus(
-            userId = userId,
-            status = effectiveStatus,
-            cursorUpdatedAt = decodedCursor?.updatedAt,
-            cursorId = decodedCursor?.id,
-            pageable = PageRequest.of(0, pageSize)
-        )
+        val sources = if (decodedCursor == null) {
+            sourceRepository.findFirstPageByUserIdAndStatus(
+                userId = userId,
+                status = effectiveStatus,
+                pageable = PageRequest.of(0, pageSize)
+            )
+        } else {
+            sourceRepository.findPageByUserIdAndStatusAfterCursor(
+                userId = userId,
+                status = effectiveStatus,
+                cursorUpdatedAt = decodedCursor.updatedAt,
+                cursorId = decodedCursor.id,
+                pageable = PageRequest.of(0, pageSize)
+            )
+        }
         val hasMore = sources.size > normalizedLimit
         val pageItems = if (hasMore) sources.dropLast(1) else sources
         logger.info("[service] Listed sources userId={} count={} hasMore={}", userId, pageItems.size, hasMore)
