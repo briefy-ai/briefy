@@ -54,41 +54,53 @@ function SourcesPage() {
   const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number | null>(null)
   const [confirmDeleteIds, setConfirmDeleteIds] = useState<string[]>([])
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
-  const isFetchingRef = useRef(false)
+  const isFetchingMoreRef = useRef(false)
+  const fetchTokenRef = useRef(0)
 
   const fetchSources = useCallback(async () => {
-    if (isFetchingRef.current) {
-      return
-    }
+    const currentFetchToken = ++fetchTokenRef.current
     try {
-      isFetchingRef.current = true
       setLoading(true)
       setLoadingMore(false)
       setError(null)
+      setSources([])
+      setNextCursor(null)
+      setHasMore(false)
       const page = await listSources({ status: filter, limit: SOURCE_PAGE_SIZE })
-      setSources(sortSourcesByMostRecent(page.items))
+      if (currentFetchToken !== fetchTokenRef.current) {
+        return
+      }
+      setSources(page.items)
       setNextCursor(page.nextCursor)
       setHasMore(page.hasMore)
     } catch (e) {
+      if (currentFetchToken !== fetchTokenRef.current) {
+        return
+      }
       setError(e instanceof Error ? e.message : 'Failed to load sources')
     } finally {
-      setLoading(false)
-      isFetchingRef.current = false
+      if (currentFetchToken === fetchTokenRef.current) {
+        setLoading(false)
+      }
     }
   }, [filter])
 
   const fetchMoreSources = useCallback(async () => {
-    if (isFetchingRef.current || !hasMore || !nextCursor) {
+    if (isFetchingMoreRef.current || !hasMore || !nextCursor) {
       return
     }
+    const currentFetchToken = fetchTokenRef.current
     try {
-      isFetchingRef.current = true
+      isFetchingMoreRef.current = true
       setLoadingMore(true)
       const page = await listSources({
         status: filter,
         limit: SOURCE_PAGE_SIZE,
         cursor: nextCursor,
       })
+      if (currentFetchToken !== fetchTokenRef.current) {
+        return
+      }
       setSources((prev) => {
         const existingIds = new Set(prev.map((source) => source.id))
         const merged = [...prev]
@@ -97,15 +109,20 @@ function SourcesPage() {
             merged.push(source)
           }
         })
-        return sortSourcesByMostRecent(merged)
+        return merged
       })
       setNextCursor(page.nextCursor)
       setHasMore(page.hasMore)
     } catch (e) {
+      if (currentFetchToken !== fetchTokenRef.current) {
+        return
+      }
       setError(e instanceof Error ? e.message : 'Failed to load more sources')
     } finally {
-      setLoadingMore(false)
-      isFetchingRef.current = false
+      if (currentFetchToken === fetchTokenRef.current) {
+        setLoadingMore(false)
+      }
+      isFetchingMoreRef.current = false
     }
   }, [filter, hasMore, nextCursor])
 
@@ -154,7 +171,7 @@ function SourcesPage() {
     try {
       const source = await createSource({ url: url.trim() })
       if (filter === 'active') {
-        setSources((prev) => sortSourcesByMostRecent([source, ...prev]))
+        setSources((prev) => [source, ...prev])
       }
       setUrl('')
     } catch (e) {
@@ -593,19 +610,4 @@ function extractDomain(url: string): string {
   } catch {
     return url
   }
-}
-
-function sortSourcesByMostRecent(items: Source[]): Source[] {
-  return [...items].sort((a, b) => {
-    const recencyDiff = getSourceRecencyTimestamp(b) - getSourceRecencyTimestamp(a)
-    if (recencyDiff !== 0) return recencyDiff
-    return b.createdAt.localeCompare(a.createdAt)
-  })
-}
-
-function getSourceRecencyTimestamp(source: Source): number {
-  const updatedAtTs = Date.parse(source.updatedAt)
-  if (!Number.isNaN(updatedAtTs)) return updatedAtTs
-  const createdAtTs = Date.parse(source.createdAt)
-  return Number.isNaN(createdAtTs) ? 0 : createdAtTs
 }

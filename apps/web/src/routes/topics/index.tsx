@@ -78,8 +78,7 @@ function TopicsPage() {
       setSourcesLoading(true)
       setSourcesLoadingMore(false)
       const page = await listSources({ status: 'active', limit: SOURCE_PICKER_PAGE_SIZE })
-      const sorted = [...page.items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      setActiveSources(sorted)
+      setActiveSources(page.items)
       setSourcesCursor(page.nextCursor)
       setSourcesHasMore(page.hasMore)
     } catch (e) {
@@ -110,7 +109,7 @@ function TopicsPage() {
             merged.push(source)
           }
         })
-        return merged.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        return merged
       })
       setSourcesCursor(page.nextCursor)
       setSourcesHasMore(page.hasMore)
