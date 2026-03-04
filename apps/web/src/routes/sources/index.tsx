@@ -430,6 +430,7 @@ function SourceCard({
   const status = STATUS_CONFIG[source.status]
   const domain = extractDomain(source.url.normalized)
   const hasPendingTopicSuggestions = showPendingSuggestionIndicator && source.pendingSuggestedTopicsCount > 0
+  const showUnreadIndicator = showPendingSuggestionIndicator && source.status === 'active' && !source.read
 
   return (
     <RouterLink
@@ -456,6 +457,15 @@ function SourceCard({
                   aria-label="Has pending topic suggestions"
                   className="size-2 shrink-0 rounded-full bg-amber-500"
                 />
+              )}
+              {showUnreadIndicator && (
+                <Badge
+                  variant="outline"
+                  className="ml-1 text-[0.55rem] font-medium uppercase tracking-wider"
+                  aria-label="Source unread"
+                >
+                  Unread
+                </Badge>
               )}
             </h3>
             <p className="mt-0.5 text-xs text-muted-foreground truncate">

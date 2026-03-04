@@ -36,6 +36,7 @@ export interface Source {
   topicExtractionState: 'pending' | 'succeeded' | 'failed'
   topicExtractionFailureReason: string | null
   pendingSuggestedTopicsCount: number
+  read: boolean
   createdAt: string
   updatedAt: string
 }

@@ -23,6 +23,7 @@ data class SourceResponse(
     val topicExtractionState: String,
     val topicExtractionFailureReason: String?,
     val pendingSuggestedTopicsCount: Long,
+    val read: Boolean,
     val reuse: ReuseInfoDto?,
     val createdAt: Instant,
     val updatedAt: Instant
@@ -75,6 +76,7 @@ fun Source.toResponse(
     topicExtractionState = topicExtractionState.name.lowercase(),
     topicExtractionFailureReason = topicExtractionFailureReason,
     pendingSuggestedTopicsCount = pendingSuggestedTopicsCount,
+    read = isRead,
     reuse = reuseInfo,
     createdAt = createdAt,
     updatedAt = updatedAt

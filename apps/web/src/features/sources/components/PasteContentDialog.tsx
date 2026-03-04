@@ -24,9 +24,13 @@ export function PasteContentDialog({ open, onOpenChange, onSubmit, loading }: Pa
 
   useEffect(() => {
     if (!open) {
-      setRawText('')
-      setTitle('')
+      const timer = setTimeout(() => {
+        setRawText('')
+        setTitle('')
+      }, 0)
+      return () => clearTimeout(timer)
     }
+    return undefined
   }, [open])
 
   function handleSubmit(e: React.FormEvent) {

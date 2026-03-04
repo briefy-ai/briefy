@@ -223,6 +223,22 @@ class SourceServiceEventTest {
     }
 
     @Test
+    fun `markSourceRead toggles read flag only once for active source`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId)
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+
+        val firstResponse = service.markSourceRead(source.id)
+        val secondResponse = service.markSourceRead(source.id)
+
+        assertTrue(source.isRead)
+        assertTrue(firstResponse.read)
+        assertTrue(secondResponse.read)
+        verify(sourceRepository, times(1)).save(source)
+    }
+
+    @Test
     fun `submitSource publishes SourceActivatedEvent with FRESH_EXTRACTION on fresh ingestion`() {
         val userId = UUID.randomUUID()
         val sourceId = UUID.randomUUID()

@@ -245,6 +245,20 @@ class SourceService(
     }
 
     @Transactional
+    fun markSourceRead(id: UUID): SourceResponse {
+        val userId = currentUserProvider.requireUserId()
+        logger.info("[service] Marking source read userId={} sourceId={}", userId, id)
+        val source = sourceRepository.findByIdAndUserId(id, userId) ?: throw SourceNotFoundException(id)
+        if (source.status != SourceStatus.ACTIVE) {
+            throw InvalidSourceStateException("Can only mark active sources as read. Current status: ${source.status}")
+        }
+        if (source.markRead()) {
+            sourceRepository.save(source)
+        }
+        return source.toResponse()
+    }
+
+    @Transactional
     fun processQueuedExtraction(sourceId: UUID, userId: UUID): SourceResponse {
         val source = sourceRepository.findByIdAndUserId(sourceId, userId)
             ?: throw SourceNotFoundException(sourceId)

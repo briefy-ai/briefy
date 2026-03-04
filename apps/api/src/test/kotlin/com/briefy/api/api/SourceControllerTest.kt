@@ -580,6 +580,16 @@ class SourceControllerTest {
             .andExpect(status().isBadRequest)
     }
 
+    @Test
+    fun `POST mark-read toggles read field`() {
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
+        val id = createSource("https://mark-read-test.com/article")
+
+        mockMvc.perform(post("/api/sources/$id/mark-read"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.read").value(true))
+    }
+
     private fun createSource(url: String): String {
         val result = mockMvc.perform(
             post("/api/sources")
