@@ -119,6 +119,7 @@ class XApiExtractionProvider(
             expansions.add("article.cover_media")
             expansions.add("article.media_entities")
         }
+        expansions.add("attachments.media_keys")
 
         logger.info(
             "[twitter] request.lookup_post method=GET path=/2/tweets ids={} includeArticleExpansions={} tweetFields={} expansions={}",

@@ -37,6 +37,7 @@ class XApiExtractionProviderTest {
 
             val request = server.takeRequest()
             assertTrue(request.path!!.startsWith("/2/tweets"))
+            assertTrue(request.path!!.contains("attachments.media_keys"))
             assertEquals("Bearer token-1", request.getHeader("Authorization"))
             assertTrue(result.text.contains("# X Post"))
             assertTrue(result.text.contains("hello from x"))

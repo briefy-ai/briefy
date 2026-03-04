@@ -23,6 +23,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 - [2026-02-28 16:34] Combined multiple expected DB-violation assertions in one `@Transactional` Postgres test, causing SQL state `25P02` (`current transaction is aborted`) after the first check-constraint failure -> split into isolated tests, one expected DB violation per transaction.
 - [2026-02-28 20:05] Mapped `RunEvent.sequenceId` with `@GeneratedValue` on a non-identifier field -> Hibernate failed context startup (`AnnotationException`) and schema validation (`nullable` mismatch) -> removed `@GeneratedValue`, kept column read-only, and set `nullable = false` to match DB identity column.
 - [2026-03-04 12:47] Tried generating fallback OG PNG with `jshell` in this sandbox and hit runtime/headless instability -> switched to `java -Djava.awt.headless=true <source-file>` for deterministic image generation -> for asset generation scripts that use AWT, run headless Java directly instead of `jshell`.
+- [2026-03-04 13:34] Added OG image extraction for X posts but forgot `attachments.media_keys` expansion in tweet lookup -> regular post media did not reliably populate `includes.media` -> for X API media extraction, always pair `tweet.fields=attachments` with `expansions=attachments.media_keys`.
 
 ## Non-Obvious Code Findings
 
