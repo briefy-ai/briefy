@@ -32,12 +32,25 @@ class SourceController(
     }
 
     @GetMapping
-    fun listSources(@RequestParam(required = false) status: String?): ResponseEntity<List<SourceResponse>> {
-        logger.info("[controller] List sources request received status={}", status ?: "all")
+    fun listSources(
+        @RequestParam(required = false) status: String?,
+        @RequestParam(required = false) limit: Int?,
+        @RequestParam(required = false) cursor: String?
+    ): ResponseEntity<SourcePageResponse> {
+        logger.info(
+            "[controller] List sources request received status={} limit={} hasCursor={}",
+            status ?: "all",
+            limit ?: "default",
+            !cursor.isNullOrBlank()
+        )
         val statusEnum = status?.let { SourceStatus.valueOf(it.uppercase()) }
-        val sources = sourceService.listSources(statusEnum)
-        logger.info("[controller] List sources request completed count={}", sources.size)
-        return ResponseEntity.ok(sources)
+        val sourcesPage = sourceService.listSources(status = statusEnum, limit = limit, cursor = cursor)
+        logger.info(
+            "[controller] List sources request completed count={} hasMore={}",
+            sourcesPage.items.size,
+            sourcesPage.hasMore
+        )
+        return ResponseEntity.ok(sourcesPage)
     }
 
     @GetMapping("/{id}")

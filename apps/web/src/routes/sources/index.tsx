@@ -1,5 +1,5 @@
 import { createFileRoute, Link as RouterLink } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { BookOpen, CheckSquare, Clock3, Link2, MoreHorizontal, RotateCcw, Trash2, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +28,8 @@ import { requireAuth } from '@/lib/auth/requireAuth'
 import { cn } from '@/lib/utils'
 import type { Source } from '@/lib/api/types'
 
+const SOURCE_PAGE_SIZE = 20
+
 export const Route = createFileRoute('/sources/')({
   beforeLoad: async () => {
     await requireAuth()
@@ -39,6 +41,9 @@ function SourcesPage() {
   const [filter, setFilter] = useState<'active' | 'archived'>('active')
   const [sources, setSources] = useState<Source[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [url, setUrl] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -48,23 +53,103 @@ function SourcesPage() {
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([])
   const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number | null>(null)
   const [confirmDeleteIds, setConfirmDeleteIds] = useState<string[]>([])
+  const loadMoreRef = useRef<HTMLDivElement | null>(null)
+  const isFetchingMoreRef = useRef(false)
+  const fetchTokenRef = useRef(0)
 
   const fetchSources = useCallback(async () => {
+    const currentFetchToken = ++fetchTokenRef.current
     try {
       setLoading(true)
+      setLoadingMore(false)
       setError(null)
-      const data = await listSources(filter)
-      setSources(sortSourcesByMostRecent(data))
+      setSources([])
+      setNextCursor(null)
+      setHasMore(false)
+      const page = await listSources({ status: filter, limit: SOURCE_PAGE_SIZE })
+      if (currentFetchToken !== fetchTokenRef.current) {
+        return
+      }
+      setSources(page.items)
+      setNextCursor(page.nextCursor)
+      setHasMore(page.hasMore)
     } catch (e) {
+      if (currentFetchToken !== fetchTokenRef.current) {
+        return
+      }
       setError(e instanceof Error ? e.message : 'Failed to load sources')
     } finally {
-      setLoading(false)
+      if (currentFetchToken === fetchTokenRef.current) {
+        setLoading(false)
+      }
     }
   }, [filter])
+
+  const fetchMoreSources = useCallback(async () => {
+    if (isFetchingMoreRef.current || !hasMore || !nextCursor) {
+      return
+    }
+    const currentFetchToken = fetchTokenRef.current
+    try {
+      isFetchingMoreRef.current = true
+      setLoadingMore(true)
+      const page = await listSources({
+        status: filter,
+        limit: SOURCE_PAGE_SIZE,
+        cursor: nextCursor,
+      })
+      if (currentFetchToken !== fetchTokenRef.current) {
+        return
+      }
+      setSources((prev) => {
+        const existingIds = new Set(prev.map((source) => source.id))
+        const merged = [...prev]
+        page.items.forEach((source) => {
+          if (!existingIds.has(source.id)) {
+            merged.push(source)
+          }
+        })
+        return merged
+      })
+      setNextCursor(page.nextCursor)
+      setHasMore(page.hasMore)
+    } catch (e) {
+      if (currentFetchToken !== fetchTokenRef.current) {
+        return
+      }
+      setError(e instanceof Error ? e.message : 'Failed to load more sources')
+    } finally {
+      if (currentFetchToken === fetchTokenRef.current) {
+        setLoadingMore(false)
+      }
+      isFetchingMoreRef.current = false
+    }
+  }, [filter, hasMore, nextCursor])
 
   useEffect(() => {
     fetchSources()
   }, [fetchSources])
+
+  useEffect(() => {
+    if (!hasMore) {
+      return
+    }
+    const node = loadMoreRef.current
+    if (!node) {
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void fetchMoreSources()
+        }
+      },
+      { rootMargin: '240px' }
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [fetchMoreSources, hasMore, sources.length])
 
   useEffect(() => {
     setSelectedSourceIds([])
@@ -86,7 +171,7 @@ function SourcesPage() {
     try {
       const source = await createSource({ url: url.trim() })
       if (filter === 'active') {
-        setSources((prev) => sortSourcesByMostRecent([source, ...prev]))
+        setSources((prev) => [source, ...prev])
       }
       setUrl('')
     } catch (e) {
@@ -393,6 +478,12 @@ function SourcesPage() {
               />
             </div>
           ))}
+          {hasMore && <div ref={loadMoreRef} className="h-2" aria-hidden="true" />}
+          {loadingMore && (
+            <div className="py-2 text-center text-xs text-muted-foreground">
+              Loading more sources...
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -529,19 +620,4 @@ function extractDomain(url: string): string {
   } catch {
     return url
   }
-}
-
-function sortSourcesByMostRecent(items: Source[]): Source[] {
-  return [...items].sort((a, b) => {
-    const recencyDiff = getSourceRecencyTimestamp(b) - getSourceRecencyTimestamp(a)
-    if (recencyDiff !== 0) return recencyDiff
-    return b.createdAt.localeCompare(a.createdAt)
-  })
-}
-
-function getSourceRecencyTimestamp(source: Source): number {
-  const updatedAtTs = Date.parse(source.updatedAt)
-  if (!Number.isNaN(updatedAtTs)) return updatedAtTs
-  const createdAtTs = Date.parse(source.createdAt)
-  return Number.isNaN(createdAtTs) ? 0 : createdAtTs
 }

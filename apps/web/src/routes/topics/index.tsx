@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Hash, Search } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +11,8 @@ import { createTopic, listTopics } from '@/lib/api/topics'
 import { ApiClientError } from '@/lib/api/client'
 import { requireAuth } from '@/lib/auth/requireAuth'
 import type { Source, TopicSummary } from '@/lib/api/types'
+
+const SOURCE_PICKER_PAGE_SIZE = 20
 
 export const Route = createFileRoute('/topics/')({
   beforeLoad: async () => {
@@ -40,9 +42,15 @@ function TopicsPage() {
   const [createError, setCreateError] = useState<string | null>(null)
   const [activeSources, setActiveSources] = useState<Source[]>([])
   const [sourcesLoading, setSourcesLoading] = useState(false)
+  const [sourcesLoadingMore, setSourcesLoadingMore] = useState(false)
+  const [sourcesHasMore, setSourcesHasMore] = useState(false)
+  const [sourcesCursor, setSourcesCursor] = useState<string | null>(null)
   const [sourceFilter, setSourceFilter] = useState('')
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([])
   const [showCreateSection, setShowCreateSection] = useState(false)
+  const sourceListContainerRef = useRef<HTMLDivElement | null>(null)
+  const sourceListLoadMoreRef = useRef<HTMLDivElement | null>(null)
+  const isLoadingSourcesRef = useRef(false)
 
   const fetchTopics = useCallback(async () => {
     try {
@@ -62,21 +70,85 @@ function TopicsPage() {
   }, [fetchTopics])
 
   const fetchActiveSources = useCallback(async () => {
+    if (isLoadingSourcesRef.current) {
+      return
+    }
     try {
+      isLoadingSourcesRef.current = true
       setSourcesLoading(true)
-      const data = await listSources('active')
-      const sorted = [...data].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      setActiveSources(sorted)
+      setSourcesLoadingMore(false)
+      const page = await listSources({ status: 'active', limit: SOURCE_PICKER_PAGE_SIZE })
+      setActiveSources(page.items)
+      setSourcesCursor(page.nextCursor)
+      setSourcesHasMore(page.hasMore)
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : 'Failed to load active sources')
     } finally {
       setSourcesLoading(false)
+      isLoadingSourcesRef.current = false
     }
   }, [])
+
+  const fetchMoreActiveSources = useCallback(async () => {
+    if (isLoadingSourcesRef.current || !sourcesHasMore || !sourcesCursor) {
+      return
+    }
+    try {
+      isLoadingSourcesRef.current = true
+      setSourcesLoadingMore(true)
+      const page = await listSources({
+        status: 'active',
+        limit: SOURCE_PICKER_PAGE_SIZE,
+        cursor: sourcesCursor,
+      })
+      setActiveSources((prev) => {
+        const existingIds = new Set(prev.map((source) => source.id))
+        const merged = [...prev]
+        page.items.forEach((source) => {
+          if (!existingIds.has(source.id)) {
+            merged.push(source)
+          }
+        })
+        return merged
+      })
+      setSourcesCursor(page.nextCursor)
+      setSourcesHasMore(page.hasMore)
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Failed to load more active sources')
+    } finally {
+      setSourcesLoadingMore(false)
+      isLoadingSourcesRef.current = false
+    }
+  }, [sourcesCursor, sourcesHasMore])
 
   useEffect(() => {
     void fetchActiveSources()
   }, [fetchActiveSources])
+
+  useEffect(() => {
+    if (!showCreateSection || !sourcesHasMore) {
+      return
+    }
+    const container = sourceListContainerRef.current
+    const sentinel = sourceListLoadMoreRef.current
+    if (!container || !sentinel) {
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void fetchMoreActiveSources()
+        }
+      },
+      {
+        root: container,
+        rootMargin: '120px',
+      }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [activeSources.length, fetchMoreActiveSources, showCreateSection, sourcesHasMore])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -188,7 +260,7 @@ function TopicsPage() {
             ) : filteredSources.length === 0 ? (
               <p className="text-xs text-muted-foreground">No active sources match your filter.</p>
             ) : (
-              <div className="briefy-scrollbar max-h-52 space-y-2 overflow-y-auto pr-1">
+              <div ref={sourceListContainerRef} className="briefy-scrollbar max-h-52 space-y-2 overflow-y-auto pr-1">
                 {filteredSources.map((source) => {
                   const selected = selectedSourceIds.includes(source.id)
                   return (
@@ -216,6 +288,10 @@ function TopicsPage() {
                     </button>
                   )
                 })}
+                {sourcesHasMore && <div ref={sourceListLoadMoreRef} className="h-1" aria-hidden="true" />}
+                {sourcesLoadingMore && (
+                  <p className="py-1 text-center text-xs text-muted-foreground">Loading more active sources...</p>
+                )}
               </div>
             )}
           </div>

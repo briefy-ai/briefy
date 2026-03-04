@@ -29,6 +29,13 @@ data class SourceResponse(
     val updatedAt: Instant
 )
 
+data class SourcePageResponse(
+    val items: List<SourceResponse>,
+    val nextCursor: String?,
+    val hasMore: Boolean,
+    val limit: Int
+)
+
 data class ReuseInfoDto(
     val usedCache: Boolean,
     val cacheAgeSeconds: Long?,
