@@ -35,7 +35,7 @@ class XApiExtractionProvider(
             )
         logger.info("[twitter] extract.post_id_resolved url={} postId={}", url, postId)
 
-        val root = lookupPostById(postId, includeArticleExpansions = false)
+        val root = lookupPostById(postId, includeArticleExpansions = true)
         val rootData = root.data?.firstOrNull()
             ?: throw ExtractionProviderException(
                 providerId = id,
@@ -54,6 +54,7 @@ class XApiExtractionProvider(
         val authorName = resolveAuthorName(authorId, root.includes)
         val createdAt = parseInstant(rootData.createdAt)
         val conversationId = rootData.conversationId
+        val ogImageUrl = resolveOgImageUrl(rootData, root.includes)
 
         val isArticle = rootData.article != null
         if (isArticle) {
@@ -72,6 +73,7 @@ class XApiExtractionProvider(
                 title = resolveArticleTitle(enrichedRoot),
                 author = authorName,
                 publishedDate = createdAt,
+                ogImageUrl = ogImageUrl,
                 aiFormatted = false
             )
         }
@@ -94,6 +96,7 @@ class XApiExtractionProvider(
             title = resolvePostTitle(rootData, threadPosts.size),
             author = authorName,
             publishedDate = createdAt,
+            ogImageUrl = ogImageUrl,
             aiFormatted = false
         )
     }
@@ -101,6 +104,7 @@ class XApiExtractionProvider(
     private fun lookupPostById(postId: String, includeArticleExpansions: Boolean): TweetLookupResponse {
         val tweetFields = listOf(
             "article",
+            "attachments",
             "author_id",
             "conversation_id",
             "created_at",
@@ -131,6 +135,7 @@ class XApiExtractionProvider(
                         .queryParam("ids", postId)
                         .queryParam("tweet.fields", tweetFields.joinToString(","))
                         .queryParam("expansions", expansions.joinToString(","))
+                        .queryParam("media.fields", "media_key,type,url,preview_image_url")
                         .build()
                 }
                 .accept(MediaType.APPLICATION_JSON)
@@ -280,6 +285,36 @@ class XApiExtractionProvider(
         return candidates.firstOrNull { !it.isNullOrBlank() } ?: "X Article"
     }
 
+    private fun resolveOgImageUrl(post: TweetData, includes: Includes?): String? {
+        val mediaByKey = includes?.media.orEmpty()
+            .mapNotNull { media -> media.mediaKey?.let { it to media } }
+            .toMap()
+
+        post.article?.stringValue("cover_media")
+            ?.takeIf { it.startsWith("https://") || it.startsWith("http://") }
+            ?.let { return it }
+
+        val mediaKeys = linkedSetOf<String>()
+        post.article?.stringValue("cover_media")
+            ?.takeIf { it.isNotBlank() && !(it.startsWith("https://") || it.startsWith("http://")) }
+            ?.let { mediaKeys.add(it) }
+        post.article?.arrayObjectValues("media_entities")
+            ?.mapNotNull { it.stringValue("media_key") }
+            ?.forEach { mediaKeys.add(it) }
+        post.attachments?.stringList("media_keys")
+            ?.forEach { mediaKeys.add(it) }
+
+        mediaKeys.asSequence()
+            .mapNotNull { mediaByKey[it]?.bestImageUrl() }
+            .firstOrNull()
+            ?.let { return it }
+
+        return post.entities?.firstArrayObject("urls")
+            ?.arrayObjectValues("images")
+            ?.firstOrNull()
+            ?.stringValue("url")
+    }
+
     private fun buildSinglePostMarkdown(url: String, post: TweetData, authorName: String?): String {
         val text = extractPostText(post)
         return buildString {
@@ -411,6 +446,21 @@ private fun Map<String, Any?>.firstArrayObject(key: String): Map<String, Any?>? 
         .associate { (k, v) -> (k as String) to v }
 }
 
+private fun Map<String, Any?>.arrayObjectValues(key: String): List<Map<String, Any?>> {
+    val value = this[key] as? List<*> ?: return emptyList()
+    return value.mapNotNull { item ->
+        val map = item as? Map<*, *> ?: return@mapNotNull null
+        map.entries
+            .filter { it.key is String }
+            .associate { (k, v) -> (k as String) to v }
+    }
+}
+
+private fun Map<String, Any?>.stringList(key: String): List<String> {
+    val value = this[key] as? List<*> ?: return emptyList()
+    return value.mapNotNull { it as? String }
+}
+
 @JsonIgnoreProperties(ignoreUnknown = true)
 private data class TweetLookupResponse(
     val data: List<TweetData>? = null,
@@ -424,7 +474,8 @@ private data class SingleTweetLookupResponse(
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 private data class Includes(
-    val users: List<UserData>? = null
+    val users: List<UserData>? = null,
+    val media: List<MediaData>? = null
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -433,6 +484,24 @@ private data class UserData(
     val name: String? = null,
     val username: String? = null
 )
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+private data class MediaData(
+    @param:JsonProperty("media_key")
+    val mediaKey: String? = null,
+    val type: String? = null,
+    val url: String? = null,
+    @param:JsonProperty("preview_image_url")
+    val previewImageUrl: String? = null
+) {
+    fun bestImageUrl(): String? {
+        val normalizedType = type?.lowercase()
+        return when (normalizedType) {
+            "photo" -> url ?: previewImageUrl
+            else -> previewImageUrl ?: url
+        }?.takeIf { it.isNotBlank() }
+    }
+}
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 private data class TweetData(
@@ -447,5 +516,6 @@ private data class TweetData(
     @param:JsonProperty("note_tweet")
     val noteTweet: Map<String, Any?>? = null,
     val article: Map<String, Any?>? = null,
-    val entities: Map<String, Any?>? = null
+    val entities: Map<String, Any?>? = null,
+    val attachments: Map<String, Any?>? = null
 )
