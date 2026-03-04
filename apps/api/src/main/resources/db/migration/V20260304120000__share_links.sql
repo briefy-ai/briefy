@@ -9,5 +9,4 @@ CREATE TABLE share_links (
     created_at  TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
 
-CREATE INDEX share_links_token_idx       ON share_links(token);
 CREATE INDEX share_links_user_entity_idx ON share_links(user_id, entity_type, entity_id);

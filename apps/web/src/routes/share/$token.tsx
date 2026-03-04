@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { ApiClientError } from '@/lib/api/client'
 import { resolveShareLink, type SharedSourceResponse } from '@/lib/api/shareLinks'
 
 export const Route = createFileRoute('/share/$token')({
@@ -15,12 +16,18 @@ function SharedSourcePage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let cancelled = false
+    setData(null)
+    setError(null)
+    setLoading(true)
+
     async function load() {
       try {
         const result = await resolveShareLink(token)
-        setData(result)
+        if (!cancelled) setData(result)
       } catch (e: unknown) {
-        const status = (e as { status?: number }).status ?? 500
+        if (cancelled) return
+        const status = e instanceof ApiClientError ? e.status : 500
         if (status === 410) {
           setError({ status: 410, message: 'This share link has expired.' })
         } else if (status === 404) {
@@ -29,10 +36,14 @@ function SharedSourcePage() {
           setError({ status, message: 'Something went wrong loading this page.' })
         }
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
     void load()
+
+    return () => {
+      cancelled = true
+    }
   }, [token])
 
   if (loading) {

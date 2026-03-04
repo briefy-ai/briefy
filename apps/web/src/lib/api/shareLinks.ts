@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiDelete } from './client'
+import { ApiClientError } from './client'
 
 export interface ShareLinkDto {
   id: string
@@ -49,8 +50,13 @@ export async function revokeShareLink(id: string): Promise<void> {
 export async function resolveShareLink(token: string): Promise<SharedSourceResponse> {
   const response = await fetch(`/api/public/share/${token}`)
   if (!response.ok) {
-    const error = { status: response.status }
-    throw error
+    let apiError = null
+    try {
+      apiError = await response.json()
+    } catch {
+      // not JSON
+    }
+    throw new ApiClientError(response.status, apiError)
   }
   return response.json()
 }

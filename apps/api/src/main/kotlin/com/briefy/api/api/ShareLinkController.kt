@@ -36,12 +36,12 @@ class ShareLinkController(
     fun revoke(@PathVariable id: UUID): ResponseEntity<Void> {
         logger.info("[controller] Revoke share link id={}", id)
         shareLinkService.revoke(id)
-        return ResponseEntity.ok().build()
+        return ResponseEntity.noContent().build()
     }
 
     @GetMapping("/api/public/share/{token}")
     fun resolve(@PathVariable token: String): ResponseEntity<SharedSourceResponse> {
-        logger.info("[controller] Resolve share link token={}", token)
+        logger.info("[controller] Resolve share link token={}…", token.take(8))
         val response = shareLinkService.resolve(token)
         return ResponseEntity.ok(response)
     }

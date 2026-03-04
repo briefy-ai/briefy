@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, Copy, Link, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -45,6 +45,7 @@ export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) 
   const [links, setLinks] = useState<ShareLinkDto[]>([])
   const [loadingLinks, setLoadingLinks] = useState(false)
   const [justCreated, setJustCreated] = useState<ShareLinkDto | null>(null)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadLinks = useCallback(async () => {
     setLoadingLinks(true)
@@ -92,10 +93,15 @@ export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) 
   }
 
   async function copyToClipboard(token: string) {
-    const url = `${window.location.origin}/share/${token}`
-    await navigator.clipboard.writeText(url)
-    setCopiedToken(token)
-    setTimeout(() => setCopiedToken(null), 2000)
+    try {
+      const url = `${window.location.origin}/share/${token}`
+      await navigator.clipboard.writeText(url)
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+      setCopiedToken(token)
+      copyTimerRef.current = setTimeout(() => setCopiedToken(null), 2000)
+    } catch {
+      // clipboard not available
+    }
   }
 
   return (

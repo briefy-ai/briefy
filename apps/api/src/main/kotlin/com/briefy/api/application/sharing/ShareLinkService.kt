@@ -34,7 +34,7 @@ class ShareLinkService(
             expiresAt = request.expiresAt
         )
         shareLinkRepository.save(shareLink)
-        logger.info("[service] Share link created id={} token={} userId={}", shareLink.id, shareLink.token, userId)
+        logger.info("[service] Share link created id={} userId={}", shareLink.id, userId)
         return shareLink.toResponse()
     }
 
@@ -70,7 +70,9 @@ class ShareLinkService(
         val shareLink = shareLinkRepository.findById(shareLinkId).orElse(null)
             ?: throw ShareLinkNotFoundException(shareLinkId.toString())
 
-        require(shareLink.userId == userId) { "Not authorized to revoke this share link" }
+        if (shareLink.userId != userId) {
+            throw ShareLinkNotFoundException(shareLinkId.toString())
+        }
 
         shareLink.revoke()
         shareLinkRepository.save(shareLink)
