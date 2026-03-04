@@ -229,11 +229,13 @@ class SourceServiceEventTest {
         whenever(currentUserProvider.requireUserId()).thenReturn(userId)
         whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
 
-        val response = service.markSourceRead(source.id)
+        val firstResponse = service.markSourceRead(source.id)
+        val secondResponse = service.markSourceRead(source.id)
 
         assertTrue(source.isRead)
-        assertTrue(response.read)
-        verify(sourceRepository).save(source)
+        assertTrue(firstResponse.read)
+        assertTrue(secondResponse.read)
+        verify(sourceRepository, times(1)).save(source)
     }
 
     @Test
