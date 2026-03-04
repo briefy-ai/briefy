@@ -29,6 +29,9 @@ data class Metadata(
     @Column(name = "metadata_extraction_provider", length = 50)
     val extractionProvider: String? = null,
 
+    @Column(name = "metadata_og_image_url", length = 2048)
+    val ogImageUrl: String? = null,
+
     @Enumerated(EnumType.STRING)
     @Column(name = "metadata_formatting_state", length = 30)
     val formattingState: FormattingState = FormattingState.fromAiFormatted(aiFormatted),
@@ -74,6 +77,7 @@ data class Metadata(
             wordCount: Int,
             aiFormatted: Boolean,
             extractionProvider: String?,
+            ogImageUrl: String? = null,
             formattingState: FormattingState = FormattingState.fromAiFormatted(aiFormatted),
             formattingFailureReason: String? = null,
             videoId: String? = null,
@@ -96,6 +100,7 @@ data class Metadata(
                 estimatedReadingTime = readingTime,
                 aiFormatted = aiFormatted,
                 extractionProvider = extractionProvider?.take(50),
+                ogImageUrl = ogImageUrl?.take(2048),
                 formattingState = formattingState,
                 formattingFailureReason = if (formattingState == FormattingState.FAILED) {
                     formattingFailureReason?.trim()?.take(255)?.ifBlank { null }

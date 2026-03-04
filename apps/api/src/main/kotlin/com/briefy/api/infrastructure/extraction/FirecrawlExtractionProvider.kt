@@ -70,6 +70,7 @@ class FirecrawlExtractionProvider(
             title = response.data.metadata?.title,
             author = null,
             publishedDate = response.data.metadata?.publishedTime?.let { parseInstantOrNull(it) },
+            ogImageUrl = response.data.metadata?.ogImage,
             aiFormatted = false
         )
     }
@@ -105,5 +106,6 @@ private data class FirecrawlScrapeData(
 @JsonIgnoreProperties(ignoreUnknown = true)
 private data class FirecrawlScrapeMetadata(
     val title: String? = null,
-    val publishedTime: String? = null
+    val publishedTime: String? = null,
+    val ogImage: String? = null
 )

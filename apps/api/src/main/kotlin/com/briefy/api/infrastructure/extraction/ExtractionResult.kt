@@ -7,6 +7,7 @@ data class ExtractionResult(
     val title: String?,
     val author: String?,
     val publishedDate: Instant?,
+    val ogImageUrl: String? = null,
     val aiFormatted: Boolean = false,
     val videoId: String? = null,
     val videoEmbedUrl: String? = null,

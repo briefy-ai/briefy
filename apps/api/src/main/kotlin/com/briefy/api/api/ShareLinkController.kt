@@ -5,6 +5,7 @@ import com.briefy.api.domain.sharing.ShareLinkEntityType
 import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.util.UUID
@@ -44,5 +45,34 @@ class ShareLinkController(
         logger.info("[controller] Resolve share link token={}…", token.take(8))
         val response = shareLinkService.resolve(token)
         return ResponseEntity.ok(response)
+    }
+
+    @GetMapping("/api/public/share-html/{token}", produces = [MediaType.TEXT_HTML_VALUE])
+    fun shareHtml(
+        @PathVariable token: String,
+        @RequestHeader("Host", defaultValue = "") host: String,
+        @RequestHeader("X-Forwarded-Proto", defaultValue = "https") proto: String
+    ): ResponseEntity<String> {
+        logger.info("[controller] Build share html token={}…", token.take(8))
+        val html = shareLinkService.buildShareHtml(token, buildBaseUrl(host, proto))
+        return ResponseEntity.ok(html)
+    }
+
+    @GetMapping("/api/public/og-image/{token}", produces = ["image/png"])
+    fun shareOgImage(@PathVariable token: String): ResponseEntity<ByteArray> {
+        logger.info("[controller] Build share og:image token={}…", token.take(8))
+        val imageBytes = shareLinkService.buildOgImage(token)
+        return ResponseEntity.ok()
+            .contentType(MediaType.IMAGE_PNG)
+            .body(imageBytes)
+    }
+
+    private fun buildBaseUrl(host: String, proto: String): String {
+        val normalizedHost = host.trim()
+        if (normalizedHost.isBlank()) {
+            return ""
+        }
+        val normalizedProto = proto.trim().ifBlank { "https" }
+        return "${normalizedProto}://${normalizedHost}".trimEnd('/')
     }
 }

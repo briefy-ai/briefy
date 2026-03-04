@@ -47,6 +47,14 @@ function SharedSourcePage() {
     }
   }, [token])
 
+  useEffect(() => {
+    if (!data?.source?.title) return
+    document.title = `${data.source.title} - Briefy AI`
+    return () => {
+      document.title = 'Briefy AI'
+    }
+  }, [data])
+
   if (loading) {
     return (
       <div className="mx-auto max-w-2xl py-12 animate-fade-in">
