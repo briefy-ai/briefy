@@ -1,4 +1,4 @@
-import { ClipboardPaste, EllipsisVertical, ExternalLink, MessageSquarePlus, RotateCcw, Trash2 } from 'lucide-react'
+import { ClipboardPaste, EllipsisVertical, ExternalLink, Link, MessageSquarePlus, RotateCcw, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -28,6 +28,7 @@ interface SourceHeaderProps {
   onDelete: () => void
   onRestore: () => void
   onPasteContent?: () => void
+  onShare?: () => void
   deleting: boolean
   restoring: boolean
 }
@@ -38,6 +39,7 @@ export function SourceHeader({
   onDelete,
   onRestore,
   onPasteContent,
+  onShare,
   deleting,
   restoring,
 }: SourceHeaderProps) {
@@ -103,6 +105,15 @@ export function SourceHeader({
                   <DropdownMenuItem onClick={onPasteContent}>
                     <ClipboardPaste className="size-4" aria-hidden="true" />
                     Paste content
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              {source.status === 'active' && onShare && (
+                <>
+                  <DropdownMenuItem onClick={onShare}>
+                    <Link className="size-4" aria-hidden="true" />
+                    Share
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                 </>
