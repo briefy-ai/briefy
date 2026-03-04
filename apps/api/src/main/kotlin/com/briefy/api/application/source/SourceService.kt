@@ -543,6 +543,7 @@ class SourceService(
                 wordCount = content.wordCount,
                 aiFormatted = result.aiFormatted,
                 extractionProvider = resolvedProvider,
+                ogImageUrl = result.ogImageUrl,
                 videoId = result.videoId,
                 videoEmbedUrl = result.videoEmbedUrl,
                 videoDurationSeconds = result.videoDurationSeconds,

@@ -22,6 +22,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 - [2026-02-26 10:41] Introduced a `spring.ai.model.chat` runtime guard that made `minimax` fail when `LLM_PROVIDER=zhipuai` even though user settings allowed Minimax selection -> fixed by replacing single-bean guard with provider-specific chat model map -> when supporting selectable providers, avoid coupling runtime dispatch to Spring's single auto-config switch.
 - [2026-02-28 16:34] Combined multiple expected DB-violation assertions in one `@Transactional` Postgres test, causing SQL state `25P02` (`current transaction is aborted`) after the first check-constraint failure -> split into isolated tests, one expected DB violation per transaction.
 - [2026-02-28 20:05] Mapped `RunEvent.sequenceId` with `@GeneratedValue` on a non-identifier field -> Hibernate failed context startup (`AnnotationException`) and schema validation (`nullable` mismatch) -> removed `@GeneratedValue`, kept column read-only, and set `nullable = false` to match DB identity column.
+- [2026-03-04 12:47] Tried generating fallback OG PNG with `jshell` in this sandbox and hit runtime/headless instability -> switched to `java -Djava.awt.headless=true <source-file>` for deterministic image generation -> for asset generation scripts that use AWT, run headless Java directly instead of `jshell`.
 
 ## Non-Obvious Code Findings
 
@@ -40,6 +41,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 - [2026-02-28 20:05] Briefing execution state-machine core adds dedicated execution entities/enums/converters/repositories and `ExecutionStateTransitionService`; transitions are validated before state mutation and each accepted transition persists an idempotent `run_events.event_id`.
 
 - [2026-03-01] `generateForSource` in `TopicSuggestionService` was `@Transactional`, holding a DB connection for the entire Spring AI retry loop. When the AI provider (Z.ai) went down, Spring AI retried 9+ times with ~3-minute backoff, keeping the transaction open for 20+ minutes until Railway killed the container, leaving `topic_extraction_state = PENDING` with no recovery path. Fix: remove `@Transactional`, use `TransactionTemplate` for three short transactions (read → [AI call] → write). Tests: mock `TransactionTemplate` with `thenAnswer` to pass-through the `TransactionCallback`. (`TopicSuggestionService.kt`, `TopicSuggestionServiceTest.kt`)
+- [2026-03-04] Migration version `V20260304120000` is already occupied by `share_links`; adding another migration with that same version breaks Flyway startup due duplicate versioning (matters for follow-up schema work on the same day). [`apps/api/src/main/resources/db/migration/V20260304120000__share_links.sql`]
 
 ## User Preferences
 
