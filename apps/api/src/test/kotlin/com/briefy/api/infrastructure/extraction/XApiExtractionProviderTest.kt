@@ -37,6 +37,7 @@ class XApiExtractionProviderTest {
 
             val request = server.takeRequest()
             assertTrue(request.path!!.startsWith("/2/tweets"))
+            assertTrue(request.path!!.contains("attachments.media_keys"))
             assertEquals("Bearer token-1", request.getHeader("Authorization"))
             assertTrue(result.text.contains("# X Post"))
             assertTrue(result.text.contains("hello from x"))
@@ -141,11 +142,12 @@ class XApiExtractionProviderTest {
                     "id": "123",
                     "text": "root",
                     "author_id": "42",
-                    "article": {"id":"art-1"},
+                    "article": {"id":"art-1","cover_media":"media-1"},
                     "created_at": "2026-02-12T10:00:00Z"
                   }],
                   "includes": {
-                    "users": [{"id":"42","name":"Alice","username":"alice"}]
+                    "users": [{"id":"42","name":"Alice","username":"alice"}],
+                    "media": [{"media_key":"media-1","type":"photo","url":"https://pbs.twimg.com/media/article-cover.jpg"}]
                   }
                 }
                 """.trimIndent()
@@ -175,6 +177,7 @@ class XApiExtractionProviderTest {
             assertEquals("/2/tweets/123?tweet.fields=article", second.path)
             assertTrue(result.text.contains("Article body"))
             assertEquals("Article Title", result.title)
+            assertEquals("https://pbs.twimg.com/media/article-cover.jpg", result.ogImageUrl)
         } finally {
             server.shutdown()
         }
@@ -240,6 +243,39 @@ class XApiExtractionProviderTest {
             assertThrows<ExtractionProviderException> {
                 provider.extract("https://x.com/home")
             }
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `extract sets og image from attachment media`() {
+        val server = MockWebServer()
+        server.enqueue(
+            jsonResponse(
+                """
+                {
+                  "data": [{
+                    "id": "123",
+                    "text": "hello from x",
+                    "author_id": "42",
+                    "attachments": {"media_keys": ["media-1"]}
+                  }],
+                  "includes": {
+                    "users": [{"id":"42","name":"Alice","username":"alice"}],
+                    "media": [{"media_key":"media-1","type":"photo","url":"https://pbs.twimg.com/media/post-image.jpg"}]
+                  }
+                }
+                """.trimIndent()
+            )
+        )
+        server.start()
+
+        try {
+            val provider = newProvider(server)
+            val result = provider.extract("https://x.com/alice/status/123")
+
+            assertEquals("https://pbs.twimg.com/media/post-image.jpg", result.ogImageUrl)
         } finally {
             server.shutdown()
         }
