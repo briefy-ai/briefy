@@ -2,6 +2,7 @@ package com.briefy.api.api
 
 import com.briefy.api.application.auth.*
 import com.briefy.api.application.briefing.BriefingNotFoundException
+import com.briefy.api.application.briefing.ExecutionRunNotFoundException
 import com.briefy.api.application.sharing.ShareLinkExpiredException
 import com.briefy.api.application.sharing.ShareLinkNotFoundException
 import com.briefy.api.application.briefing.BriefingSourceAccessException
@@ -39,6 +40,18 @@ class GlobalExceptionHandler {
                     status = HttpStatus.NOT_FOUND.value(),
                     error = "Not Found",
                     message = ex.message ?: "Briefing not found"
+                )
+            )
+    }
+
+    @ExceptionHandler(ExecutionRunNotFoundException::class)
+    fun handleExecutionRunNotFound(ex: ExecutionRunNotFoundException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.NOT_FOUND.value(),
+                    error = "Not Found",
+                    message = ex.message ?: "Execution run not found"
                 )
             )
     }

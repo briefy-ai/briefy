@@ -1,6 +1,9 @@
 package com.briefy.api.api
 
 import com.briefy.api.application.briefing.BriefingResponse
+import com.briefy.api.application.briefing.BriefingRunEventsPageResponse
+import com.briefy.api.application.briefing.BriefingRunObservabilityService
+import com.briefy.api.application.briefing.BriefingRunSummaryResponse
 import com.briefy.api.application.briefing.BriefingService
 import com.briefy.api.application.briefing.CreateBriefingCommand
 import com.briefy.api.domain.knowledgegraph.briefing.BriefingStatus
@@ -22,7 +25,8 @@ import java.util.UUID
 @RestController
 @RequestMapping("/api/briefings")
 class BriefingController(
-    private val briefingService: BriefingService
+    private val briefingService: BriefingService,
+    private val briefingRunObservabilityService: BriefingRunObservabilityService
 ) {
     private val logger = LoggerFactory.getLogger(BriefingController::class.java)
 
@@ -75,6 +79,36 @@ class BriefingController(
         val briefing = briefingService.retryBriefing(id)
         logger.info("[controller] Retry briefing request completed briefingId={} status={}", briefing.id, briefing.status)
         return ResponseEntity.ok(briefing)
+    }
+
+    @GetMapping("/runs/{id}")
+    fun getRunSummary(@PathVariable id: UUID): ResponseEntity<BriefingRunSummaryResponse> {
+        logger.info("[controller] Get briefing run summary request received runId={}", id)
+        val summary = briefingRunObservabilityService.getRunSummary(id)
+        logger.info("[controller] Get briefing run summary request completed runId={} status={}", id, summary.briefingRun.status)
+        return ResponseEntity.ok(summary)
+    }
+
+    @GetMapping("/runs/{id}/events")
+    fun listRunEvents(
+        @PathVariable id: UUID,
+        @RequestParam(required = false) cursor: String?,
+        @RequestParam(required = false) limit: Int?
+    ): ResponseEntity<BriefingRunEventsPageResponse> {
+        logger.info(
+            "[controller] List briefing run events request received runId={} limit={} hasCursor={}",
+            id,
+            limit ?: "default",
+            !cursor.isNullOrBlank()
+        )
+        val page = briefingRunObservabilityService.listRunEvents(id, limit, cursor)
+        logger.info(
+            "[controller] List briefing run events request completed runId={} count={} hasMore={}",
+            id,
+            page.items.size,
+            page.hasMore
+        )
+        return ResponseEntity.ok(page)
     }
 }
 
