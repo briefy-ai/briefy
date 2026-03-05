@@ -3,6 +3,7 @@ package com.briefy.api.domain.knowledgegraph.briefing
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.domain.Pageable
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import java.time.Instant
@@ -37,4 +38,37 @@ interface RunEventRepository : JpaRepository<RunEvent, UUID> {
     fun existsByEventId(eventId: UUID): Boolean
     fun findByEventId(eventId: UUID): RunEvent?
     fun findByBriefingRunIdOrderByOccurredAtAscSequenceIdAsc(briefingRunId: UUID): List<RunEvent>
+    fun countByBriefingRunIdAndEventType(briefingRunId: UUID, eventType: String): Long
+
+    @Query(
+        """
+        SELECT event
+        FROM RunEvent event
+        WHERE event.briefingRunId = :briefingRunId
+        ORDER BY event.occurredAt ASC, event.sequenceId ASC
+        """
+    )
+    fun findPageByBriefingRunId(
+        @Param("briefingRunId") briefingRunId: UUID,
+        pageable: Pageable
+    ): List<RunEvent>
+
+    @Query(
+        """
+        SELECT event
+        FROM RunEvent event
+        WHERE event.briefingRunId = :briefingRunId
+          AND (
+            event.occurredAt > :cursorOccurredAt
+            OR (event.occurredAt = :cursorOccurredAt AND event.sequenceId > :cursorSequenceId)
+          )
+        ORDER BY event.occurredAt ASC, event.sequenceId ASC
+        """
+    )
+    fun findPageByBriefingRunIdAfterCursor(
+        @Param("briefingRunId") briefingRunId: UUID,
+        @Param("cursorOccurredAt") cursorOccurredAt: Instant,
+        @Param("cursorSequenceId") cursorSequenceId: Long,
+        pageable: Pageable
+    ): List<RunEvent>
 }

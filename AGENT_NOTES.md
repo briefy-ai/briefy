@@ -26,6 +26,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 - [2026-03-04 12:47] Tried generating fallback OG PNG with `jshell` in this sandbox and hit runtime/headless instability -> switched to `java -Djava.awt.headless=true <source-file>` for deterministic image generation -> for asset generation scripts that use AWT, run headless Java directly instead of `jshell`.
 - [2026-03-04 13:34] Added OG image extraction for X posts but forgot `attachments.media_keys` expansion in tweet lookup -> regular post media did not reliably populate `includes.media` -> for X API media extraction, always pair `tweet.fields=attachments` with `expansions=attachments.media_keys`.
 - [2026-03-05 14:34] Posted a GitHub PR comment with unescaped backticks in `gh pr comment --body`, causing shell command substitution and a malformed message -> re-posted using `--body-file` heredoc -> for shell comments containing code identifiers, default to heredoc or single-quoted body.
+- [2026-03-05 14:49] Inserted `run_events` test rows through JPA in H2 and hit `NULL not allowed for column sequence_id` because H2 test schema doesn't auto-generate that column like Postgres -> switched tests to explicit `JdbcTemplate` inserts with `sequence_id` set -> when testing `run_events` ordering in H2-backed controller tests, seed rows with explicit `sequence_id` values.
 
 ## Non-Obvious Code Findings
 
