@@ -28,6 +28,8 @@ sealed interface SubagentExecutionResult {
 
     data class Failed(
         val errorCode: String,
-        val errorMessage: String? = null
+        val errorMessage: String? = null,
+        val retryable: Boolean = false,
+        val retryAfterSeconds: Long? = null
     ) : SubagentExecutionResult
 }

@@ -13,32 +13,38 @@ class DeterministicSequentialSubagentExecutionRunner(
         if (normalizedTask.contains("[transient:timeout]")) {
             return SubagentExecutionResult.Failed(
                 errorCode = "timeout",
-                errorMessage = "Deterministic transient timeout"
+                errorMessage = "Deterministic transient timeout",
+                retryable = true
             )
         }
         if (normalizedTask.contains("[transient:429")) {
             val retryAfter = parseRetryAfterSeconds(normalizedTask)
             return SubagentExecutionResult.Failed(
                 errorCode = "http_429",
-                errorMessage = retryAfter?.let { "retry_after=$it" } ?: "Deterministic transient 429"
+                errorMessage = "Deterministic transient 429",
+                retryable = true,
+                retryAfterSeconds = retryAfter
             )
         }
         if (normalizedTask.contains("[transient:5xx]")) {
             return SubagentExecutionResult.Failed(
                 errorCode = "http_5xx",
-                errorMessage = "Deterministic transient server error"
+                errorMessage = "Deterministic transient server error",
+                retryable = true
             )
         }
         if (normalizedTask.contains("[transient:network]")) {
             return SubagentExecutionResult.Failed(
                 errorCode = "network_error",
-                errorMessage = "Deterministic transient network error"
+                errorMessage = "Deterministic transient network error",
+                retryable = true
             )
         }
         if (normalizedTask.contains("[fail]") || normalizedTask.contains("force_fail")) {
             return SubagentExecutionResult.Failed(
                 errorCode = "deterministic_failure",
-                errorMessage = "Deterministic runner forced a non-retryable failure"
+                errorMessage = "Deterministic runner forced a non-retryable failure",
+                retryable = false
             )
         }
         if (normalizedTask.contains("[empty]") || normalizedTask.contains("[skip]") || normalizedTask.contains("no_output")) {

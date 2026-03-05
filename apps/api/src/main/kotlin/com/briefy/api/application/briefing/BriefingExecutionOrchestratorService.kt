@@ -19,6 +19,7 @@ class BriefingExecutionOrchestratorService(
     private val subagentExecutionRunner: SubagentExecutionRunner,
     private val synthesisExecutionRunner: SynthesisExecutionRunner,
     private val executionFingerprintService: ExecutionFingerprintService,
+    private val executionConfig: ExecutionConfigProperties,
     private val idGenerator: IdGenerator,
     private val objectMapper: ObjectMapper
 ) {
@@ -314,7 +315,7 @@ class BriefingExecutionOrchestratorService(
 
             val runningSubagentRun = subagentRunRepository.findById(subagentRun.id)
                 .orElseThrow { ExecutionRunNotFoundException("SubagentRun", subagentRun.id) }
-            runningSubagentRun.deadlineAt = attemptStart.plusSeconds(SUBAGENT_TIMEOUT_SECONDS)
+            runningSubagentRun.deadlineAt = attemptStart.plusSeconds(executionConfig.subagentTimeoutSeconds)
             runningSubagentRun.updatedAt = attemptStart
             subagentRunRepository.save(runningSubagentRun)
 
@@ -364,7 +365,18 @@ class BriefingExecutionOrchestratorService(
                 }
 
                 is SubagentExecutionResult.Failed -> {
-                    if (!isRetryable(result.errorCode)) {
+                    executionStateTransitionService.recordSubagentAttemptFailed(
+                        subagentRunId = runningSubagentRun.id,
+                        eventId = nextEventId(),
+                        errorCode = result.errorCode,
+                        errorMessage = result.errorMessage,
+                        retryable = result.retryable,
+                        retryAfterSeconds = result.retryAfterSeconds,
+                        attempt = runningSubagentRun.attempt,
+                        occurredAt = occurredAt
+                    )
+
+                    if (!result.retryable) {
                         executionStateTransitionService.markSubagentNonRetryableFailed(
                             subagentRunId = runningSubagentRun.id,
                             eventId = nextEventId(),
@@ -377,12 +389,8 @@ class BriefingExecutionOrchestratorService(
                     }
 
                     val exhausted = runningSubagentRun.attempt >= runningSubagentRun.maxAttempts
-                    val retryDelaySeconds = computeRetryDelaySeconds(
-                        errorCode = result.errorCode,
-                        attempt = runningSubagentRun.attempt,
-                        errorMessage = result.errorMessage
-                    )
-                    val attemptDeadline = runningSubagentRun.deadlineAt ?: occurredAt.plusSeconds(SUBAGENT_TIMEOUT_SECONDS)
+                    val retryDelaySeconds = computeRetryDelaySeconds(result, runningSubagentRun.attempt)
+                    val attemptDeadline = runningSubagentRun.deadlineAt ?: occurredAt.plusSeconds(executionConfig.subagentTimeoutSeconds)
                     val retryAt = occurredAt.plusSeconds(retryDelaySeconds)
                     if (exhausted || retryAt.isAfter(attemptDeadline)) {
                         executionStateTransitionService.markSubagentRetryExhaustedSkipped(
@@ -455,7 +463,7 @@ class BriefingExecutionOrchestratorService(
         val fingerprint = executionFingerprintService.compute(briefing, orderedSources, planSteps)
         val totalPersonas = planSteps.size
         val requiredForSynthesis = computeRequiredForSynthesis(totalPersonas)
-        val runDeadline = now.plusSeconds(GLOBAL_TIMEOUT_SECONDS)
+        val runDeadline = now.plusSeconds(executionConfig.globalTimeoutSeconds)
 
         val run = try {
             briefingRunRepository.save(
@@ -486,8 +494,8 @@ class BriefingExecutionOrchestratorService(
                     personaKey = personaKeyForStep(step),
                     status = SubagentRunStatus.PENDING,
                     attempt = 1,
-                    maxAttempts = 3,
-                    deadlineAt = now.plusSeconds(SUBAGENT_TIMEOUT_SECONDS),
+                    maxAttempts = executionConfig.maxAttempts,
+                    deadlineAt = now.plusSeconds(executionConfig.subagentTimeoutSeconds),
                     createdAt = now,
                     updatedAt = now
                 )
@@ -576,7 +584,7 @@ class BriefingExecutionOrchestratorService(
     private fun nextEventId(): UUID = idGenerator.newId()
 
     private fun isRunPastDeadline(run: BriefingRun, now: Instant = Instant.now()): Boolean {
-        val deadline = run.deadlineAt ?: run.createdAt.plusSeconds(GLOBAL_TIMEOUT_SECONDS)
+        val deadline = run.deadlineAt ?: run.createdAt.plusSeconds(executionConfig.globalTimeoutSeconds)
         return now.isAfter(deadline)
     }
 
@@ -608,72 +616,25 @@ class BriefingExecutionOrchestratorService(
         }
     }
 
-    private fun isRetryable(errorCode: String): Boolean {
-        // TODO(briefing-execution): Move retry classification to runner contract when we implement full AI execution.
-        return errorCode in RETRYABLE_ERROR_CODES
-    }
-
-    private fun computeRetryDelaySeconds(errorCode: String, attempt: Int, errorMessage: String?): Long {
-        if (errorCode == ERROR_HTTP_429) {
-            val retryAfter = parseRetryAfterSeconds(errorMessage)
-            if (retryAfter != null) {
-                return retryAfter.coerceAtLeast(1L)
-            }
+    private fun computeRetryDelaySeconds(result: SubagentExecutionResult.Failed, attempt: Int): Long {
+        val retryConfig = executionConfig.retry
+        if (result.retryAfterSeconds != null) {
+            return result.retryAfterSeconds.coerceAtLeast(1L)
+        }
+        if (result.errorCode == ERROR_HTTP_429) {
             return when (attempt) {
-                1 -> HTTP_429_FALLBACK_DELAY_FIRST_SECONDS
-                else -> HTTP_429_FALLBACK_DELAY_SECOND_SECONDS
+                1 -> retryConfig.http429FallbackFirstSeconds
+                else -> retryConfig.http429FallbackSecondSeconds
             }
         }
         return when (attempt) {
-            1 -> TRANSIENT_RETRY_DELAY_FIRST_SECONDS
-            else -> TRANSIENT_RETRY_DELAY_SECOND_SECONDS
+            1 -> retryConfig.transientDelayFirstSeconds
+            else -> retryConfig.transientDelaySecondSeconds
         }
-    }
-
-    private fun parseRetryAfterSeconds(errorMessage: String?): Long? {
-        // TODO(briefing-execution): Replace this lightweight parser with structured provider metadata once available.
-        if (errorMessage.isNullOrBlank()) {
-            return null
-        }
-        val marker = "retry_after="
-        val start = errorMessage.lowercase().indexOf(marker)
-        if (start == -1) {
-            return null
-        }
-        val valueStart = start + marker.length
-        val digits = buildString {
-            for (i in valueStart until errorMessage.length) {
-                val ch = errorMessage[i]
-                if (!ch.isDigit()) {
-                    break
-                }
-                append(ch)
-            }
-        }
-        if (digits.isBlank()) {
-            return null
-        }
-        return runCatching { digits.toLong() }.getOrNull()
     }
 
     companion object {
-        // TODO(briefing-execution): Externalize these constants to configuration properties after Slice 4 hardening.
-        private const val GLOBAL_TIMEOUT_SECONDS = 180L
-        private const val SUBAGENT_TIMEOUT_SECONDS = 90L
-        private const val TRANSIENT_RETRY_DELAY_FIRST_SECONDS = 1L
-        private const val TRANSIENT_RETRY_DELAY_SECOND_SECONDS = 2L
-        private const val HTTP_429_FALLBACK_DELAY_FIRST_SECONDS = 2L
-        private const val HTTP_429_FALLBACK_DELAY_SECOND_SECONDS = 4L
-        private const val ERROR_TIMEOUT = "timeout"
         private const val ERROR_HTTP_429 = "http_429"
-        private const val ERROR_HTTP_5XX = "http_5xx"
-        private const val ERROR_NETWORK = "network_error"
-        private val RETRYABLE_ERROR_CODES = setOf(
-            ERROR_TIMEOUT,
-            ERROR_HTTP_429,
-            ERROR_HTTP_5XX,
-            ERROR_NETWORK
-        )
         private val ACTIVE_RUN_STATUSES = listOf(
             BriefingRunStatus.QUEUED,
             BriefingRunStatus.RUNNING,
