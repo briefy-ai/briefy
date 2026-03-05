@@ -1,9 +1,7 @@
 package com.briefy.api.application.briefing
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import org.springframework.stereotype.Component
 
-@Component
 class DeterministicSequentialSubagentExecutionRunner(
     private val objectMapper: ObjectMapper
 ) : SubagentExecutionRunner {

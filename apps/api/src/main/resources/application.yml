@@ -152,6 +152,11 @@ briefing:
     global-timeout-seconds: ${BRIEFING_EXECUTION_GLOBAL_TIMEOUT_SECONDS:180}
     subagent-timeout-seconds: ${BRIEFING_EXECUTION_SUBAGENT_TIMEOUT_SECONDS:90}
     max-attempts: ${BRIEFING_EXECUTION_MAX_ATTEMPTS:3}
+    runner: ${BRIEFING_EXECUTION_RUNNER:deterministic}
+    ai:
+      provider: ${BRIEFING_EXECUTION_AI_PROVIDER:google_genai}
+      model: ${BRIEFING_EXECUTION_AI_MODEL:gemini-2.5-flash}
+      max-tool-calls: ${BRIEFING_EXECUTION_AI_MAX_TOOL_CALLS:8}
     retry:
       transient-delay-first-seconds: ${BRIEFING_EXECUTION_RETRY_TRANSIENT_DELAY_FIRST_SECONDS:1}
       transient-delay-second-seconds: ${BRIEFING_EXECUTION_RETRY_TRANSIENT_DELAY_SECOND_SECONDS:2}
