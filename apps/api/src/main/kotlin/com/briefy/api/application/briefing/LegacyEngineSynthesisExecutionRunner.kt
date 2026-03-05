@@ -1,8 +1,5 @@
 package com.briefy.api.application.briefing
 
-import org.springframework.stereotype.Component
-
-@Component
 class LegacyEngineSynthesisExecutionRunner(
     private val briefingGenerationEngine: BriefingGenerationEngine
 ) : SynthesisExecutionRunner {

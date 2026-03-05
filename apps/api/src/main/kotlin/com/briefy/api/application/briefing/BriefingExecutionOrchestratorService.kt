@@ -185,6 +185,7 @@ class BriefingExecutionOrchestratorService(
         synthesisRun.updatedAt = Instant.now()
         synthesisRunRepository.save(synthesisRun)
 
+        val successfulOutputs = buildSuccessfulSubagentOutputs(refreshedSubagentRuns, stepByPersonaKey)
         val synthesisRequest = BriefingGenerationRequest(
             briefingId = briefing.id,
             userId = briefing.userId,
@@ -203,7 +204,8 @@ class BriefingExecutionOrchestratorService(
                     task = step.task,
                     stepOrder = step.stepOrder
                 )
-            }
+            },
+            subagentOutputs = successfulOutputs
         )
 
         val synthesisStartAt = Instant.now()
@@ -579,6 +581,66 @@ class BriefingExecutionOrchestratorService(
 
     private fun personaKeyForStep(step: BriefingPlanStep): String {
         return "step-${step.stepOrder}"
+    }
+
+    private fun buildSuccessfulSubagentOutputs(
+        subagentRuns: List<SubagentRun>,
+        stepByPersonaKey: Map<String, BriefingPlanStep>
+    ): List<BriefingSubagentOutputInput> {
+        return subagentRuns
+            .filter { it.status == SubagentRunStatus.SUCCEEDED }
+            .mapNotNull { subagentRun ->
+                val step = stepByPersonaKey[subagentRun.personaKey] ?: return@mapNotNull null
+                val curatedText = subagentRun.curatedText?.trim().orEmpty()
+                if (curatedText.isBlank()) {
+                    return@mapNotNull null
+                }
+                BriefingSubagentOutputInput(
+                    personaKey = subagentRun.personaKey,
+                    personaName = step.personaName,
+                    task = step.task,
+                    curatedText = curatedText,
+                    references = extractReferenceCandidates(subagentRun.referencesUsedJson)
+                )
+            }
+    }
+
+    private fun extractReferenceCandidates(referencesUsedJson: String?): List<BriefingReferenceCandidate> {
+        if (referencesUsedJson.isNullOrBlank()) {
+            return emptyList()
+        }
+
+        val root = runCatching { objectMapper.readTree(referencesUsedJson) }.getOrNull()
+            ?: return emptyList()
+        if (!root.isArray) {
+            return emptyList()
+        }
+
+        val deduped = linkedMapOf<String, BriefingReferenceCandidate>()
+        root.forEach { node ->
+            val url = node.path("url").asText().trim()
+            if (url.isBlank()) {
+                return@forEach
+            }
+            val key = url.lowercase()
+            if (deduped.containsKey(key)) {
+                return@forEach
+            }
+
+            val title = node.path("title").asText().trim().ifBlank { url }
+            val snippet = node.path("snippet").let { snippetNode ->
+                if (snippetNode.isMissingNode || snippetNode.isNull) null
+                else snippetNode.asText().trim().takeIf { it.isNotBlank() }
+            }
+
+            deduped[key] = BriefingReferenceCandidate(
+                url = url,
+                title = title,
+                snippet = snippet
+            )
+        }
+
+        return deduped.values.toList()
     }
 
     private fun nextEventId(): UUID = idGenerator.newId()

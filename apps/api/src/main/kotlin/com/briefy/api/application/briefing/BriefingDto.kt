@@ -80,7 +80,8 @@ data class BriefingGenerationRequest(
     val userId: UUID,
     val enrichmentIntent: String,
     val sources: List<BriefingSourceInput>,
-    val plan: List<BriefingPlanInput>
+    val plan: List<BriefingPlanInput>,
+    val subagentOutputs: List<BriefingSubagentOutputInput> = emptyList()
 )
 
 data class BriefingSourceInput(
@@ -94,6 +95,14 @@ data class BriefingPlanInput(
     val personaName: String,
     val task: String,
     val stepOrder: Int
+)
+
+data class BriefingSubagentOutputInput(
+    val personaKey: String,
+    val personaName: String,
+    val task: String,
+    val curatedText: String,
+    val references: List<BriefingReferenceCandidate>
 )
 
 data class BriefingReferenceCandidate(

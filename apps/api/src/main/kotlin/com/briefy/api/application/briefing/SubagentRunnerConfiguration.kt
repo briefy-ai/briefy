@@ -43,4 +43,36 @@ class SubagentRunnerConfiguration {
             }
         }
     }
+
+    @Bean
+    fun synthesisExecutionRunner(
+        executionConfig: ExecutionConfigProperties,
+        objectMapper: ObjectMapper,
+        aiAdapter: AiAdapter,
+        briefingGenerationEngine: BriefingGenerationEngine
+    ): SynthesisExecutionRunner {
+        val legacyRunner = LegacyEngineSynthesisExecutionRunner(briefingGenerationEngine)
+        return when (executionConfig.synthesis) {
+            ExecutionConfigProperties.SynthesisType.AI -> {
+                logger.info(
+                    "[runner-config] Using AI synthesis execution runner (provider={}, model={})",
+                    executionConfig.ai.provider,
+                    executionConfig.ai.model
+                )
+                AiSynthesisExecutionRunner(
+                    aiAdapter = aiAdapter,
+                    objectMapper = objectMapper,
+                    config = AiSynthesisExecutionRunner.AiRunnerConfig(
+                        provider = executionConfig.ai.provider,
+                        model = executionConfig.ai.model
+                    )
+                )
+            }
+
+            ExecutionConfigProperties.SynthesisType.LEGACY -> {
+                logger.info("[runner-config] Using legacy synthesis execution runner")
+                legacyRunner
+            }
+        }
+    }
 }
