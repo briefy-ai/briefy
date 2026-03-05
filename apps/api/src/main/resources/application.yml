@@ -149,6 +149,14 @@ briefing:
   execution:
     enabled: ${BRIEFING_EXECUTION_ENABLED:true}
     mode: ${BRIEFING_EXECUTION_MODE:sequential}
+    global-timeout-seconds: ${BRIEFING_EXECUTION_GLOBAL_TIMEOUT_SECONDS:180}
+    subagent-timeout-seconds: ${BRIEFING_EXECUTION_SUBAGENT_TIMEOUT_SECONDS:90}
+    max-attempts: ${BRIEFING_EXECUTION_MAX_ATTEMPTS:3}
+    retry:
+      transient-delay-first-seconds: ${BRIEFING_EXECUTION_RETRY_TRANSIENT_DELAY_FIRST_SECONDS:1}
+      transient-delay-second-seconds: ${BRIEFING_EXECUTION_RETRY_TRANSIENT_DELAY_SECOND_SECONDS:2}
+      http429-fallback-first-seconds: ${BRIEFING_EXECUTION_RETRY_HTTP429_FALLBACK_FIRST_SECONDS:2}
+      http429-fallback-second-seconds: ${BRIEFING_EXECUTION_RETRY_HTTP429_FALLBACK_SECOND_SECONDS:4}
     tools:
       web-search:
         enabled: ${BRIEFING_WEB_SEARCH_ENABLED:false}

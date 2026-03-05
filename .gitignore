@@ -37,3 +37,7 @@ pgdata/
 .agents/
 .claude/
 .cursor/
+
+# Paperclip
+agents/
+data/

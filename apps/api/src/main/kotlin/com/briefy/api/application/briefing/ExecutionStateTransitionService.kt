@@ -619,6 +619,33 @@ class ExecutionStateTransitionService(
         return saved
     }
 
+    fun recordSubagentAttemptFailed(
+        subagentRunId: UUID,
+        eventId: UUID,
+        errorCode: String,
+        errorMessage: String? = null,
+        retryable: Boolean,
+        retryAfterSeconds: Long? = null,
+        attempt: Int,
+        occurredAt: Instant = Instant.now()
+    ) {
+        val run = requireSubagentRun(subagentRunId)
+        recordEvent(
+            eventId = eventId,
+            briefingRunId = run.briefingRunId,
+            subagentRunId = run.id,
+            eventType = EVENT_SUBAGENT_ATTEMPT_FAILED,
+            occurredAt = occurredAt,
+            attempt = attempt,
+            payloadJson = payload(
+                "errorCode" to errorCode,
+                "retryable" to retryable,
+                "retryAfterSeconds" to retryAfterSeconds,
+                "errorMessage" to errorMessage?.take(MAX_FAILURE_MESSAGE)
+            )
+        )
+    }
+
     private fun requireBriefingRun(runId: UUID): BriefingRun {
         return briefingRunRepository.findById(runId).orElseThrow {
             ExecutionRunNotFoundException("BriefingRun", runId)
@@ -728,6 +755,7 @@ class ExecutionStateTransitionService(
 
         private const val EVENT_SUBAGENT_DISPATCHED = "subagent.dispatched"
         private const val EVENT_SUBAGENT_COMPLETED = "subagent.completed"
+        private const val EVENT_SUBAGENT_ATTEMPT_FAILED = "subagent.attempt.failed"
         private const val EVENT_SUBAGENT_RETRY_SCHEDULED = "subagent.retry.scheduled"
         private const val EVENT_SUBAGENT_SKIPPED = "subagent.skipped"
         private const val EVENT_SUBAGENT_SKIPPED_NO_OUTPUT = "subagent.skipped_no_output"
