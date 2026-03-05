@@ -9,7 +9,7 @@ class SsrfGuardTest {
     fun `allows valid https URL`() {
         val result = SsrfGuard.validate("https://example.com/page")
         assertTrue(result is ToolResult.Success)
-        assertEquals("example.com", (result as ToolResult.Success).data.host)
+        assertEquals("example.com", (result as ToolResult.Success).data.uri.host)
     }
 
     @Test
@@ -88,10 +88,25 @@ class SsrfGuardTest {
     }
 
     @Test
+    fun `blocks private 172-16 range`() {
+        val result = SsrfGuard.validate("http://172.16.0.1/internal")
+        assertTrue(result is ToolResult.Error)
+        assertEquals(ToolErrorCode.SSRF_BLOCKED, (result as ToolResult.Error).code)
+    }
+
+    @Test
     fun `blocks cloud metadata IP`() {
         val result = SsrfGuard.validate("http://169.254.169.254/latest/meta-data/")
         assertTrue(result is ToolResult.Error)
         assertEquals(ToolErrorCode.SSRF_BLOCKED, (result as ToolResult.Error).code)
+    }
+
+    @Test
+    fun `returns resolved address for valid URL`() {
+        val result = SsrfGuard.validate("https://example.com/page")
+        assertTrue(result is ToolResult.Success)
+        val validated = (result as ToolResult.Success).data
+        assertNotNull(validated.resolvedAddress)
     }
 
     @Test

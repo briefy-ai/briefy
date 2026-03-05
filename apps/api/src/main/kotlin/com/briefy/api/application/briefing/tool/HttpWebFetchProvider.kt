@@ -6,7 +6,10 @@ import org.slf4j.LoggerFactory
 import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientResponseException
+import java.net.HttpURLConnection
+import java.net.InetAddress
 import java.net.SocketTimeoutException
+import java.net.URI
 
 class HttpWebFetchProvider(
     private val timeoutMs: Int = 15_000,
@@ -16,36 +19,63 @@ class HttpWebFetchProvider(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    private val restClient: RestClient = RestClient.builder()
-        .requestFactory(SimpleClientHttpRequestFactory().apply {
+    private fun buildRestClient(resolvedAddress: InetAddress? = null): RestClient {
+        val factory = object : SimpleClientHttpRequestFactory() {
+            override fun prepareConnection(connection: HttpURLConnection, httpMethod: String) {
+                super.prepareConnection(connection, httpMethod)
+                connection.instanceFollowRedirects = false
+            }
+        }.apply {
             setConnectTimeout(timeoutMs)
             setReadTimeout(timeoutMs)
-        })
-        .defaultHeader("User-Agent", "Briefy/1.0 (research assistant)")
-        .defaultHeader("Accept", "text/html,application/xhtml+xml,text/plain,application/json")
-        .build()
+        }
+
+        val builder = RestClient.builder()
+            .requestFactory(factory)
+            .defaultHeader("User-Agent", "Briefy/1.0 (research assistant)")
+            .defaultHeader("Accept", "text/html,application/xhtml+xml,text/plain,application/json")
+
+        if (resolvedAddress != null) {
+            builder.defaultHeader("Host", resolvedAddress.hostName)
+        }
+
+        return builder.build()
+    }
 
     override fun fetch(url: String): ToolResult<WebFetchResponse> {
-        val validatedUri = if (ssrfCheckEnabled) {
+        val fetchUri: URI
+        val client: RestClient
+
+        if (ssrfCheckEnabled) {
             when (val check = SsrfGuard.validate(url)) {
-                is ToolResult.Success -> check.data
+                is ToolResult.Success -> {
+                    val validated = check.data
+                    // Pin to resolved IP to prevent DNS rebinding
+                    val port = validated.uri.port
+                    val scheme = validated.uri.scheme
+                    val portSuffix = if (port > 0) ":$port" else ""
+                    fetchUri = URI.create("$scheme://${validated.resolvedAddress.hostAddress}$portSuffix${validated.uri.rawPath ?: ""}${validated.uri.rawQuery?.let { "?$it" } ?: ""}")
+                    client = buildRestClient(validated.resolvedAddress)
+                }
                 is ToolResult.Error -> return check
             }
         } else {
-            java.net.URI.create(url)
+            fetchUri = URI.create(url)
+            client = buildRestClient()
         }
 
         return try {
-            val body = restClient.get()
-                .uri(validatedUri)
+            val body = client.get()
+                .uri(fetchUri)
                 .retrieve()
                 .body(String::class.java)
                 ?: return ToolResult.Error(ToolErrorCode.PARSE_ERROR, "Empty response body")
 
-            if (body.length > maxBodyBytes) {
+            val bodyBytes = body.toByteArray(Charsets.UTF_8).size
+            if (bodyBytes > maxBodyBytes) {
                 return ToolResult.Error(
                     ToolErrorCode.CONTENT_TOO_LARGE,
-                    "Response body ${body.length} bytes exceeds limit $maxBodyBytes"
+                    "Response body $bodyBytes bytes exceeds limit $maxBodyBytes"
                 )
             }
 
@@ -55,7 +85,7 @@ class HttpWebFetchProvider(
                     url = url,
                     title = extracted.first,
                     content = extracted.second,
-                    contentLengthBytes = extracted.second.length
+                    contentLengthBytes = extracted.second.toByteArray(Charsets.UTF_8).size
                 )
             )
         } catch (e: RestClientResponseException) {
@@ -70,7 +100,6 @@ class HttpWebFetchProvider(
             val doc = Jsoup.parse(html)
             val title = doc.title().takeIf { it.isNotBlank() }
 
-            // Remove non-content elements
             doc.select("script, style, nav, footer, header, aside, iframe, noscript, svg, form").remove()
 
             val mainContent = doc.select("article, main, [role=main]").firstOrNull() ?: doc.body()
@@ -81,7 +110,6 @@ class HttpWebFetchProvider(
 
             Pair(title, text)
         } catch (_: Exception) {
-            // Fallback: treat as plain text
             Pair(null, html.take(maxBodyBytes))
         }
     }

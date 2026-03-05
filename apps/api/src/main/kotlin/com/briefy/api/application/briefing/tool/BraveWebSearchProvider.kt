@@ -24,7 +24,6 @@ class BraveWebSearchProvider(
             setReadTimeout(timeoutMs)
         })
         .defaultHeader("Accept", "application/json")
-        .defaultHeader("Accept-Encoding", "gzip")
         .defaultHeader("X-Subscription-Token", apiKey)
         .build()
 
