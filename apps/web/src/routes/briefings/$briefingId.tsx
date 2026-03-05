@@ -11,6 +11,10 @@ import { extractErrorMessage } from '@/lib/api/errorMessage'
 import type { BriefingResponse } from '@/lib/api/types'
 import { requireAuth } from '@/lib/auth/requireAuth'
 
+function stripCitationsSection(markdown: string): string {
+  return markdown.replace(/\n#{1,3}\s*Citations\s*\n[\s\S]*$/i, '').trimEnd()
+}
+
 export const Route = createFileRoute('/briefings/$briefingId')({
   beforeLoad: async () => {
     await requireAuth()
@@ -98,7 +102,7 @@ function BriefingDetailPage() {
 
       {briefing.contentMarkdown ? (
         <article className="rounded-xl border border-border/60 bg-card/40 p-5">
-          <MarkdownContent content={briefing.contentMarkdown} variant="article" />
+          <MarkdownContent content={stripCitationsSection(briefing.contentMarkdown)} variant="article" />
         </article>
       ) : (
         <Alert>
