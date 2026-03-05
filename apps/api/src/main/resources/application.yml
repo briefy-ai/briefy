@@ -149,6 +149,16 @@ briefing:
   execution:
     enabled: ${BRIEFING_EXECUTION_ENABLED:true}
     mode: ${BRIEFING_EXECUTION_MODE:sequential}
+    tools:
+      web-search:
+        enabled: ${BRIEFING_WEB_SEARCH_ENABLED:false}
+        brave-api-key: ${BRAVE_SEARCH_API_KEY:}
+        brave-base-url: ${BRAVE_SEARCH_BASE_URL:https://api.search.brave.com}
+        timeout-ms: ${BRIEFING_WEB_SEARCH_TIMEOUT_MS:10000}
+      web-fetch:
+        enabled: ${BRIEFING_WEB_FETCH_ENABLED:false}
+        timeout-ms: ${BRIEFING_WEB_FETCH_TIMEOUT_MS:15000}
+        max-body-bytes: ${BRIEFING_WEB_FETCH_MAX_BODY_BYTES:512000}
   generation:
     enabled: ${BRIEFING_GENERATION_ENABLED:true}
     worker:
