@@ -7,7 +7,7 @@ interface UseBriefingPollingOptions {
   enabled: boolean
   intervalMs?: number
   fetchBriefing: (briefingId: string) => Promise<BriefingResponse>
-  onUpdate: (briefing: BriefingResponse) => void
+  onUpdate: (briefing: BriefingResponse) => void | Promise<void>
   onError?: (error: unknown) => void
 }
 

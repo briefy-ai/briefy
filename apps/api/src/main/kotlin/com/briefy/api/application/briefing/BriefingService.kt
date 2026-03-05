@@ -16,6 +16,7 @@ import java.util.UUID
 @Service
 class BriefingService(
     private val briefingRepository: BriefingRepository,
+    private val briefingRunRepository: BriefingRunRepository,
     private val briefingSourceRepository: BriefingSourceRepository,
     private val briefingPlanStepRepository: BriefingPlanStepRepository,
     private val briefingReferenceRepository: BriefingReferenceRepository,
@@ -93,12 +94,21 @@ class BriefingService(
             return emptyList()
         }
 
+        val latestExecutionRunIds = latestExecutionRunIdsByBriefingId(briefings.map { it.id })
         val responses = mutableListOf<BriefingResponse>()
         briefings.forEach { briefing ->
             val links = briefingSourceRepository.findByBriefingIdOrderByCreatedAtAsc(briefing.id)
             val planSteps = briefingPlanStepRepository.findByBriefingIdOrderByStepOrderAsc(briefing.id)
             val references = briefingReferenceRepository.findByBriefingIdOrderByCreatedAtAsc(briefing.id)
-            responses.add(toResponse(briefing, links, planSteps, references))
+            responses.add(
+                toResponse(
+                    briefing = briefing,
+                    links = links,
+                    planSteps = planSteps,
+                    references = references,
+                    executionRunId = latestExecutionRunIds[briefing.id]
+                )
+            )
         }
         return responses
     }
@@ -217,7 +227,8 @@ class BriefingService(
         briefing: Briefing,
         links: List<BriefingSource>,
         planSteps: List<BriefingPlanStep>,
-        references: List<BriefingReference>
+        references: List<BriefingReference>,
+        executionRunId: UUID? = null
     ): BriefingResponse {
         val citations = parseList(briefing.citationsJson, object : TypeReference<List<BriefingCitationResponse>>() {})
         val conflictHighlights = parseList(
@@ -225,9 +236,12 @@ class BriefingService(
             object : TypeReference<List<BriefingConflictHighlightResponse>>() {}
         )
         val error = parseValue(briefing.errorJson, BriefingErrorResponse::class.java)
+        val latestExecutionRunId = executionRunId
+            ?: briefingRunRepository.findTopByBriefingIdOrderByCreatedAtDesc(briefing.id)?.id
 
         return BriefingResponse(
             id = briefing.id,
+            executionRunId = latestExecutionRunId,
             status = briefing.status.name.lowercase(),
             enrichmentIntent = briefing.enrichmentIntent.name.lowercase(),
             sourceIds = links.map { it.sourceId },
@@ -263,6 +277,18 @@ class BriefingService(
             generationCompletedAt = briefing.generationCompletedAt,
             failedAt = briefing.failedAt
         )
+    }
+
+    private fun latestExecutionRunIdsByBriefingId(briefingIds: List<UUID>): Map<UUID, UUID> {
+        if (briefingIds.isEmpty()) {
+            return emptyMap()
+        }
+        val runs = briefingRunRepository.findByBriefingIdInOrderByBriefingIdAscCreatedAtDesc(briefingIds)
+        val latestByBriefingId = mutableMapOf<UUID, UUID>()
+        runs.forEach { run ->
+            latestByBriefingId.putIfAbsent(run.briefingId, run.id)
+        }
+        return latestByBriefingId
     }
 
     private fun <T> parseValue(json: String?, targetClass: Class<T>): T? {

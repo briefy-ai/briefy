@@ -352,6 +352,10 @@ class BriefingControllerTest {
             createdAt = now.minusSeconds(30)
         )
 
+        mockMvc.perform(get("/api/briefings/$briefingId"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.executionRunId").value(runId.toString()))
+
         mockMvc.perform(get("/api/briefings/runs/$runId"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.briefingRun.status").value("running"))

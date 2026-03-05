@@ -269,6 +269,7 @@ export interface BriefingErrorResponse {
 
 export interface BriefingResponse {
   id: string
+  executionRunId: string | null
   status: BriefingStatus
   enrichmentIntent: string
   sourceIds: string[]
@@ -285,6 +286,116 @@ export interface BriefingResponse {
   generationStartedAt: string | null
   generationCompletedAt: string | null
   failedAt: string | null
+}
+
+export type BriefingRunStatus =
+  | 'queued'
+  | 'running'
+  | 'cancelling'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+
+export type SubagentRunStatus =
+  | 'pending'
+  | 'running'
+  | 'retry_wait'
+  | 'succeeded'
+  | 'failed'
+  | 'skipped'
+  | 'skipped_no_output'
+  | 'cancelled'
+
+export type SynthesisRunStatus =
+  | 'not_started'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'skipped'
+  | 'cancelled'
+
+export interface BriefingRunSnapshotResponse {
+  id: string
+  briefingId: string
+  status: BriefingRunStatus
+  createdAt: string
+  updatedAt: string
+  startedAt: string | null
+  endedAt: string | null
+  deadlineAt: string | null
+  totalPersonas: number
+  requiredForSynthesis: number
+  nonEmptySucceededCount: number
+  cancelRequestedAt: string | null
+  failureCode: string | null
+  failureMessage: string | null
+  reusedFromRunId: string | null
+}
+
+export interface BriefingSubagentLastErrorResponse {
+  code: string | null
+  retryable: boolean | null
+  message: string | null
+}
+
+export interface BriefingSubagentRunSnapshotResponse {
+  id: string
+  personaKey: string
+  status: SubagentRunStatus
+  attempt: number
+  maxAttempts: number
+  startedAt: string | null
+  endedAt: string | null
+  deadlineAt: string | null
+  toolStats: Record<string, unknown> | null
+  lastError: BriefingSubagentLastErrorResponse | null
+  reused: boolean
+}
+
+export interface BriefingSynthesisRunSnapshotResponse {
+  id: string | null
+  status: SynthesisRunStatus
+  inputPersonaCount: number
+  includedPersonaKeys: string[]
+  excludedPersonaKeys: string[]
+  startedAt: string | null
+  endedAt: string | null
+  output: string | null
+  lastErrorCode: string | null
+  lastErrorMessage: string | null
+}
+
+export interface BriefingRunMetricsResponse {
+  durationMs: number
+  subagentSucceeded: number
+  subagentSkipped: number
+  subagentSkippedNoOutput: number
+  subagentFailed: number
+  toolCallsTotal: number
+}
+
+export interface BriefingRunSummaryResponse {
+  briefingRun: BriefingRunSnapshotResponse
+  subagents: BriefingSubagentRunSnapshotResponse[]
+  synthesis: BriefingSynthesisRunSnapshotResponse
+  metrics: BriefingRunMetricsResponse
+}
+
+export interface BriefingRunEventResponse {
+  eventId: string
+  eventType: string
+  ts: string
+  briefingRunId: string
+  subagentRunId: string | null
+  attempt: number | null
+  payload: Record<string, unknown> | null
+}
+
+export interface BriefingRunEventsPageResponse {
+  items: BriefingRunEventResponse[]
+  nextCursor: string | null
+  hasMore: boolean
+  limit: number
 }
 
 export interface CreateBriefingRequest {

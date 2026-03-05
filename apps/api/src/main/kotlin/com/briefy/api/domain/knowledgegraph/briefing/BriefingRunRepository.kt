@@ -7,6 +7,7 @@ import java.util.UUID
 @Repository
 interface BriefingRunRepository : JpaRepository<BriefingRun, UUID> {
     fun findByBriefingIdOrderByCreatedAtDesc(briefingId: UUID): List<BriefingRun>
+    fun findByBriefingIdInOrderByBriefingIdAscCreatedAtDesc(briefingIds: Collection<UUID>): List<BriefingRun>
     fun findTopByBriefingIdAndStatusInOrderByCreatedAtDesc(
         briefingId: UUID,
         statuses: Collection<BriefingRunStatus>

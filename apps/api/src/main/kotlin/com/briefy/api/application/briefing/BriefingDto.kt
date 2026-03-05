@@ -10,6 +10,7 @@ data class CreateBriefingCommand(
 
 data class BriefingResponse(
     val id: UUID,
+    val executionRunId: UUID?,
     val status: String,
     val enrichmentIntent: String,
     val sourceIds: List<UUID>,
