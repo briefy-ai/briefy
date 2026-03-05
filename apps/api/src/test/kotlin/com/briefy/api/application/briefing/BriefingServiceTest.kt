@@ -152,6 +152,38 @@ class BriefingServiceTest {
         verify(briefingReferenceRepository).deleteByBriefingId(briefing.id)
     }
 
+    @Test
+    fun `listBriefings resolves execution run ids in one bulk lookup`() {
+        val userId = UUID.randomUUID()
+        val firstBriefing = Briefing.create(UUID.randomUUID(), userId, BriefingEnrichmentIntent.DEEP_DIVE)
+        val secondBriefing = Briefing.create(UUID.randomUUID(), userId, BriefingEnrichmentIntent.TRUTH_GROUNDING)
+        val firstLatestRun = createRun(firstBriefing.id, Instant.parse("2026-03-05T10:00:00Z"))
+        val firstOlderRun = createRun(firstBriefing.id, Instant.parse("2026-03-05T09:00:00Z"))
+        val secondLatestRun = createRun(secondBriefing.id, Instant.parse("2026-03-05T10:30:00Z"))
+
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(briefingRepository.findByUserIdOrderByUpdatedAtDesc(userId)).thenReturn(listOf(firstBriefing, secondBriefing))
+        whenever(
+            briefingRunRepository.findByBriefingIdInOrderByBriefingIdAscCreatedAtDesc(
+                listOf(firstBriefing.id, secondBriefing.id)
+            )
+        ).thenReturn(listOf(firstLatestRun, firstOlderRun, secondLatestRun))
+        whenever(briefingSourceRepository.findByBriefingIdOrderByCreatedAtAsc(any())).thenReturn(emptyList())
+        whenever(briefingPlanStepRepository.findByBriefingIdOrderByStepOrderAsc(any())).thenReturn(emptyList())
+        whenever(briefingReferenceRepository.findByBriefingIdOrderByCreatedAtAsc(any())).thenReturn(emptyList())
+
+        val responses = service.listBriefings(status = null)
+
+        assertEquals(2, responses.size)
+        val byId = responses.associateBy { it.id }
+        assertEquals(firstLatestRun.id, byId[firstBriefing.id]?.executionRunId)
+        assertEquals(secondLatestRun.id, byId[secondBriefing.id]?.executionRunId)
+        verify(briefingRunRepository).findByBriefingIdInOrderByBriefingIdAscCreatedAtDesc(
+            listOf(firstBriefing.id, secondBriefing.id)
+        )
+        verify(briefingRunRepository, never()).findTopByBriefingIdOrderByCreatedAtDesc(any())
+    }
+
     private fun createSource(userId: UUID, status: SourceStatus): Source {
         return Source(
             id = UUID.randomUUID(),
@@ -170,6 +202,19 @@ class BriefingServiceTest {
             userId = userId,
             createdAt = Instant.now(),
             updatedAt = Instant.now()
+        )
+    }
+
+    private fun createRun(briefingId: UUID, createdAt: Instant): BriefingRun {
+        return BriefingRun(
+            id = UUID.randomUUID(),
+            briefingId = briefingId,
+            executionFingerprint = "fingerprint-${UUID.randomUUID()}",
+            status = BriefingRunStatus.RUNNING,
+            createdAt = createdAt,
+            updatedAt = createdAt,
+            totalPersonas = 1,
+            requiredForSynthesis = 1
         )
     }
 }

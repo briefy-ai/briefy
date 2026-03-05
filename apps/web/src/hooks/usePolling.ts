@@ -5,7 +5,7 @@ interface UsePollingOptions<T> {
   intervalMs?: number
   timeoutMs?: number
   fetch: () => Promise<T>
-  onSuccess: (data: T) => void
+  onSuccess: (data: T) => void | Promise<void>
   onError?: (error: unknown) => void
 }
 
@@ -40,7 +40,7 @@ export function usePolling<T>({
       inFlight = true
       try {
         const data = await fetchRef.current()
-        if (!cancelled) callbacksRef.current.onSuccess(data)
+        if (!cancelled) await callbacksRef.current.onSuccess(data)
       } catch (error) {
         if (!cancelled) callbacksRef.current.onError?.(error)
       } finally {

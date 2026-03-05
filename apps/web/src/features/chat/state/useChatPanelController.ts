@@ -187,8 +187,8 @@ export function useChatPanelController() {
     enabled: Boolean(activeBriefingId && activeBriefingStatus && isActiveBriefingStatus(activeBriefingStatus)),
     intervalMs: 3000,
     fetchBriefing: transport.getBriefing,
-    onUpdate: (briefing) => {
-      void applyBriefingSnapshot(briefing)
+    onUpdate: async (briefing) => {
+      await applyBriefingSnapshot(briefing)
     },
     onError: (error) => {
       setMessages((prev) => appendErrorMessage(prev, errorMessage(error, 'Polling failed while updating briefing')))
