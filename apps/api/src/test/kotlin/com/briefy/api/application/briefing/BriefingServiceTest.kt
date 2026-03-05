@@ -24,6 +24,7 @@ import java.util.UUID
 
 class BriefingServiceTest {
     private val briefingRepository: BriefingRepository = mock()
+    private val briefingRunRepository: BriefingRunRepository = mock()
     private val briefingSourceRepository: BriefingSourceRepository = mock()
     private val briefingPlanStepRepository: BriefingPlanStepRepository = mock()
     private val briefingReferenceRepository: BriefingReferenceRepository = mock()
@@ -36,6 +37,7 @@ class BriefingServiceTest {
 
     private val service = BriefingService(
         briefingRepository = briefingRepository,
+        briefingRunRepository = briefingRunRepository,
         briefingSourceRepository = briefingSourceRepository,
         briefingPlanStepRepository = briefingPlanStepRepository,
         briefingReferenceRepository = briefingReferenceRepository,

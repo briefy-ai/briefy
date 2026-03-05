@@ -16,6 +16,7 @@ import java.util.UUID
 @Service
 class BriefingService(
     private val briefingRepository: BriefingRepository,
+    private val briefingRunRepository: BriefingRunRepository,
     private val briefingSourceRepository: BriefingSourceRepository,
     private val briefingPlanStepRepository: BriefingPlanStepRepository,
     private val briefingReferenceRepository: BriefingReferenceRepository,
@@ -225,9 +226,11 @@ class BriefingService(
             object : TypeReference<List<BriefingConflictHighlightResponse>>() {}
         )
         val error = parseValue(briefing.errorJson, BriefingErrorResponse::class.java)
+        val executionRunId = briefingRunRepository.findTopByBriefingIdOrderByCreatedAtDesc(briefing.id)?.id
 
         return BriefingResponse(
             id = briefing.id,
+            executionRunId = executionRunId,
             status = briefing.status.name.lowercase(),
             enrichmentIntent = briefing.enrichmentIntent.name.lowercase(),
             sourceIds = links.map { it.sourceId },

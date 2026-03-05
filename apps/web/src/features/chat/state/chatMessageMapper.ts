@@ -1,4 +1,8 @@
-import type { BriefingResponse } from '@/lib/api/types'
+import type {
+  BriefingResponse,
+  BriefingRunEventResponse,
+  BriefingRunSummaryResponse,
+} from '@/lib/api/types'
 import { CHAT_INTENTS, isTerminalBriefingStatus } from '../constants'
 import type {
   BriefingResultPayload,
@@ -86,17 +90,82 @@ function toPlanPreviewPayload(briefing: BriefingResponse): PlanPreviewPayload {
   }
 }
 
-function toStepProgressPayload(briefing: BriefingResponse): StepProgressPayload {
+export interface ExecutionProgressSnapshot {
+  summary: BriefingRunSummaryResponse
+  recentEvents: BriefingRunEventResponse[]
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  return value as Record<string, unknown>
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function getToolStatCount(toolStats: Record<string, unknown> | null, key: string): number {
+  if (!toolStats) return 0
+  const direct = asNumber(toolStats[key])
+  if (direct != null) {
+    return direct
+  }
+  if (key === 'toolCallCount') {
+    const tools = toolStats.tools
+    if (Array.isArray(tools)) {
+      return tools.length
+    }
+  }
+  return 0
+}
+
+function toStepProgressPayload(
+  briefing: BriefingResponse,
+  execution: ExecutionProgressSnapshot | null
+): StepProgressPayload {
+  const subagentsByPersonaKey = new Map(
+    (execution?.summary.subagents ?? []).map((subagent) => [subagent.personaKey, subagent])
+  )
+  const latestEvent = execution?.recentEvents[execution.recentEvents.length - 1] ?? null
+
   return {
     briefingId: briefing.id,
     briefingStatus: briefing.status,
-    steps: briefing.plan.map((step) => ({
-      id: step.id,
-      personaName: step.personaName,
-      task: step.task,
-      status: step.status,
-      stepOrder: step.stepOrder,
-    })),
+    execution: execution
+      ? {
+          runId: execution.summary.briefingRun.id,
+          runStatus: execution.summary.briefingRun.status,
+          synthesisStatus: execution.summary.synthesis.status,
+          durationMs: execution.summary.metrics.durationMs,
+          requiredForSynthesis: execution.summary.briefingRun.requiredForSynthesis,
+          nonEmptySucceededCount: execution.summary.briefingRun.nonEmptySucceededCount,
+          toolCallsTotal: execution.summary.metrics.toolCallsTotal,
+          failureCode: execution.summary.briefingRun.failureCode,
+          latestEventType: latestEvent?.eventType ?? null,
+          latestEventAt: latestEvent?.ts ?? null,
+        }
+      : null,
+    steps: briefing.plan.map((step) => {
+      const subagent = subagentsByPersonaKey.get(`step-${step.stepOrder}`)
+      const toolStats = asRecord(subagent?.toolStats ?? null)
+      return {
+        id: step.id,
+        personaName: step.personaName,
+        task: step.task,
+        status: step.status,
+        stepOrder: step.stepOrder,
+        attempt: subagent?.attempt ?? null,
+        maxAttempts: subagent?.maxAttempts ?? null,
+        reused: subagent?.reused ?? false,
+        toolCallCount: getToolStatCount(toolStats, 'toolCallCount'),
+        sourceCount: getToolStatCount(toolStats, 'sourceCount'),
+        webReferencesCount: getToolStatCount(toolStats, 'webReferencesCount'),
+        lastErrorCode: subagent?.lastError?.code ?? null,
+        lastErrorRetryable: subagent?.lastError?.retryable ?? null,
+      }
+    }),
   }
 }
 
@@ -138,7 +207,11 @@ function removeMessageById(messages: ChatMessage[], id: string): ChatMessage[] {
   return messages.filter((message) => message.id !== id)
 }
 
-export function mergeBriefingMessages(messages: ChatMessage[], briefing: BriefingResponse): ChatMessage[] {
+export function mergeBriefingMessages(
+  messages: ChatMessage[],
+  briefing: BriefingResponse,
+  execution: ExecutionProgressSnapshot | null = null
+): ChatMessage[] {
   let nextMessages: ChatMessage[] = messages.filter((message) => message.type !== 'intent_selector')
   const planPreviewId = `plan_preview:${briefing.id}`
   const stepProgressId = `step_progress:${briefing.id}`
@@ -164,7 +237,7 @@ export function mergeBriefingMessages(messages: ChatMessage[], briefing: Briefin
       direction: 'outbound',
       createdAt: briefing.updatedAt,
       mutable: true,
-      payload: toStepProgressPayload(briefing),
+      payload: toStepProgressPayload(briefing, execution),
       entityType: 'briefing',
       entityId: briefing.id,
     }

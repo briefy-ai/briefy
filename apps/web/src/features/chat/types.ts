@@ -56,12 +56,32 @@ export interface PlanPreviewPayload {
 export interface StepProgressPayload {
   briefingId: string
   briefingStatus: BriefingStatus
+  execution: {
+    runId: string
+    runStatus: string
+    synthesisStatus: string
+    durationMs: number
+    requiredForSynthesis: number
+    nonEmptySucceededCount: number
+    toolCallsTotal: number
+    failureCode: string | null
+    latestEventType: string | null
+    latestEventAt: string | null
+  } | null
   steps: Array<{
     id: string
     personaName: string
     task: string
     status: BriefingPlanStepStatus
     stepOrder: number
+    attempt: number | null
+    maxAttempts: number | null
+    reused: boolean
+    toolCallCount: number
+    sourceCount: number
+    webReferencesCount: number
+    lastErrorCode: string | null
+    lastErrorRetryable: boolean | null
   }>
 }
 
@@ -108,4 +128,3 @@ export interface ChatSourceContext {
   sourceId: string
   sourceTitle: string
 }
-

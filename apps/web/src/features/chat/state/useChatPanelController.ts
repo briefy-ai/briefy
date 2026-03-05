@@ -1,12 +1,13 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { ApiClientError } from '@/lib/api/client'
-import type { BriefingStatus } from '@/lib/api/types'
+import type { BriefingResponse, BriefingStatus } from '@/lib/api/types'
 import { ACTION_KEYS, getGuidanceFromUserText, isActiveBriefingStatus } from '../constants'
 import { createChatTransport } from '../transport/chatTransport'
 import { useBriefingPolling } from '../transport/useBriefingPolling'
 import type { ChatIntentId, ChatMessage, ChatSourceContext } from '../types'
 import {
+  type ExecutionProgressSnapshot,
   createSystemTextMessage,
   createThreadBootstrapMessages,
   createUserActionMessage,
@@ -54,6 +55,7 @@ function appendErrorMessage(
 export function useChatPanelController() {
   const navigate = useNavigate()
   const transport = useMemo(() => createChatTransport(), [])
+  const executionSnapshotsRef = useRef<Record<string, ExecutionProgressSnapshot>>({})
 
   const [isOpen, setIsOpen] = useState(false)
   const [pageSourceContext, setPageSourceContext] = useState<ChatSourceContext | null>(null)
@@ -87,6 +89,7 @@ export function useChatPanelController() {
     setMessages(createThreadBootstrapMessages(normalizedContext))
     setActiveBriefingId(null)
     setActiveBriefingStatus(null)
+    executionSnapshotsRef.current = {}
     setPendingActionKeys(new Set())
     setInputValue('')
     setIsOpen(true)
@@ -128,17 +131,55 @@ export function useChatPanelController() {
     openPanelWithDefaultContext()
   }, [isOpen, closePanel, openPanelWithDefaultContext])
 
+  const loadExecutionSnapshot = useCallback(
+    async (briefing: BriefingResponse): Promise<ExecutionProgressSnapshot | null> => {
+      const runId = briefing.executionRunId
+      if (!runId) {
+        return null
+      }
+
+      try {
+        const [summary, eventsPage] = await Promise.all([
+          transport.getRunSummary(runId),
+          transport.listRunEvents(runId, 200),
+        ])
+        const snapshot: ExecutionProgressSnapshot = {
+          summary,
+          recentEvents: eventsPage.items
+            .map((event) => ({
+              ...event,
+              payload: null,
+            }))
+            .slice(-50),
+        }
+        executionSnapshotsRef.current[runId] = snapshot
+        return snapshot
+      } catch {
+        return executionSnapshotsRef.current[runId] ?? null
+      }
+    },
+    [transport]
+  )
+
+  const applyBriefingSnapshot = useCallback(
+    async (briefing: BriefingResponse) => {
+      const execution = await loadExecutionSnapshot(briefing)
+      setActiveBriefingStatus(briefing.status)
+      setMessages((prev) => mergeBriefingMessages(prev, briefing, execution))
+    },
+    [loadExecutionSnapshot]
+  )
+
   const handleBriefingUpdate = useCallback(
     async (briefingId: string) => {
       try {
         const briefing = await transport.getBriefing(briefingId)
-        setActiveBriefingStatus(briefing.status)
-        setMessages((prev) => mergeBriefingMessages(prev, briefing))
+        await applyBriefingSnapshot(briefing)
       } catch (error) {
         setMessages((prev) => appendErrorMessage(prev, errorMessage(error, 'Failed to refresh briefing progress')))
       }
     },
-    [transport]
+    [transport, applyBriefingSnapshot]
   )
 
   useBriefingPolling({
@@ -147,8 +188,7 @@ export function useChatPanelController() {
     intervalMs: 3000,
     fetchBriefing: transport.getBriefing,
     onUpdate: (briefing) => {
-      setActiveBriefingStatus(briefing.status)
-      setMessages((prev) => mergeBriefingMessages(prev, briefing))
+      void applyBriefingSnapshot(briefing)
     },
     onError: (error) => {
       setMessages((prev) => appendErrorMessage(prev, errorMessage(error, 'Polling failed while updating briefing')))
@@ -173,8 +213,7 @@ export function useChatPanelController() {
       try {
         const briefing = await transport.createBriefingForIntent(sourceContext.sourceId, intent)
         setActiveBriefingId(briefing.id)
-        setActiveBriefingStatus(briefing.status)
-        setMessages((prev) => mergeBriefingMessages(prev, briefing))
+        await applyBriefingSnapshot(briefing)
       } catch (error) {
         setMessages((prev) =>
           appendErrorMessage(prev, errorMessage(error, 'Failed to create briefing for selected intent'))
@@ -183,7 +222,7 @@ export function useChatPanelController() {
         setActionPending(ACTION_KEYS.SELECT_INTENT, false)
       }
     },
-    [sourceContext, activeBriefingId, isActionPending, setActionPending, transport]
+    [sourceContext, activeBriefingId, isActionPending, setActionPending, transport, applyBriefingSnapshot]
   )
 
   const approvePlan = useCallback(
@@ -202,15 +241,14 @@ export function useChatPanelController() {
       try {
         const briefing = await transport.approvePlan(briefingId)
         setActiveBriefingId(briefing.id)
-        setActiveBriefingStatus(briefing.status)
-        setMessages((prev) => mergeBriefingMessages(prev, briefing))
+        await applyBriefingSnapshot(briefing)
       } catch (error) {
         setMessages((prev) => appendErrorMessage(prev, errorMessage(error, 'Failed to approve plan')))
       } finally {
         setActionPending(key, false)
       }
     },
-    [isActionPending, setActionPending, transport]
+    [isActionPending, setActionPending, transport, applyBriefingSnapshot]
   )
 
   const retryFailedBriefing = useCallback(
@@ -229,8 +267,7 @@ export function useChatPanelController() {
       try {
         const briefing = await transport.retryBriefing(briefingId)
         setActiveBriefingId(briefing.id)
-        setActiveBriefingStatus(briefing.status)
-        setMessages((prev) => mergeBriefingMessages(prev, briefing))
+        await applyBriefingSnapshot(briefing)
       } catch (error) {
         setMessages((prev) =>
           appendErrorMessage(
@@ -243,7 +280,7 @@ export function useChatPanelController() {
         setActionPending(key, false)
       }
     },
-    [isActionPending, setActionPending, transport]
+    [isActionPending, setActionPending, transport, applyBriefingSnapshot]
   )
 
   const submitUserText = useCallback((text: string) => {
