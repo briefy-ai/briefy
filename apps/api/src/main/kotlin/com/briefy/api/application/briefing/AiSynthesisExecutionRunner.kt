@@ -116,7 +116,12 @@ Return JSON only with the required schema."""
     private fun parseStructuredResponse(response: String): StructuredSynthesisResponse? {
         val root = parseResponseJson(response) ?: return null
 
-        val markdownBody = root.path("markdownBody").asText().trim()
+        val markdownNode = root.path("markdownBody")
+        if (!markdownNode.isTextual) {
+            return null
+        }
+
+        val markdownBody = markdownNode.asText().trim()
         if (markdownBody.isBlank()) {
             return null
         }
@@ -239,7 +244,12 @@ Return JSON only with the required schema."""
             return markdownBlock
         }
 
-        return response.trim()
+        val trimmed = response.trim()
+        val parsedJson = runCatching { objectMapper.readTree(trimmed) }.getOrNull()
+        if (parsedJson != null && parsedJson.isObject) {
+            return ""
+        }
+        return trimmed
     }
 
     private fun buildDeterministicFallbackMarkdown(request: BriefingGenerationRequest): String {

@@ -88,6 +88,23 @@ class AiSynthesisExecutionRunnerTest {
         assertEquals(1, result.references.size)
     }
 
+    @Test
+    fun `non-text markdownBody in JSON triggers deterministic fallback`() {
+        whenever(aiAdapter.complete(any(), any(), any(), any(), any())).thenReturn(
+            """{
+  "markdownBody": null,
+  "references": [],
+  "conflictHighlights": []
+}"""
+        )
+
+        val result = runner.run(baseRequest())
+
+        assertTrue(result.markdownBody.contains("## Briefing"))
+        assertTrue(result.markdownBody.contains("Persona One"))
+        assertEquals(1, result.references.size)
+    }
+
     private fun baseRequest(): BriefingGenerationRequest {
         return BriefingGenerationRequest(
             briefingId = UUID.randomUUID(),
