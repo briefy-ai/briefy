@@ -25,6 +25,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 - [2026-03-04 13:03] Put `proxy_set_header` inside `if ($is_crawler)` in Nginx share location, causing startup failure (`directive is not allowed here`) -> moved crawler proxying to named location (`@share_crawler`) and used `if` only for `return 418` routing -> in Nginx, keep `proxy_*` directives at location/server/http scope, never inside `if`.
 - [2026-03-04 12:47] Tried generating fallback OG PNG with `jshell` in this sandbox and hit runtime/headless instability -> switched to `java -Djava.awt.headless=true <source-file>` for deterministic image generation -> for asset generation scripts that use AWT, run headless Java directly instead of `jshell`.
 - [2026-03-04 13:34] Added OG image extraction for X posts but forgot `attachments.media_keys` expansion in tweet lookup -> regular post media did not reliably populate `includes.media` -> for X API media extraction, always pair `tweet.fields=attachments` with `expansions=attachments.media_keys`.
+- [2026-03-05 14:34] Posted a GitHub PR comment with unescaped backticks in `gh pr comment --body`, causing shell command substitution and a malformed message -> re-posted using `--body-file` heredoc -> for shell comments containing code identifiers, default to heredoc or single-quoted body.
 
 ## Non-Obvious Code Findings
 
@@ -44,6 +45,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 
 - [2026-03-01] `generateForSource` in `TopicSuggestionService` was `@Transactional`, holding a DB connection for the entire Spring AI retry loop. When the AI provider (Z.ai) went down, Spring AI retried 9+ times with ~3-minute backoff, keeping the transaction open for 20+ minutes until Railway killed the container, leaving `topic_extraction_state = PENDING` with no recovery path. Fix: remove `@Transactional`, use `TransactionTemplate` for three short transactions (read → [AI call] → write). Tests: mock `TransactionTemplate` with `thenAnswer` to pass-through the `TransactionCallback`. (`TopicSuggestionService.kt`, `TopicSuggestionServiceTest.kt`)
 - [2026-03-04] Migration version `V20260304120000` is already occupied by `share_links`; adding another migration with that same version breaks Flyway startup due duplicate versioning (matters for follow-up schema work on the same day). [`apps/api/src/main/resources/db/migration/V20260304120000__share_links.sql`]
+- [2026-03-05] Execution synthesis input is now built only from `SUCCEEDED` subagent runs with non-empty `curated_text`; reference candidates are rehydrated from each run's `references_used_json` before AI synthesis (matters because final briefing references/citations now depend on subagent reference capture quality). [`apps/api/src/main/kotlin/com/briefy/api/application/briefing/BriefingExecutionOrchestratorService.kt`, `apps/api/src/main/kotlin/com/briefy/api/application/briefing/AiSynthesisExecutionRunner.kt`]
 
 ## User Preferences
 

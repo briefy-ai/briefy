@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -135,7 +136,12 @@ class BriefingExecutionOrchestrationIT {
         val synthesis = synthesisRunRepository.findByBriefingRunId(run.id) ?: error("Expected synthesis run")
         assertEquals(SynthesisRunStatus.SUCCEEDED, synthesis.status)
 
-        verify(synthesisExecutionRunner).run(any())
+        val synthesisRequestCaptor = argumentCaptor<BriefingGenerationRequest>()
+        verify(synthesisExecutionRunner).run(synthesisRequestCaptor.capture())
+        val synthesisRequest = synthesisRequestCaptor.firstValue
+        assertEquals(3, synthesisRequest.subagentOutputs.size)
+        assertTrue(synthesisRequest.subagentOutputs.all { it.curatedText.isNotBlank() })
+        assertTrue(synthesisRequest.subagentOutputs.all { it.references.isEmpty() })
     }
 
     @Test

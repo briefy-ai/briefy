@@ -153,6 +153,7 @@ briefing:
     subagent-timeout-seconds: ${BRIEFING_EXECUTION_SUBAGENT_TIMEOUT_SECONDS:90}
     max-attempts: ${BRIEFING_EXECUTION_MAX_ATTEMPTS:3}
     runner: ${BRIEFING_EXECUTION_RUNNER:deterministic}
+    synthesis: ${BRIEFING_EXECUTION_SYNTHESIS:ai}
     ai:
       provider: ${BRIEFING_EXECUTION_AI_PROVIDER:google_genai}
       model: ${BRIEFING_EXECUTION_AI_MODEL:gemini-2.5-flash}

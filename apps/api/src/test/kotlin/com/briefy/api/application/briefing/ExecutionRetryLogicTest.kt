@@ -80,6 +80,7 @@ class ExecutionRetryLogicTest {
         assertEquals(180L, config.globalTimeoutSeconds)
         assertEquals(90L, config.subagentTimeoutSeconds)
         assertEquals(3, config.maxAttempts)
+        assertEquals(ExecutionConfigProperties.SynthesisType.AI, config.synthesis)
         assertEquals(1L, config.retry.transientDelayFirstSeconds)
         assertEquals(2L, config.retry.transientDelaySecondSeconds)
         assertEquals(2L, config.retry.http429FallbackFirstSeconds)

@@ -8,10 +8,12 @@ data class ExecutionConfigProperties(
     val subagentTimeoutSeconds: Long = 90L,
     val maxAttempts: Int = 3,
     val runner: RunnerType = RunnerType.DETERMINISTIC,
+    val synthesis: SynthesisType = SynthesisType.AI,
     val retry: RetryConfig = RetryConfig(),
     val ai: AiRunnerProperties = AiRunnerProperties()
 ) {
     enum class RunnerType { DETERMINISTIC, AI }
+    enum class SynthesisType { LEGACY, AI }
 
     data class RetryConfig(
         val transientDelayFirstSeconds: Long = 1L,
