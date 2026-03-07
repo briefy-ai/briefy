@@ -549,21 +549,17 @@ function SourceCard({
                   className="size-2 shrink-0 rounded-full bg-amber-500"
                 />
               )}
-              {showUnreadIndicator && (
-                <Badge
-                  variant="default"
-                  className="ml-1"
-                  aria-label="Source unread"
-                >
-                  Unread
-                </Badge>
-              )}
             </h3>
             <p className="mt-0.5 text-xs text-muted-foreground truncate">
               {domain}
             </p>
           </div>
           <div className="flex items-center gap-1">
+            {showUnreadIndicator && (
+              <Badge variant="default" className="shrink-0" aria-label="Source unread">
+                Unread
+              </Badge>
+            )}
             {source.status !== 'active' && (
               <Badge variant={status.variant} className="shrink-0">
                 {source.status === 'extracting' && (
