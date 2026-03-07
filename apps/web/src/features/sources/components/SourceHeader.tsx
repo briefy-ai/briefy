@@ -64,7 +64,7 @@ export function SourceHeader({
   return (
     <header className="mt-6 mb-8 animate-slide-up" style={staggerDelay(1)}>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3">
           <Badge variant={status.variant}>
             {source.status === 'extracting' && (
               <span className="mr-1 size-1.5 rounded-full bg-current animate-pulse" aria-hidden="true" />
@@ -75,14 +75,14 @@ export function SourceHeader({
             href={source.url.raw}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-muted-foreground hover:text-primary transition-colors truncate"
+            className="max-w-48 text-xs text-muted-foreground hover:text-primary transition-colors truncate sm:max-w-none"
             aria-label={`Open original source at ${domain}`}
           >
             {domain}
             <ExternalLink className="ml-1 inline-block size-2.5 -translate-y-px" aria-hidden="true" />
           </a>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Button
             type="button"
             size="sm"
@@ -91,7 +91,7 @@ export function SourceHeader({
             aria-label="Generate briefing from this source"
           >
             <MessageSquarePlus className="size-4" aria-hidden="true" />
-            Generate Briefing
+            <span className="hidden sm:inline">Generate Briefing</span>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
