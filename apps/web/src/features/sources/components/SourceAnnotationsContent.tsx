@@ -76,6 +76,9 @@ export function SourceAnnotationsContent({ sourceId, content }: SourceAnnotation
 
   const [selectionFeedback, setSelectionFeedback] = useState<string | null>(null)
 
+  const draftTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const editTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+
   // Refs for values read only inside async callbacks — avoids invalidating handlers on every keystroke
   const draftBodyRef = useRef(draftBody)
   draftBodyRef.current = draftBody
@@ -144,6 +147,28 @@ export function SourceAnnotationsContent({ sourceId, content }: SourceAnnotation
   }, [selectionFeedback])
 
   useEffect(() => () => clearHoverCloseTimer(), [clearHoverCloseTimer])
+
+  useEffect(() => {
+    if (!isMobile) {
+      return
+    }
+
+    const vv = window.visualViewport
+    if (!vv) {
+      return
+    }
+
+    const handleResize = () => {
+      const activeTextarea = draftTextareaRef.current ?? editTextareaRef.current
+      if (!activeTextarea || document.activeElement !== activeTextarea) {
+        return
+      }
+      activeTextarea.scrollIntoView({ block: 'nearest', behavior: 'instant' })
+    }
+
+    vv.addEventListener('resize', handleResize)
+    return () => vv.removeEventListener('resize', handleResize)
+  }, [isMobile])
 
   useEffect(() => {
     let cancelled = false
@@ -617,6 +642,7 @@ export function SourceAnnotationsContent({ sourceId, content }: SourceAnnotation
         <AnnotationPopoverShell rect={draftRect} popoverRef={draftPopoverRef}>
           <div className="space-y-3">
             <textarea
+              ref={draftTextareaRef}
               value={draftBody}
               onChange={(event) => {
                 const nextBody = event.target.value
@@ -737,6 +763,7 @@ export function SourceAnnotationsContent({ sourceId, content }: SourceAnnotation
           {annotationMode === 'edit' && (
             <div className="space-y-3">
               <textarea
+                ref={editTextareaRef}
                 value={annotationBodyDraft}
                 onChange={(event) => {
                   const nextBody = event.target.value
