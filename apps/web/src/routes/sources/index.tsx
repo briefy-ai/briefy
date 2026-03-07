@@ -551,8 +551,8 @@ function SourceCard({
               )}
               {showUnreadIndicator && (
                 <Badge
-                  variant="outline"
-                  className="ml-1 text-[0.55rem] font-medium uppercase tracking-wider"
+                  variant="default"
+                  className="ml-1"
                   aria-label="Source unread"
                 >
                   Unread
@@ -564,12 +564,14 @@ function SourceCard({
             </p>
           </div>
           <div className="flex items-center gap-1">
-            <Badge variant={status.variant} className="shrink-0">
-              {source.status === 'extracting' && (
-                <span className="mr-1 size-1.5 rounded-full bg-current animate-pulse" />
-              )}
-              {status.label}
-            </Badge>
+            {source.status !== 'active' && (
+              <Badge variant={status.variant} className="shrink-0">
+                {source.status === 'extracting' && (
+                  <span className="mr-1 size-1.5 rounded-full bg-current animate-pulse" />
+                )}
+                {status.label}
+              </Badge>
+            )}
             {showRestoreAction && (
               <Button
                 type="button"
