@@ -70,7 +70,10 @@ function RootLayoutContent() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-50 border-b border-border/40 bg-background/70 backdrop-blur-md">
+      <header
+        className="sticky top-0 z-50 border-b border-border/40 bg-background/70 backdrop-blur-md"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
           <Link to="/" className="group flex items-center gap-2.5">
             <div className="flex size-7 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground shadow-sm shadow-primary/20 transition-transform group-hover:scale-105">
