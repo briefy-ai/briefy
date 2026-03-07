@@ -41,3 +41,5 @@ pgdata/
 # Paperclip
 agents/
 data/
+
+.superset/
