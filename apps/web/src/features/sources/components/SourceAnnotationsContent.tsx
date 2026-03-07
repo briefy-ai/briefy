@@ -160,7 +160,10 @@ export function SourceAnnotationsContent({ sourceId, content }: SourceAnnotation
 
     const handleResize = () => {
       const activeTextarea = draftTextareaRef.current ?? editTextareaRef.current
-      activeTextarea?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      if (!activeTextarea || document.activeElement !== activeTextarea) {
+        return
+      }
+      activeTextarea.scrollIntoView({ block: 'nearest', behavior: 'instant' })
     }
 
     vv.addEventListener('resize', handleResize)
