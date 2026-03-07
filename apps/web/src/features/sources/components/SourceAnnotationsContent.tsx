@@ -1,6 +1,6 @@
 import type { KeyboardEvent, ReactNode, RefObject } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { MoreVertical } from 'lucide-react'
+import { MoreVertical, Pen } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { MarkdownContent } from '@/components/content/MarkdownContent'
@@ -69,6 +69,11 @@ export function SourceAnnotationsContent({ sourceId, content }: SourceAnnotation
   const [annotationPending, setAnnotationPending] = useState(false)
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false)
 
+  const [mobileSelectionDraft, setMobileSelectionDraft] = useState<{
+    anchor: AnnotationAnchorDraft
+    rect: PopoverRect
+  } | null>(null)
+
   const [selectionFeedback, setSelectionFeedback] = useState<string | null>(null)
 
   // Refs for values read only inside async callbacks — avoids invalidating handlers on every keystroke
@@ -96,6 +101,7 @@ export function SourceAnnotationsContent({ sourceId, content }: SourceAnnotation
     setDraftBody('')
     setDraftError(null)
     setDraftSaving(false)
+    setMobileSelectionDraft(null)
   }, [])
 
   const closeAnnotationPopover = useCallback(() => {
@@ -309,6 +315,61 @@ export function SourceAnnotationsContent({ sourceId, content }: SourceAnnotation
     isMobile,
     scheduleAnnotationHoverClose,
   ])
+
+  useEffect(() => {
+    if (!isMobile) {
+      return
+    }
+
+    const handleSelectionChange = () => {
+      const root = rootRef.current
+      if (!root) {
+        setMobileSelectionDraft(null)
+        return
+      }
+
+      const selection = window.getSelection()
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+        setMobileSelectionDraft(null)
+        return
+      }
+
+      const range = selection.getRangeAt(0)
+      if (!root.contains(range.commonAncestorContainer)) {
+        setMobileSelectionDraft(null)
+        return
+      }
+
+      const selectedText = selection.toString()
+      if (!hasAtLeastOneWord(selectedText)) {
+        setMobileSelectionDraft(null)
+        return
+      }
+
+      const anchor = buildDraftAnchor(root, range)
+      if (!anchor) {
+        setMobileSelectionDraft(null)
+        return
+      }
+
+      const hasOverlap = resolvedRanges.some((resolved) =>
+        rangesOverlap(anchor.anchorStart, anchor.anchorEnd, resolved.start, resolved.end)
+      )
+      if (hasOverlap) {
+        setMobileSelectionDraft(null)
+        setSelectionFeedback('This passage already has an annotation. Open it to edit.')
+        return
+      }
+
+      const anchorRect = range.getBoundingClientRect()
+      const rootRect = root.getBoundingClientRect()
+      const top = Math.max(0, anchorRect.bottom - rootRect.top + 8)
+      setMobileSelectionDraft({ anchor, rect: { top, left: 0 } })
+    }
+
+    document.addEventListener('selectionchange', handleSelectionChange)
+    return () => document.removeEventListener('selectionchange', handleSelectionChange)
+  }, [isMobile, resolvedRanges])
 
   useEffect(() => {
     if (!draftAnchor && !activeAnnotationId) {
@@ -526,6 +587,32 @@ export function SourceAnnotationsContent({ sourceId, content }: SourceAnnotation
         <p className="mt-3 text-xs text-destructive animate-fade-in">{selectionFeedback}</p>
       )}
 
+      {isMobile && mobileSelectionDraft && !draftAnchor && (
+        <div
+          className="absolute z-50 left-1/2 -translate-x-1/2"
+          style={{ top: `${mobileSelectionDraft.rect.top}px` }}
+        >
+          <button
+            type="button"
+            className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-lg active:opacity-80"
+            onPointerDown={(e) => {
+              e.preventDefault()
+              const { anchor, rect } = mobileSelectionDraft
+              window.getSelection()?.removeAllRanges()
+              closeAnnotationPopover()
+              setDraftAnchor(anchor)
+              setDraftRect(rect)
+              setDraftBody('')
+              setDraftError(null)
+              setMobileSelectionDraft(null)
+            }}
+          >
+            <Pen className="size-3.5" aria-hidden="true" />
+            Add note
+          </button>
+        </div>
+      )}
+
       {draftAnchor && draftRect && (
         <AnnotationPopoverShell rect={draftRect} popoverRef={draftPopoverRef}>
           <div className="space-y-3">
@@ -576,6 +663,32 @@ export function SourceAnnotationsContent({ sourceId, content }: SourceAnnotation
                 <p className="text-xs text-muted-foreground">
                   {formatRelativeAnnotationTime(activeAnnotation.createdAt)}
                 </p>
+                {isMobile && !annotationPending && (
+                  <div className="flex gap-1 -mr-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        setAnnotationMode('edit')
+                        setAnnotationBodyDraft(activeAnnotation.body)
+                        setAnnotationError(null)
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                      onClick={() => setAnnotationMode('confirm_delete')}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                )}
                 {!isMobile && !annotationPending && (
                   <DropdownMenu
                     open={isActionsMenuOpen}
@@ -621,7 +734,7 @@ export function SourceAnnotationsContent({ sourceId, content }: SourceAnnotation
             </div>
           )}
 
-          {annotationMode === 'edit' && !isMobile && (
+          {annotationMode === 'edit' && (
             <div className="space-y-3">
               <textarea
                 value={annotationBodyDraft}
@@ -664,7 +777,7 @@ export function SourceAnnotationsContent({ sourceId, content }: SourceAnnotation
             </div>
           )}
 
-          {annotationMode === 'confirm_delete' && !isMobile && (
+          {annotationMode === 'confirm_delete' && (
             <div className="space-y-3">
               <p className="text-sm text-foreground/90">Delete this annotation?</p>
               <div className="flex items-center justify-end gap-2">
