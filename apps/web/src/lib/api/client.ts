@@ -11,14 +11,57 @@ export class ApiClientError extends Error {
   }
 }
 
+let refreshRequest: Promise<boolean> | null = null
+
+function shouldAttemptRefresh(path: string): boolean {
+  if (path.startsWith('/api/auth/login')) return false
+  if (path.startsWith('/api/auth/signup')) return false
+  if (path.startsWith('/api/auth/refresh')) return false
+  if (path.startsWith('/api/auth/logout')) return false
+  return true
+}
+
+async function parseApiError(response: Response): Promise<ApiError | null> {
+  try {
+    return await response.json()
+  } catch {
+    return null
+  }
+}
+
+async function refreshSession(): Promise<boolean> {
+  if (refreshRequest !== null) {
+    return refreshRequest
+  }
+
+  refreshRequest = (async () => {
+    const response = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      credentials: 'include',
+    })
+
+    if (response.ok) {
+      return true
+    }
+
+    if (response.status === 401) {
+      return false
+    }
+
+    const apiError = await parseApiError(response)
+    throw new ApiClientError(response.status, apiError, 'Failed to refresh session')
+  })()
+
+  try {
+    return await refreshRequest
+  } finally {
+    refreshRequest = null
+  }
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    let apiError: ApiError | null = null
-    try {
-      apiError = await response.json()
-    } catch {
-      // Response body isn't JSON
-    }
+    const apiError = await parseApiError(response)
     throw new ApiClientError(response.status, apiError)
   }
 
@@ -39,45 +82,56 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json()
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(path, { credentials: 'include' })
+async function apiRequest<T>(path: string, init: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    credentials: 'include',
+  })
+
+  if (response.status === 401 && shouldAttemptRefresh(path)) {
+    const refreshed = await refreshSession()
+    if (refreshed) {
+      const retriedResponse = await fetch(path, {
+        ...init,
+        credentials: 'include',
+      })
+      return handleResponse<T>(retriedResponse)
+    }
+  }
+
   return handleResponse<T>(response)
+}
+
+export async function apiGet<T>(path: string): Promise<T> {
+  return apiRequest<T>(path, {})
 }
 
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, {
+  return apiRequest<T>(path, {
     method: 'POST',
-    credentials: 'include',
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   })
-  return handleResponse<T>(response)
 }
 
 export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, {
+  return apiRequest<T>(path, {
     method: 'PUT',
-    credentials: 'include',
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   })
-  return handleResponse<T>(response)
 }
 
 export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, {
+  return apiRequest<T>(path, {
     method: 'PATCH',
-    credentials: 'include',
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   })
-  return handleResponse<T>(response)
 }
 
 export async function apiDelete(path: string): Promise<void> {
-  const response = await fetch(path, {
+  await apiRequest<void>(path, {
     method: 'DELETE',
-    credentials: 'include',
   })
-  await handleResponse<void>(response)
 }
