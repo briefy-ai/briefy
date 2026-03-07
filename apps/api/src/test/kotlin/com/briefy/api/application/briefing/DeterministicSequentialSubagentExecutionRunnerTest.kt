@@ -11,6 +11,7 @@ class DeterministicSequentialSubagentExecutionRunnerTest {
 
     private fun context(task: String) = SubagentExecutionContext(
         briefingId = UUID.randomUUID(),
+        userId = UUID.randomUUID(),
         briefingRunId = UUID.randomUUID(),
         subagentRunId = UUID.randomUUID(),
         personaKey = "step-1",

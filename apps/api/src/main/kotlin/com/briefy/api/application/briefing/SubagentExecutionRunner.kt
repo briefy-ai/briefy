@@ -8,12 +8,16 @@ interface SubagentExecutionRunner {
 
 data class SubagentExecutionContext(
     val briefingId: UUID,
+    val userId: UUID,
     val briefingRunId: UUID,
     val subagentRunId: UUID,
     val personaKey: String,
     val personaName: String,
     val task: String,
-    val sources: List<BriefingSourceInput>
+    val sources: List<BriefingSourceInput>,
+    val provider: String? = null,
+    val model: String? = null,
+    val useCase: String? = null
 )
 
 sealed interface SubagentExecutionResult {

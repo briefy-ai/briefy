@@ -183,7 +183,11 @@ export interface TelegramLinkCodeResponse {
 }
 
 export type AiProviderId = 'zhipuai' | 'google_genai' | 'minimax'
-export type AiUseCaseId = 'topic_extraction' | 'source_formatting'
+export type AiUseCaseId =
+  | 'topic_extraction'
+  | 'source_formatting'
+  | 'briefing_subagent_execution'
+  | 'briefing_synthesis'
 
 export interface AiModelDto {
   id: string

@@ -2,6 +2,7 @@ package com.briefy.api.application.briefing
 
 import com.briefy.api.application.briefing.tool.WebFetchTool
 import com.briefy.api.application.briefing.tool.WebSearchTool
+import com.briefy.api.application.source.SourceSearch
 import com.briefy.api.infrastructure.ai.AiAdapter
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
@@ -19,20 +20,22 @@ class SubagentRunnerConfiguration {
         objectMapper: ObjectMapper,
         aiAdapter: AiAdapter,
         webSearchTool: WebSearchTool?,
-        webFetchTool: WebFetchTool?
+        webFetchTool: WebFetchTool?,
+        sourceSearch: SourceSearch
     ): SubagentExecutionRunner {
         return when (executionConfig.runner) {
             ExecutionConfigProperties.RunnerType.AI -> {
                 logger.info("[runner-config] Using AI subagent execution runner (provider={}, model={})",
-                    executionConfig.ai.provider, executionConfig.ai.model)
+                    executionConfig.ai.subagent.provider, executionConfig.ai.subagent.model)
                 AiSubagentExecutionRunner(
                     aiAdapter = aiAdapter,
                     webSearchTool = webSearchTool,
                     webFetchTool = webFetchTool,
+                    sourceSearch = sourceSearch,
                     objectMapper = objectMapper,
                     config = AiSubagentExecutionRunner.AiRunnerConfig(
-                        provider = executionConfig.ai.provider,
-                        model = executionConfig.ai.model,
+                        provider = executionConfig.ai.subagent.provider,
+                        model = executionConfig.ai.subagent.model,
                         maxToolCalls = executionConfig.ai.maxToolCalls
                     )
                 )
@@ -56,15 +59,15 @@ class SubagentRunnerConfiguration {
             ExecutionConfigProperties.SynthesisType.AI -> {
                 logger.info(
                     "[runner-config] Using AI synthesis execution runner (provider={}, model={})",
-                    executionConfig.ai.provider,
-                    executionConfig.ai.model
+                    executionConfig.ai.synthesis.provider,
+                    executionConfig.ai.synthesis.model
                 )
                 AiSynthesisExecutionRunner(
                     aiAdapter = aiAdapter,
                     objectMapper = objectMapper,
                     config = AiSynthesisExecutionRunner.AiRunnerConfig(
-                        provider = executionConfig.ai.provider,
-                        model = executionConfig.ai.model
+                        provider = executionConfig.ai.synthesis.provider,
+                        model = executionConfig.ai.synthesis.model
                     )
                 )
             }

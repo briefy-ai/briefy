@@ -11,17 +11,20 @@ class AiSynthesisExecutionRunner(
 ) : SynthesisExecutionRunner {
 
     override fun run(request: BriefingGenerationRequest): BriefingGenerationResult {
+        val effectiveProvider = request.synthesisProvider?.trim()?.lowercase().takeUnless { it.isNullOrBlank() } ?: config.provider
+        val effectiveModel = request.synthesisModel?.trim().takeUnless { it.isNullOrBlank() } ?: config.model
+        val effectiveUseCase = request.synthesisUseCase?.trim().takeUnless { it.isNullOrBlank() } ?: "synthesis_execution"
         val aggregatedReferences = mergeReferences(
             primary = request.subagentOutputs.flatMap { it.references },
             fallback = emptyList()
         )
 
         val response = aiAdapter.complete(
-            provider = config.provider,
-            model = config.model,
+            provider = effectiveProvider,
+            model = effectiveModel,
             prompt = buildUserPrompt(request, aggregatedReferences),
             systemPrompt = buildSystemPrompt(),
-            useCase = "synthesis_execution"
+            useCase = effectiveUseCase
         )
 
         val structured = parseStructuredResponse(response)

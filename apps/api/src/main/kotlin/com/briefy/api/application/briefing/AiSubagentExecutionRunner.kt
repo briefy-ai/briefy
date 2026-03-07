@@ -1,15 +1,20 @@
 package com.briefy.api.application.briefing
 
 import com.briefy.api.application.briefing.tool.*
+import com.briefy.api.application.source.SourceSearch
+import com.briefy.api.application.source.SourceSearchMode
+import com.briefy.api.application.source.SourceSearchRequest
 import com.briefy.api.infrastructure.ai.AiAdapter
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
+import java.util.Locale
 import java.util.UUID
 
 class AiSubagentExecutionRunner(
     private val aiAdapter: AiAdapter,
     private val webSearchTool: WebSearchTool?,
     private val webFetchTool: WebFetchTool?,
+    private val sourceSearch: SourceSearch?,
     private val objectMapper: ObjectMapper,
     private val config: AiRunnerConfig
 ) : SubagentExecutionRunner {
@@ -33,17 +38,16 @@ class AiSubagentExecutionRunner(
         val sourceIdsUsed = mutableSetOf<UUID>()
         val referencesUsed = mutableListOf<WebReference>()
         val toolCalls = mutableListOf<ToolCallRecord>()
+        val effectiveProvider = context.provider?.trim()?.lowercase().takeUnless { it.isNullOrBlank() } ?: config.provider
+        val effectiveModel = context.model?.trim().takeUnless { it.isNullOrBlank() } ?: config.model
+        val effectiveUseCase = context.useCase?.trim().takeUnless { it.isNullOrBlank() } ?: "subagent_execution_${context.personaKey}"
 
         // Phase 1: Source lookup — build evidence from internal sources
         val sourceEvidence = buildSourceEvidence(context.sources)
         sourceIdsUsed.addAll(context.sources.map { it.sourceId })
 
         // Phase 2: LLM tool loop — the LLM decides whether to search/fetch
-        val collectedEvidence = StringBuilder()
-        collectedEvidence.append(sourceEvidence)
-
         var toolCallCount = 0
-        var phase = "initial_analysis"
 
         // First LLM call: analyze sources and decide if web search is needed
         var llmMessages = mutableListOf<LlmMessage>()
@@ -51,7 +55,12 @@ class AiSubagentExecutionRunner(
         llmMessages.add(LlmMessage("user", buildInitialUserPrompt(context, sourceEvidence)))
 
         while (toolCallCount < config.maxToolCalls) {
-            val llmResponse = callLlm(context, llmMessages)
+            val llmResponse = callLlm(
+                messages = llmMessages,
+                provider = effectiveProvider,
+                model = effectiveModel,
+                useCase = effectiveUseCase
+            )
 
             val toolRequest = parseToolRequest(llmResponse)
             if (toolRequest == null) {
@@ -69,6 +78,9 @@ class AiSubagentExecutionRunner(
                     toolStatsJson = objectMapper.writeValueAsString(
                         mapOf(
                             "runner" to "ai_subagent",
+                            "provider" to effectiveProvider,
+                            "model" to effectiveModel,
+                            "useCase" to effectiveUseCase,
                             "toolCallCount" to toolCallCount,
                             "sourceCount" to sourceIdsUsed.size,
                             "webReferencesCount" to referencesUsed.size,
@@ -98,17 +110,22 @@ class AiSubagentExecutionRunner(
 
             // Track references from web tools
             toolResult.references?.let { referencesUsed.addAll(it) }
+            toolResult.sourceIdsUsed?.let { sourceIdsUsed.addAll(it) }
 
             // Add tool result to conversation and continue loop
             llmMessages.add(LlmMessage("assistant", llmResponse))
             llmMessages.add(LlmMessage("user", buildToolResultPrompt(toolRequest.tool, toolResult.content)))
 
-            phase = "tool_loop_${toolCallCount}"
         }
 
         // Budget exhausted — ask LLM for final output with what we have
         llmMessages.add(LlmMessage("user", BUDGET_EXHAUSTED_PROMPT))
-        val finalResponse = callLlm(context, llmMessages)
+        val finalResponse = callLlm(
+            messages = llmMessages,
+            provider = effectiveProvider,
+            model = effectiveModel,
+            useCase = effectiveUseCase
+        )
         val curatedText = extractCuratedText(finalResponse)
         if (curatedText.isBlank()) {
             return SubagentExecutionResult.EmptyOutput
@@ -123,6 +140,9 @@ class AiSubagentExecutionRunner(
             toolStatsJson = objectMapper.writeValueAsString(
                 mapOf(
                     "runner" to "ai_subagent",
+                    "provider" to effectiveProvider,
+                    "model" to effectiveModel,
+                    "useCase" to effectiveUseCase,
                     "toolCallCount" to toolCallCount,
                     "sourceCount" to sourceIdsUsed.size,
                     "webReferencesCount" to referencesUsed.size,
@@ -165,16 +185,18 @@ You can request tool calls by responding with a JSON block in this exact format:
 ```
 
 Available tools:
+- `source_search`: Search the user's internal sources. Args: {"query": "search query", "mode": "similarity", "maxResults": 5}
 - `web_search`: Search the web for information. Args: {"query": "search query", "maxResults": 5}
 - `web_fetch`: Fetch and read a specific web page. Args: {"url": "https://..."}
 
 ## Rules
 1. Start by analyzing the provided internal sources carefully.
 2. If the internal sources provide sufficient evidence for your task, produce your output directly.
-3. If you need additional information, use `web_search` to discover relevant sources.
-4. Use `web_fetch` selectively — only for the most promising URLs from search results.
-5. Do NOT fetch more than 3 URLs per investigation.
-6. Always cite your sources — reference internal source titles and web URLs used.
+3. If you need more context from the user's library, use `source_search` first.
+4. If you need external information, use `web_search` to discover relevant sources.
+5. Use `web_fetch` selectively — only for the most promising URLs from search results.
+6. Do NOT fetch more than 3 URLs per investigation.
+7. Always cite your sources — reference internal source titles and web URLs used.
 
 ## Output Format
 
@@ -193,7 +215,9 @@ ${context.task}
 ## Evidence from Internal Sources
 $sourceEvidence
 
-Analyze the internal sources above. If they provide sufficient evidence for your task, produce your ```output``` block directly. If you need more information from the web, request a `web_search` tool call."""
+Analyze the internal sources above. If they provide sufficient evidence for your task, produce your ```output``` block directly.
+If you need more evidence from the user's internal knowledge base, request `source_search`.
+If you need external information, request `web_search`."""
     }
 
     private fun buildToolResultPrompt(tool: String, content: String): String {
@@ -203,17 +227,22 @@ $content
 Continue your investigation. If you have enough evidence, produce your ```output``` block. Otherwise, request another tool call."""
     }
 
-    private fun callLlm(context: SubagentExecutionContext, messages: List<LlmMessage>): String {
+    private fun callLlm(
+        messages: List<LlmMessage>,
+        provider: String,
+        model: String,
+        useCase: String
+    ): String {
         val prompt = messages.filter { it.role != "system" }
             .joinToString("\n\n---\n\n") { it.content }
         val systemPrompt = messages.firstOrNull { it.role == "system" }?.content
 
         return aiAdapter.complete(
-            provider = config.provider,
-            model = config.model,
+            provider = provider,
+            model = model,
             prompt = prompt,
             systemPrompt = systemPrompt,
-            useCase = "subagent_execution_${context.personaKey}"
+            useCase = useCase
         )
     }
 
@@ -249,13 +278,67 @@ Continue your investigation. If you have enough evidence, produce your ```output
 
     private fun executeTool(request: ToolRequest, context: SubagentExecutionContext): ToolCallResult {
         return when (request.tool) {
+            "source_search" -> executeSourceSearch(request, context)
             "web_search" -> executeWebSearch(request)
             "web_fetch" -> executeWebFetch(request)
             else -> {
                 logger.warn("[ai-runner] Unknown tool requested: {}", request.tool)
-                ToolCallResult("Tool '${request.tool}' is not available. Use web_search or web_fetch.")
+                ToolCallResult("Tool '${request.tool}' is not available. Use source_search, web_search, or web_fetch.")
             }
         }
+    }
+
+    private fun executeSourceSearch(request: ToolRequest, context: SubagentExecutionContext): ToolCallResult {
+        if (sourceSearch == null) {
+            return ToolCallResult("source_search is not enabled on this server.")
+        }
+        val query = request.args.get("query")?.asText()?.trim().orEmpty()
+        if (query.isBlank()) {
+            return ToolCallResult("Missing 'query' argument for source_search.")
+        }
+        val modeRaw = request.args.get("mode")?.asText()
+        val mode = SourceSearchMode.fromRaw(modeRaw)
+            ?: return ToolCallResult("Unsupported source_search mode '$modeRaw'. Available mode: similarity.")
+        val maxResults = request.args.get("maxResults")?.asInt() ?: DEFAULT_SOURCE_SEARCH_RESULTS
+        val excludeSourceIds = parseUuidSet(request.args.get("excludeSourceIds"))
+            .ifEmpty { context.sources.map { it.sourceId }.toSet() }
+
+        val results = sourceSearch.search(
+            SourceSearchRequest(
+                userId = context.userId,
+                query = query,
+                mode = mode,
+                limit = maxResults.coerceIn(1, MAX_SOURCE_SEARCH_RESULTS),
+                excludeSourceIds = excludeSourceIds
+            )
+        )
+        if (results.isEmpty()) {
+            return ToolCallResult("No internal sources found for query \"$query\" in mode '$mode'.")
+        }
+
+        val content = buildString {
+            appendLine("## Internal Source Search Results")
+            appendLine("Mode: ${mode.value}")
+            appendLine("Query: $query")
+            results.forEachIndexed { index, hit ->
+                appendLine()
+                appendLine("${index + 1}. ${hit.title.ifBlank { hit.url }}")
+                appendLine("sourceId: ${hit.sourceId}")
+                appendLine("url: ${hit.url}")
+                appendLine("similarityScore: ${String.format(Locale.US, "%.4f", hit.score)}")
+                appendLine("wordCount: ${hit.wordCount}")
+                val snippet = hit.contentSnippet
+                if (!snippet.isNullOrBlank()) {
+                    appendLine("snippet:")
+                    appendLine(UntrustedContentWrapper.wrap(snippet, hit.url))
+                }
+            }
+        }
+
+        return ToolCallResult(
+            content = content,
+            sourceIdsUsed = results.map { it.sourceId }
+        )
     }
 
     private fun executeWebSearch(request: ToolRequest): ToolCallResult {
@@ -309,6 +392,15 @@ Continue your investigation. If you have enough evidence, produce your ```output
         }
     }
 
+    private fun parseUuidSet(node: com.fasterxml.jackson.databind.JsonNode?): Set<UUID> {
+        if (node == null || !node.isArray) {
+            return emptySet()
+        }
+        return node.mapNotNull {
+            runCatching { UUID.fromString(it.asText()) }.getOrNull()
+        }.toSet()
+    }
+
     private fun isToolErrorRetryable(error: ToolCallError): Boolean {
         return error.code in setOf("timeout", "http_429", "http_5xx", "network_error")
     }
@@ -330,6 +422,7 @@ Continue your investigation. If you have enough evidence, produce your ```output
     private data class ToolCallResult(
         val content: String,
         val references: List<WebReference>? = null,
+        val sourceIdsUsed: List<UUID>? = null,
         val error: ToolCallError? = null
     )
     private data class ToolCallError(val code: String, val message: String, val retryAfterSeconds: Long? = null)
@@ -337,6 +430,8 @@ Continue your investigation. If you have enough evidence, produce your ```output
 
     companion object {
         private const val MAX_SOURCE_CHARS = 4000
+        private const val MAX_SOURCE_SEARCH_RESULTS = 10
+        private const val DEFAULT_SOURCE_SEARCH_RESULTS = 5
         private const val BUDGET_EXHAUSTED_PROMPT = "You have used all available tool calls. Based on the evidence collected so far, produce your final ```output``` block now."
     }
 }

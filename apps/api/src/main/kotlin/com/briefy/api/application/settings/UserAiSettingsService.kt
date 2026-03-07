@@ -18,7 +18,15 @@ class UserAiSettingsService(
     @param:Value("\${spring.ai.minimax.api-key:}")
     private val minimaxApiKey: String,
     @param:Value("\${spring.ai.google.genai.api-key:}")
-    private val googleGenAiApiKey: String
+    private val googleGenAiApiKey: String,
+    @param:Value("\${briefing.execution.ai.subagent.provider:\${briefing.execution.ai.provider:google_genai}}")
+    private val defaultBriefingSubagentProvider: String,
+    @param:Value("\${briefing.execution.ai.subagent.model:\${briefing.execution.ai.model:gemini-2.5-flash}}")
+    private val defaultBriefingSubagentModel: String,
+    @param:Value("\${briefing.execution.ai.synthesis.provider:\${briefing.execution.ai.provider:google_genai}}")
+    private val defaultBriefingSynthesisProvider: String,
+    @param:Value("\${briefing.execution.ai.synthesis.model:\${briefing.execution.ai.model:gemini-2.5-flash}}")
+    private val defaultBriefingSynthesisModel: String
 ) {
     @Transactional
     fun getAiSettings(userId: UUID): AiSettingsResponse {
@@ -26,18 +34,15 @@ class UserAiSettingsService(
         val providers = buildProviders()
         return AiSettingsResponse(
             providers = providers,
-            useCases = listOf(
+            useCases = USE_CASES.map { useCase ->
+                val selection = storedSelectionForUseCase(settings, useCase)
+                    ?: defaultSelectionForUseCase(useCase)
                 AiUseCaseSettingDto(
-                    id = TOPIC_EXTRACTION,
-                    provider = settings.topicExtractionProvider,
-                    model = settings.topicExtractionModel
-                ),
-                AiUseCaseSettingDto(
-                    id = SOURCE_FORMATTING,
-                    provider = settings.sourceFormattingProvider,
-                    model = settings.sourceFormattingModel
+                    id = useCase,
+                    provider = selection.provider,
+                    model = selection.model
                 )
-            )
+            }
         )
     }
 
@@ -61,6 +66,14 @@ class UserAiSettingsService(
                 settings.sourceFormattingProvider = normalizedProvider
                 settings.sourceFormattingModel = normalizedModel
             }
+            BRIEFING_SUBAGENT_EXECUTION -> {
+                settings.briefingSubagentExecutionProvider = normalizedProvider
+                settings.briefingSubagentExecutionModel = normalizedModel
+            }
+            BRIEFING_SYNTHESIS -> {
+                settings.briefingSynthesisProvider = normalizedProvider
+                settings.briefingSynthesisModel = normalizedModel
+            }
         }
         settings.updatedAt = Instant.now()
         userAiSettingsRepository.save(settings)
@@ -74,17 +87,8 @@ class UserAiSettingsService(
         val normalizedUseCase = useCase.trim().lowercase()
         validateUseCase(normalizedUseCase)
 
-        val selection = when (normalizedUseCase) {
-            TOPIC_EXTRACTION -> AiModelSelection(
-                provider = settings.topicExtractionProvider,
-                model = settings.topicExtractionModel
-            )
-            SOURCE_FORMATTING -> AiModelSelection(
-                provider = settings.sourceFormattingProvider,
-                model = settings.sourceFormattingModel
-            )
-            else -> throw IllegalArgumentException("Unsupported use case: '$normalizedUseCase'")
-        }
+        val selection = storedSelectionForUseCase(settings, normalizedUseCase)
+            ?: throw IllegalArgumentException("Use case '$normalizedUseCase' is not configured")
 
         validateProviderModel(selection.provider, selection.model)
         require(isProviderConfigured(selection.provider)) {
@@ -92,6 +96,88 @@ class UserAiSettingsService(
         }
 
         return selection
+    }
+
+    @Transactional
+    fun resolveUseCaseSelectionWithFallback(userId: UUID, useCase: String): AiModelSelection {
+        val settings = getOrCreateSettings(userId)
+        return resolveUseCaseSelectionWithFallback(settings, useCase.trim().lowercase())
+    }
+
+    private fun resolveUseCaseSelectionWithFallback(settings: UserAiSettings, useCase: String): AiModelSelection {
+        validateUseCase(useCase)
+
+        val persistedSelection = storedSelectionForUseCase(settings, useCase)
+        if (persistedSelection != null && isSelectionUsable(persistedSelection)) {
+            return persistedSelection
+        }
+
+        val fallbackSelection = defaultSelectionForUseCase(useCase)
+        validateProviderModel(fallbackSelection.provider, fallbackSelection.model)
+        require(isProviderConfigured(fallbackSelection.provider)) {
+            "Default provider '${fallbackSelection.provider}' for use case '$useCase' is not configured on this server"
+        }
+        return fallbackSelection
+    }
+
+    private fun isSelectionUsable(selection: AiModelSelection): Boolean {
+        return runCatching {
+            validateProviderModel(selection.provider, selection.model)
+            isProviderConfigured(selection.provider)
+        }.getOrDefault(false)
+    }
+
+    private fun storedSelectionForUseCase(settings: UserAiSettings, useCase: String): AiModelSelection? {
+        return when (useCase) {
+            TOPIC_EXTRACTION -> normalizeSelection(
+                provider = settings.topicExtractionProvider,
+                model = settings.topicExtractionModel
+            )
+            SOURCE_FORMATTING -> normalizeSelection(
+                provider = settings.sourceFormattingProvider,
+                model = settings.sourceFormattingModel
+            )
+            BRIEFING_SUBAGENT_EXECUTION -> normalizeSelection(
+                provider = settings.briefingSubagentExecutionProvider,
+                model = settings.briefingSubagentExecutionModel
+            )
+            BRIEFING_SYNTHESIS -> normalizeSelection(
+                provider = settings.briefingSynthesisProvider,
+                model = settings.briefingSynthesisModel
+            )
+            else -> null
+        }
+    }
+
+    private fun defaultSelectionForUseCase(useCase: String): AiModelSelection {
+        return when (useCase) {
+            TOPIC_EXTRACTION -> AiModelSelection(
+                provider = DEFAULT_TOPIC_PROVIDER,
+                model = DEFAULT_TOPIC_MODEL
+            )
+            SOURCE_FORMATTING -> AiModelSelection(
+                provider = DEFAULT_SOURCE_FORMATTING_PROVIDER,
+                model = DEFAULT_SOURCE_FORMATTING_MODEL
+            )
+            BRIEFING_SUBAGENT_EXECUTION -> AiModelSelection(
+                provider = defaultBriefingSubagentProvider.trim().lowercase(),
+                model = defaultBriefingSubagentModel.trim()
+            )
+            BRIEFING_SYNTHESIS -> AiModelSelection(
+                provider = defaultBriefingSynthesisProvider.trim().lowercase(),
+                model = defaultBriefingSynthesisModel.trim()
+            )
+            else -> throw IllegalArgumentException("Unsupported use case '$useCase'")
+        }
+    }
+
+    private fun normalizeSelection(provider: String?, model: String?): AiModelSelection? {
+        val normalizedProvider = provider?.trim()?.lowercase().orEmpty()
+        val normalizedModel = model?.trim().orEmpty()
+        if (normalizedProvider.isBlank() || normalizedModel.isBlank()) {
+            return null
+        }
+        return AiModelSelection(provider = normalizedProvider, model = normalizedModel)
     }
 
     private fun buildProviders(): List<AiProviderDto> {
@@ -164,6 +250,8 @@ class UserAiSettingsService(
     companion object {
         const val TOPIC_EXTRACTION = "topic_extraction"
         const val SOURCE_FORMATTING = "source_formatting"
+        const val BRIEFING_SUBAGENT_EXECUTION = "briefing_subagent_execution"
+        const val BRIEFING_SYNTHESIS = "briefing_synthesis"
 
         const val PROVIDER_ZHIPUAI = "zhipuai"
         const val PROVIDER_GOOGLE_GENAI = "google_genai"
@@ -188,6 +276,11 @@ class UserAiSettingsService(
             "MiniMax-M2.5"
         )
 
-        private val USE_CASES = setOf(TOPIC_EXTRACTION, SOURCE_FORMATTING)
+        val USE_CASES = listOf(
+            TOPIC_EXTRACTION,
+            SOURCE_FORMATTING,
+            BRIEFING_SUBAGENT_EXECUTION,
+            BRIEFING_SYNTHESIS
+        )
     }
 }

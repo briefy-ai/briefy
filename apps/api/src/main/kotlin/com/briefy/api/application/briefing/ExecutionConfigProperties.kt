@@ -25,6 +25,13 @@ data class ExecutionConfigProperties(
     data class AiRunnerProperties(
         val provider: String = "google_genai",
         val model: String = "gemini-2.5-flash",
-        val maxToolCalls: Int = 8
+        val maxToolCalls: Int = 8,
+        val subagent: UseCaseAiRunnerProperties = UseCaseAiRunnerProperties(),
+        val synthesis: UseCaseAiRunnerProperties = UseCaseAiRunnerProperties()
+    )
+
+    data class UseCaseAiRunnerProperties(
+        val provider: String = "google_genai",
+        val model: String = "gemini-2.5-flash"
     )
 }

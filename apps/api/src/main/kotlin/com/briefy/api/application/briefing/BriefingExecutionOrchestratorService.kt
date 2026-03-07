@@ -1,5 +1,7 @@
 package com.briefy.api.application.briefing
 
+import com.briefy.api.application.settings.UserAiSettingsService
+import com.briefy.api.application.settings.AiModelSelection
 import com.briefy.api.domain.knowledgegraph.briefing.*
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.infrastructure.id.IdGenerator
@@ -18,6 +20,7 @@ class BriefingExecutionOrchestratorService(
     private val executionStateTransitionService: ExecutionStateTransitionService,
     private val subagentExecutionRunner: SubagentExecutionRunner,
     private val synthesisExecutionRunner: SynthesisExecutionRunner,
+    private val userAiSettingsService: UserAiSettingsService,
     private val executionFingerprintService: ExecutionFingerprintService,
     private val executionConfig: ExecutionConfigProperties,
     private val idGenerator: IdGenerator,
@@ -65,6 +68,14 @@ class BriefingExecutionOrchestratorService(
                 occurredAt = Instant.now()
             )
         }
+        val subagentSelection = userAiSettingsService.resolveUseCaseSelectionWithFallback(
+            userId = briefing.userId,
+            useCase = UserAiSettingsService.BRIEFING_SUBAGENT_EXECUTION
+        )
+        val synthesisSelection = userAiSettingsService.resolveUseCaseSelectionWithFallback(
+            userId = briefing.userId,
+            useCase = UserAiSettingsService.BRIEFING_SYNTHESIS
+        )
 
         val mutablePlanSteps = planSteps.toMutableList()
         try {
@@ -79,7 +90,8 @@ class BriefingExecutionOrchestratorService(
                             subagentRun = subagentRun,
                             step = step,
                             briefing = briefing,
-                            orderedSources = orderedSources
+                            orderedSources = orderedSources,
+                            selection = subagentSelection
                         )
                     }
 
@@ -205,13 +217,18 @@ class BriefingExecutionOrchestratorService(
                     stepOrder = step.stepOrder
                 )
             },
-            subagentOutputs = successfulOutputs
+            subagentOutputs = successfulOutputs,
+            synthesisProvider = synthesisSelection.provider,
+            synthesisModel = synthesisSelection.model,
+            synthesisUseCase = UserAiSettingsService.BRIEFING_SYNTHESIS
         )
 
         val synthesisStartAt = Instant.now()
         executionStateTransitionService.startSynthesisRun(
             synthesisRunId = synthesisRun.id,
             eventId = nextEventId(),
+            provider = synthesisSelection.provider,
+            model = synthesisSelection.model,
             occurredAt = synthesisStartAt
         )
 
@@ -262,7 +279,8 @@ class BriefingExecutionOrchestratorService(
         subagentRun: SubagentRun,
         step: BriefingPlanStep,
         briefing: Briefing,
-        orderedSources: List<Source>
+        orderedSources: List<Source>,
+        selection: AiModelSelection
     ) {
         val now = Instant.now()
         if (step.status == BriefingPlanStepStatus.PLANNED) {
@@ -324,11 +342,15 @@ class BriefingExecutionOrchestratorService(
             val result = subagentExecutionRunner.execute(
                 SubagentExecutionContext(
                     briefingId = briefing.id,
+                    userId = briefing.userId,
                     briefingRunId = runningSubagentRun.briefingRunId,
                     subagentRunId = runningSubagentRun.id,
                     personaKey = runningSubagentRun.personaKey,
                     personaName = step.personaName,
                     task = step.task,
+                    provider = selection.provider,
+                    model = selection.model,
+                    useCase = UserAiSettingsService.BRIEFING_SUBAGENT_EXECUTION,
                     sources = orderedSources.map { source ->
                         BriefingSourceInput(
                             sourceId = source.id,

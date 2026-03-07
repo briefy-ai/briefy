@@ -28,6 +28,18 @@ class UserAiSettings(
     @Column(name = "source_formatting_model", nullable = false, length = 100)
     var sourceFormattingModel: String,
 
+    @Column(name = "briefing_subagent_execution_provider", length = 50)
+    var briefingSubagentExecutionProvider: String? = null,
+
+    @Column(name = "briefing_subagent_execution_model", length = 100)
+    var briefingSubagentExecutionModel: String? = null,
+
+    @Column(name = "briefing_synthesis_provider", length = 50)
+    var briefingSynthesisProvider: String? = null,
+
+    @Column(name = "briefing_synthesis_model", length = 100)
+    var briefingSynthesisModel: String? = null,
+
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant = Instant.now(),
 

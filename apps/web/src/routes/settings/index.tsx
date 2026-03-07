@@ -56,6 +56,10 @@ function SettingsPage() {
   const [topicModel, setTopicModel] = useState<string>('')
   const [formatterProvider, setFormatterProvider] = useState<AiProviderId>('zhipuai')
   const [formatterModel, setFormatterModel] = useState<string>('')
+  const [briefingSubagentProvider, setBriefingSubagentProvider] = useState<AiProviderId>('google_genai')
+  const [briefingSubagentModel, setBriefingSubagentModel] = useState<string>('')
+  const [briefingSynthesisProvider, setBriefingSynthesisProvider] = useState<AiProviderId>('google_genai')
+  const [briefingSynthesisModel, setBriefingSynthesisModel] = useState<string>('')
   const [telegramStatus, setTelegramStatus] = useState<TelegramLinkStatusResponse | null>(null)
   const [telegramLinkCode, setTelegramLinkCode] = useState<string | null>(null)
   const [isTelegramCodeCopied, setIsTelegramCodeCopied] = useState(false)
@@ -121,6 +125,14 @@ function SettingsPage() {
     () => aiUseCases.find((useCase) => useCase.id === 'source_formatting'),
     [aiUseCases]
   )
+  const briefingSubagentUseCase = useMemo(
+    () => aiUseCases.find((useCase) => useCase.id === 'briefing_subagent_execution'),
+    [aiUseCases]
+  )
+  const briefingSynthesisUseCase = useMemo(
+    () => aiUseCases.find((useCase) => useCase.id === 'briefing_synthesis'),
+    [aiUseCases]
+  )
   const topicProviderConfig = useMemo(
     () => aiProviders.find((provider) => provider.id === topicProvider),
     [aiProviders, topicProvider]
@@ -128,6 +140,14 @@ function SettingsPage() {
   const formatterProviderConfig = useMemo(
     () => aiProviders.find((provider) => provider.id === formatterProvider),
     [aiProviders, formatterProvider]
+  )
+  const briefingSubagentProviderConfig = useMemo(
+    () => aiProviders.find((provider) => provider.id === briefingSubagentProvider),
+    [aiProviders, briefingSubagentProvider]
+  )
+  const briefingSynthesisProviderConfig = useMemo(
+    () => aiProviders.find((provider) => provider.id === briefingSynthesisProvider),
+    [aiProviders, briefingSynthesisProvider]
   )
 
   const saveFirecrawlSettings = async () => {
@@ -215,6 +235,16 @@ function SettingsPage() {
       setFormatterProvider(formatter.provider)
       setFormatterModel(formatter.model)
     }
+    const briefingSubagent = useCases.find((item) => item.id === 'briefing_subagent_execution')
+    if (briefingSubagent) {
+      setBriefingSubagentProvider(briefingSubagent.provider)
+      setBriefingSubagentModel(briefingSubagent.model)
+    }
+    const briefingSynthesis = useCases.find((item) => item.id === 'briefing_synthesis')
+    if (briefingSynthesis) {
+      setBriefingSynthesisProvider(briefingSynthesis.provider)
+      setBriefingSynthesisModel(briefingSynthesis.model)
+    }
   }
 
   const handleProviderChange = (
@@ -223,19 +253,48 @@ function SettingsPage() {
   ) => {
     const provider = aiProviders.find((item) => item.id === providerId)
     const fallbackModel = provider?.models[0]?.id ?? ''
-    if (useCase === 'topic_extraction') {
-      setTopicProvider(providerId)
-      setTopicModel(fallbackModel)
-      return
+    switch (useCase) {
+      case 'topic_extraction':
+        setTopicProvider(providerId)
+        setTopicModel(fallbackModel)
+        return
+      case 'source_formatting':
+        setFormatterProvider(providerId)
+        setFormatterModel(fallbackModel)
+        return
+      case 'briefing_subagent_execution':
+        setBriefingSubagentProvider(providerId)
+        setBriefingSubagentModel(fallbackModel)
+        return
+      case 'briefing_synthesis':
+        setBriefingSynthesisProvider(providerId)
+        setBriefingSynthesisModel(fallbackModel)
+        return
     }
-
-    setFormatterProvider(providerId)
-    setFormatterModel(fallbackModel)
   }
 
   const saveAiUseCaseSettings = async (useCase: AiUseCaseId) => {
-    const provider = useCase === 'topic_extraction' ? topicProvider : formatterProvider
-    const model = useCase === 'topic_extraction' ? topicModel : formatterModel
+    const providerByUseCase: Record<AiUseCaseId, AiProviderId> = {
+      topic_extraction: topicProvider,
+      source_formatting: formatterProvider,
+      briefing_subagent_execution: briefingSubagentProvider,
+      briefing_synthesis: briefingSynthesisProvider,
+    }
+    const modelByUseCase: Record<AiUseCaseId, string> = {
+      topic_extraction: topicModel,
+      source_formatting: formatterModel,
+      briefing_subagent_execution: briefingSubagentModel,
+      briefing_synthesis: briefingSynthesisModel,
+    }
+    const successMessageByUseCase: Record<AiUseCaseId, string> = {
+      topic_extraction: 'Topic extraction AI settings updated.',
+      source_formatting: 'Source formatting AI settings updated.',
+      briefing_subagent_execution: 'Briefing subagent execution AI settings updated.',
+      briefing_synthesis: 'Briefing synthesis AI settings updated.',
+    }
+
+    const provider = providerByUseCase[useCase]
+    const model = modelByUseCase[useCase]
     if (!provider || !model) {
       setError('Please select both provider and model before saving.')
       return
@@ -252,9 +311,7 @@ function SettingsPage() {
       setAiProviders(data.providers)
       setAiUseCases(data.useCases)
       applyAiUseCaseState(data.useCases)
-      setSuccessMessage(
-        useCase === 'topic_extraction' ? 'Topic extraction AI settings updated.' : 'Source formatting AI settings updated.'
-      )
+      setSuccessMessage(successMessageByUseCase[useCase])
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update AI settings')
     } finally {
@@ -656,6 +713,118 @@ function SettingsPage() {
                   disabled={savingAiUseCase === 'source_formatting' || !formatterProviderConfig?.configured}
                 >
                   {savingAiUseCase === 'source_formatting' ? 'Saving...' : 'Save'}
+                </Button>
+              </CardFooter>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Briefing Subagent Execution</CardTitle>
+                <CardDescription>
+                  Current: {briefingSubagentUseCase?.provider ?? briefingSubagentProvider} / {briefingSubagentUseCase?.model ?? briefingSubagentModel}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Provider</label>
+                  <Select
+                    value={briefingSubagentProvider}
+                    onValueChange={(value) => handleProviderChange('briefing_subagent_execution', value as AiProviderId)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                    {aiProviders.map((provider) => (
+                      <SelectItem key={provider.id} value={provider.id} disabled={!provider.configured}>
+                        {provider.label}{provider.configured ? '' : ' (not configured)'}
+                      </SelectItem>
+                    ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Model</label>
+                  <Select value={briefingSubagentModel} onValueChange={setBriefingSubagentModel}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                    {(briefingSubagentProviderConfig?.models ?? []).map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.label}
+                      </SelectItem>
+                    ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+              <CardFooter className="justify-between">
+                <div className="text-xs text-muted-foreground">
+                  {briefingSubagentProviderConfig?.configured ? 'Provider configured' : 'Provider key missing on server'}
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => void saveAiUseCaseSettings('briefing_subagent_execution')}
+                  disabled={savingAiUseCase === 'briefing_subagent_execution' || !briefingSubagentProviderConfig?.configured}
+                >
+                  {savingAiUseCase === 'briefing_subagent_execution' ? 'Saving...' : 'Save'}
+                </Button>
+              </CardFooter>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Briefing Synthesis</CardTitle>
+                <CardDescription>
+                  Current: {briefingSynthesisUseCase?.provider ?? briefingSynthesisProvider} / {briefingSynthesisUseCase?.model ?? briefingSynthesisModel}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Provider</label>
+                  <Select
+                    value={briefingSynthesisProvider}
+                    onValueChange={(value) => handleProviderChange('briefing_synthesis', value as AiProviderId)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                    {aiProviders.map((provider) => (
+                      <SelectItem key={provider.id} value={provider.id} disabled={!provider.configured}>
+                        {provider.label}{provider.configured ? '' : ' (not configured)'}
+                      </SelectItem>
+                    ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Model</label>
+                  <Select value={briefingSynthesisModel} onValueChange={setBriefingSynthesisModel}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                    {(briefingSynthesisProviderConfig?.models ?? []).map((model) => (
+                      <SelectItem key={model.id} value={model.id}>
+                        {model.label}
+                      </SelectItem>
+                    ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+              <CardFooter className="justify-between">
+                <div className="text-xs text-muted-foreground">
+                  {briefingSynthesisProviderConfig?.configured ? 'Provider configured' : 'Provider key missing on server'}
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => void saveAiUseCaseSettings('briefing_synthesis')}
+                  disabled={savingAiUseCase === 'briefing_synthesis' || !briefingSynthesisProviderConfig?.configured}
+                >
+                  {savingAiUseCase === 'briefing_synthesis' ? 'Saving...' : 'Save'}
                 </Button>
               </CardFooter>
             </Card>

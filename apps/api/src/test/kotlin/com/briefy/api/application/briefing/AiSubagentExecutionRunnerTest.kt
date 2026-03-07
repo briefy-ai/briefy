@@ -1,6 +1,10 @@
 package com.briefy.api.application.briefing
 
 import com.briefy.api.application.briefing.tool.*
+import com.briefy.api.application.source.SourceSearch
+import com.briefy.api.application.source.SourceSearchHit
+import com.briefy.api.application.source.SourceSearchMode
+import com.briefy.api.application.source.SourceSearchRequest
 import com.briefy.api.infrastructure.ai.AiAdapter
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.junit.jupiter.api.Assertions.*
@@ -14,6 +18,7 @@ class AiSubagentExecutionRunnerTest {
     private val aiAdapter = mock<AiAdapter>()
     private val webSearchTool = mock<WebSearchTool>()
     private val webFetchTool = mock<WebFetchTool>()
+    private val sourceSearch = mock<SourceSearch>()
 
     private val config = AiSubagentExecutionRunner.AiRunnerConfig(
         provider = "google_genai",
@@ -25,12 +30,14 @@ class AiSubagentExecutionRunnerTest {
         aiAdapter = aiAdapter,
         webSearchTool = webSearchTool,
         webFetchTool = webFetchTool,
+        sourceSearch = sourceSearch,
         objectMapper = objectMapper,
         config = config
     )
 
     private val baseContext = SubagentExecutionContext(
         briefingId = UUID.randomUUID(),
+        userId = UUID.randomUUID(),
         briefingRunId = UUID.randomUUID(),
         subagentRunId = UUID.randomUUID(),
         personaKey = "market_analyst",
@@ -114,6 +121,53 @@ Sources: Healthcare AI Report 2026, Web search results
         assertTrue(succeeded.curatedText.contains("Healthcare AI"))
         assertNotNull(succeeded.referencesUsedJson)
         verify(webSearchTool).search(eq("healthcare AI adoption 2026 trends"), eq(5))
+    }
+
+    @Test
+    fun `uses source search when LLM requests it`() {
+        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
+            .thenReturn(
+                """I need adjacent internal context.
+
+```tool
+{"tool": "source_search", "args": {"query": "healthcare diagnostics", "mode": "similarity", "maxResults": 3}}
+```"""
+            )
+            .thenReturn(
+                """```output
+Analysis grounded on internal similar sources.
+```"""
+            )
+
+        val matchedSourceId = UUID.randomUUID()
+        whenever(sourceSearch.search(any())).thenReturn(
+            listOf(
+                SourceSearchHit(
+                    sourceId = matchedSourceId,
+                    score = 0.92,
+                    title = "Diagnostics report",
+                    url = "https://example.com/diagnostics",
+                    contentSnippet = "Diagnostics are improving with AI.",
+                    wordCount = 280
+                )
+            )
+        )
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.Succeeded)
+        val succeeded = result as SubagentExecutionResult.Succeeded
+        assertTrue(succeeded.curatedText.contains("internal similar sources"))
+
+        val sourceIdsUsed = objectMapper.readTree(succeeded.sourceIdsUsedJson)
+        assertTrue(sourceIdsUsed.any { it.asText() == matchedSourceId.toString() })
+
+        val requestCaptor = argumentCaptor<SourceSearchRequest>()
+        verify(sourceSearch).search(requestCaptor.capture())
+        assertEquals(baseContext.userId, requestCaptor.firstValue.userId)
+        assertEquals("healthcare diagnostics", requestCaptor.firstValue.query)
+        assertEquals(SourceSearchMode.SIMILARITY, requestCaptor.firstValue.mode)
+        assertEquals(3, requestCaptor.firstValue.limit)
     }
 
     @Test
@@ -212,6 +266,7 @@ Analysis without the blocked URL.
             aiAdapter = aiAdapter,
             webSearchTool = webSearchTool,
             webFetchTool = webFetchTool,
+            sourceSearch = sourceSearch,
             objectMapper = objectMapper,
             config = config.copy(maxToolCalls = maxCalls)
         )
@@ -281,6 +336,7 @@ Budget-exhausted analysis.
             aiAdapter = aiAdapter,
             webSearchTool = null,
             webFetchTool = null,
+            sourceSearch = null,
             objectMapper = objectMapper,
             config = config
         )

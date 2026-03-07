@@ -29,6 +29,7 @@ class ExecutionRetryLogicTest {
             executionStateTransitionService = mock(),
             subagentExecutionRunner = mock(),
             synthesisExecutionRunner = mock(),
+            userAiSettingsService = mock(),
             executionFingerprintService = mock(),
             executionConfig = config,
             idGenerator = mock(),

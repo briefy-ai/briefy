@@ -82,7 +82,10 @@ data class BriefingGenerationRequest(
     val enrichmentIntent: String,
     val sources: List<BriefingSourceInput>,
     val plan: List<BriefingPlanInput>,
-    val subagentOutputs: List<BriefingSubagentOutputInput> = emptyList()
+    val subagentOutputs: List<BriefingSubagentOutputInput> = emptyList(),
+    val synthesisProvider: String? = null,
+    val synthesisModel: String? = null,
+    val synthesisUseCase: String? = null
 )
 
 data class BriefingSourceInput(

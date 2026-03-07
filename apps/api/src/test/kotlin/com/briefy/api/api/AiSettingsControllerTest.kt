@@ -50,8 +50,10 @@ class AiSettingsControllerTest {
             .andExpect(jsonPath("$.providers[?(@.id=='zhipuai')]").isNotEmpty)
             .andExpect(jsonPath("$.providers[?(@.id=='google_genai')]").isNotEmpty)
             .andExpect(jsonPath("$.providers[?(@.id=='minimax')]").isNotEmpty)
-            .andExpect(jsonPath("$.useCases[0].id").value("topic_extraction"))
-            .andExpect(jsonPath("$.useCases[1].id").value("source_formatting"))
+            .andExpect(jsonPath("$.useCases[?(@.id=='topic_extraction')]").isNotEmpty)
+            .andExpect(jsonPath("$.useCases[?(@.id=='source_formatting')]").isNotEmpty)
+            .andExpect(jsonPath("$.useCases[?(@.id=='briefing_subagent_execution')]").isNotEmpty)
+            .andExpect(jsonPath("$.useCases[?(@.id=='briefing_synthesis')]").isNotEmpty)
     }
 
     @Test
@@ -96,5 +98,21 @@ class AiSettingsControllerTest {
                 .content("""{"provider":"minimax","model":"minimax/minimax-m2.5"}""")
         )
             .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `PUT briefing synthesis use case updates provider and model`() {
+        mockMvc.perform(
+            put("/api/settings/ai/use-cases/briefing_synthesis")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"provider":"google_genai","model":"gemini-3-flash-preview"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(
+                jsonPath("$.useCases[?(@.id=='briefing_synthesis')].provider").value(org.hamcrest.Matchers.contains("google_genai"))
+            )
+            .andExpect(
+                jsonPath("$.useCases[?(@.id=='briefing_synthesis')].model").value(org.hamcrest.Matchers.contains("gemini-3-flash-preview"))
+            )
     }
 }

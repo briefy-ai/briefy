@@ -505,7 +505,13 @@ class ExecutionStateTransitionService(
     }
 
     @Transactional
-    fun startSynthesisRun(synthesisRunId: UUID, eventId: UUID, occurredAt: Instant = Instant.now()): SynthesisRun {
+    fun startSynthesisRun(
+        synthesisRunId: UUID,
+        eventId: UUID,
+        provider: String? = null,
+        model: String? = null,
+        occurredAt: Instant = Instant.now()
+    ): SynthesisRun {
         val run = requireSynthesisRun(synthesisRunId)
         if (isDuplicateEvent(eventId, run.briefingRunId, null)) {
             return run
@@ -523,7 +529,11 @@ class ExecutionStateTransitionService(
             subagentRunId = null,
             eventType = EVENT_SYNTHESIS_STARTED,
             occurredAt = occurredAt,
-            payloadJson = payload("status" to saved.status.dbValue)
+            payloadJson = payload(
+                "status" to saved.status.dbValue,
+                "provider" to provider?.trim()?.lowercase()?.takeIf { it.isNotBlank() },
+                "model" to model?.trim()?.takeIf { it.isNotBlank() }
+            )
         )
         return saved
     }

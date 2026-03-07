@@ -33,6 +33,9 @@ pgdata/
 # Misc
 *.log
 
+# Superset
+.superset/
+
 .pnpm-store/
 .agents/
 .claude/
