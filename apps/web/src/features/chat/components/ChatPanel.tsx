@@ -45,6 +45,7 @@ export function ChatPanel({
   isActionPending,
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const sheetHeaderPaddingTop = 'calc(env(safe-area-inset-top, 0px) + 1rem)'
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -65,7 +66,7 @@ export function ChatPanel({
   return (
     <Sheet open={isOpen} onOpenChange={(open) => (open ? undefined : closePanel())}>
       <SheetContent side="right" className="w-full p-0 sm:max-w-lg">
-        <SheetHeader className="border-b border-border/60">
+        <SheetHeader className="border-b border-border/60" style={{ paddingTop: sheetHeaderPaddingTop }}>
           <SheetTitle className="flex items-center gap-2 text-sm">
             <MessageSquare className="size-4" aria-hidden="true" />
             Briefing Chat
