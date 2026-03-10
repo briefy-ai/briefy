@@ -349,6 +349,73 @@ class XApiExtractionProviderTest {
     }
 
     @Test
+    fun `extract retries lower bitrate mp4 when highest variant exceeds size limit`() {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(
+            jsonResponse(
+                """
+                {
+                  "data": [{
+                    "id": "123",
+                    "text": "watch this clip",
+                    "author_id": "42",
+                    "created_at": "2026-02-12T10:00:00Z",
+                    "attachments": {"media_keys": ["media-1"]}
+                  }],
+                  "includes": {
+                    "users": [{"id":"42","name":"Alice","username":"alice"}],
+                    "media": [{
+                      "media_key":"media-1",
+                      "type":"video",
+                      "duration_ms": 12000,
+                      "variants":[
+                        {"bit_rate":256000,"content_type":"video/mp4","url":"%s"},
+                        {"bit_rate":832000,"content_type":"video/mp4","url":"%s"}
+                      ]
+                    }]
+                  }
+                }
+                """.trimIndent().format(server.url("/video-low.mp4"), server.url("/video-high.mp4"))
+            )
+        )
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "video/mp4")
+                .setBody("this body is definitely too large")
+        )
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "video/mp4")
+                .setBody("small")
+        )
+
+        try {
+            val transcriptionService: MediaWhisperTranscriptionService = mock()
+            whenever(transcriptionService.transcribe(any(), any())).thenReturn("transcribed words")
+            val provider = newProvider(
+                server = server,
+                transcriptionService = transcriptionService,
+                maxVideoDownloadBytes = 8
+            )
+
+            val result = provider.extract("https://x.com/alice/status/123")
+
+            server.takeRequest()
+            val firstVariantRequest = server.takeRequest()
+            val secondVariantRequest = server.takeRequest()
+            assertEquals("/video-high.mp4", firstVariantRequest.path)
+            assertEquals("/video-low.mp4", secondVariantRequest.path)
+            assertTrue(result.text.contains("# X Video"))
+            assertTrue(result.text.contains("transcribed words"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun `extract falls back to normal text when video has no downloadable mp4`() {
         val server = MockWebServer()
         server.start()
@@ -433,7 +500,8 @@ class XApiExtractionProviderTest {
 
     private fun newProvider(
         server: MockWebServer,
-        transcriptionService: MediaWhisperTranscriptionService = mock()
+        transcriptionService: MediaWhisperTranscriptionService = mock(),
+        maxVideoDownloadBytes: Long = 10_000_000
     ): XApiExtractionProvider {
         return XApiExtractionProvider(
             restClient = RestClient.builder().baseUrl(server.url("/").toString()).build(),
@@ -442,7 +510,7 @@ class XApiExtractionProviderTest {
             timeoutMs = 10_000,
             threadMaxResults = 100,
             maxVideoDurationSeconds = 900,
-            maxVideoDownloadBytes = 10_000_000,
+            maxVideoDownloadBytes = maxVideoDownloadBytes,
             mediaDownloadTimeoutMs = 10_000
         )
     }

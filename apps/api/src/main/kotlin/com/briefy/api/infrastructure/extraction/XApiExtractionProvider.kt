@@ -322,41 +322,66 @@ class XApiExtractionProvider(
             return null
         }
 
-        return runCatching {
-            val durationSeconds = media.durationMs
-                ?.takeIf { it > 0 }
-                ?.let { (it / 1000L).toInt().coerceAtLeast(1) }
-            if (durationSeconds != null && durationSeconds > maxVideoDurationSeconds) {
-                throw IllegalStateException("X video duration exceeds max supported length")
-            }
-
-            val variant = media.bestVideoVariant()
-                ?: throw IllegalStateException("X video payload does not contain a downloadable mp4 variant")
-
-            val tempDir = Files.createTempDirectory("briefy-x-video-${post.id ?: "unknown"}-").toFile()
-            try {
-                val mediaFile = downloadVideo(variant.url.orEmpty(), tempDir)
-                val transcript = mediaWhisperTranscriptionService.transcribe(mediaFile, tempDir)
-                if (transcript.isBlank()) {
-                    throw IllegalStateException("Whisper returned an empty transcript")
-                }
-
-                XVideoExtraction(
-                    text = buildVideoMarkdown(url, post, authorName, transcript, durationSeconds),
-                    title = resolveVideoTitle(post),
-                    durationSeconds = durationSeconds
-                )
-            } finally {
-                tempDir.deleteRecursively()
-            }
-        }.onFailure { error ->
+        val durationSeconds = media.durationMs
+            ?.takeIf { it > 0 }
+            ?.let { (it / 1000L).toInt().coerceAtLeast(1) }
+        if (durationSeconds != null && durationSeconds > maxVideoDurationSeconds) {
             logger.warn(
-                "[twitter] video.extraction_fallback postId={} mediaKey={} reason={}",
+                "[twitter] video.extraction_fallback postId={} mediaKey={} reason=duration_exceeds_limit durationSeconds={} limitSeconds={}",
                 post.id,
-                media?.mediaKey,
-                error.message
+                media.mediaKey,
+                durationSeconds,
+                maxVideoDurationSeconds
             )
-        }.getOrNull()
+            return null
+        }
+
+        val variants = media.videoVariantsByBitrateDesc()
+        if (variants.isEmpty()) {
+            logger.warn(
+                "[twitter] video.extraction_fallback postId={} mediaKey={} reason=no_downloadable_mp4_variant",
+                post.id,
+                media.mediaKey
+            )
+            return null
+        }
+
+        variants.forEach { variant ->
+            try {
+                val tempDir = Files.createTempDirectory("briefy-x-video-${post.id ?: "unknown"}-").toFile()
+                try {
+                    val mediaFile = downloadVideo(variant.url.orEmpty(), tempDir)
+                    val transcript = mediaWhisperTranscriptionService.transcribe(mediaFile, tempDir)
+                    if (transcript.isBlank()) {
+                        throw IllegalStateException("Whisper returned an empty transcript")
+                    }
+
+                    return XVideoExtraction(
+                        text = buildVideoMarkdown(url, post, authorName, transcript, durationSeconds),
+                        title = resolveVideoTitle(post),
+                        durationSeconds = durationSeconds
+                    )
+                } finally {
+                    tempDir.deleteRecursively()
+                }
+            } catch (error: Exception) {
+                logger.warn(
+                    "[twitter] video.variant_failed postId={} mediaKey={} bitRate={} reason={}",
+                    post.id,
+                    media.mediaKey,
+                    variant.bitRate,
+                    error.message
+                )
+            }
+        }
+
+        logger.warn(
+            "[twitter] video.extraction_fallback postId={} mediaKey={} reason=all_variants_failed variants={}",
+            post.id,
+            media.mediaKey,
+            variants.size
+        )
+        return null
     }
 
     private fun downloadVideo(videoUrl: String, tempDir: File): File {
@@ -699,11 +724,11 @@ private data class MediaData(
         }?.takeIf { it.isNotBlank() }
     }
 
-    fun bestVideoVariant(): MediaVariant? {
+    fun videoVariantsByBitrateDesc(): List<MediaVariant> {
         return variants.orEmpty()
             .filter { it.contentType.equals("video/mp4", ignoreCase = true) && !it.url.isNullOrBlank() }
             .sortedByDescending { it.bitRate ?: -1 }
-            .firstOrNull()
+            .map { variant -> variant.copy(url = variant.url.orEmpty()) }
     }
 }
 

@@ -277,6 +277,7 @@ class SourceContentFormatterServiceTest {
         val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
         verify(eventPublisher).publishEvent(eventCaptor.capture())
         assertEquals(sourceId, eventCaptor.firstValue.sourceId)
+        assertEquals(userId, eventCaptor.firstValue.userId)
     }
 
     @Test

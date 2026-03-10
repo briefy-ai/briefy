@@ -4,17 +4,14 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.io.File
-import java.io.InputStream
-import java.io.InputStreamReader
-import java.nio.charset.StandardCharsets
 import java.util.concurrent.TimeUnit
 
 @Component
 class MediaWhisperTranscriptionService(
     private val whisperTranscriptionClient: OpenAiWhisperTranscriptionClient,
-    @param:Value("\${extraction.youtube.ffmpeg-path:ffmpeg}")
+    @param:Value("\${extraction.media.ffmpeg-path:\${extraction.youtube.ffmpeg-path:ffmpeg}}")
     private val ffmpegPath: String,
-    @param:Value("\${extraction.youtube.command-timeout-seconds:180}")
+    @param:Value("\${extraction.media.command-timeout-seconds:\${extraction.youtube.command-timeout-seconds:180}}")
     private val commandTimeoutSeconds: Long
 ) {
     private val logger = LoggerFactory.getLogger(MediaWhisperTranscriptionService::class.java)
@@ -110,48 +107,6 @@ class MediaWhisperTranscriptionService(
         }
         return output
     }
-
-    private class ProcessOutputCollector(
-        private val inputStream: InputStream,
-        private val maxChars: Int
-    ) : Runnable {
-        private val buffer = StringBuilder()
-        @Volatile
-        private var truncated = false
-
-        override fun run() {
-            InputStreamReader(inputStream, StandardCharsets.UTF_8).use { reader ->
-                val chunk = CharArray(4096)
-                while (true) {
-                    val read = reader.read(chunk)
-                    if (read < 0) break
-                    append(chunk, read)
-                }
-            }
-        }
-
-        @Synchronized
-        fun snapshot(): String = buffer.toString()
-
-        fun wasTruncated(): Boolean = truncated
-
-        @Synchronized
-        private fun append(chunk: CharArray, read: Int) {
-            if (buffer.length >= maxChars) {
-                truncated = true
-                return
-            }
-            val remaining = maxChars - buffer.length
-            val toAppend = minOf(remaining, read)
-            if (toAppend > 0) {
-                buffer.append(chunk, 0, toAppend)
-            }
-            if (toAppend < read) {
-                truncated = true
-            }
-        }
-    }
-
     companion object {
         private const val MAX_COMMAND_OUTPUT_CHARS = 500_000
         private const val COMMAND_OUTPUT_PREVIEW_CHARS = 4_000

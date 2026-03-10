@@ -64,6 +64,9 @@ security:
   encryption-key: ${ENCRYPTION_KEY:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
 
 extraction:
+  media:
+    ffmpeg-path: ${EXTRACTION_MEDIA_FFMPEG_PATH:${YOUTUBE_FFMPEG_PATH:ffmpeg}}
+    command-timeout-seconds: ${EXTRACTION_MEDIA_COMMAND_TIMEOUT_SECONDS:${YOUTUBE_COMMAND_TIMEOUT_SECONDS:180}}
   firecrawl:
     base-url: ${FIRECRAWL_BASE_URL:https://api.firecrawl.dev}
     wait-for-ms: ${FIRECRAWL_WAIT_FOR_MS:1000}

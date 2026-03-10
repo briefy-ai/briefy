@@ -258,47 +258,6 @@ class YouTubeExtractionProvider(
         return if (parts.size >= 2) parts.lastOrNull() else null
     }
 
-    private class ProcessOutputCollector(
-        private val inputStream: java.io.InputStream,
-        private val maxChars: Int
-    ) : Runnable {
-        private val buffer = StringBuilder()
-        @Volatile
-        private var truncated = false
-
-        override fun run() {
-            java.io.InputStreamReader(inputStream, StandardCharsets.UTF_8).use { reader ->
-                val chunk = CharArray(4096)
-                while (true) {
-                    val read = reader.read(chunk)
-                    if (read < 0) break
-                    append(chunk, read)
-                }
-            }
-        }
-
-        @Synchronized
-        fun snapshot(): String = buffer.toString()
-
-        fun wasTruncated(): Boolean = truncated
-
-        @Synchronized
-        private fun append(chunk: CharArray, read: Int) {
-            if (buffer.length >= maxChars) {
-                truncated = true
-                return
-            }
-            val remaining = maxChars - buffer.length
-            val toAppend = minOf(remaining, read)
-            if (toAppend > 0) {
-                buffer.append(chunk, 0, toAppend)
-            }
-            if (toAppend < read) {
-                truncated = true
-            }
-        }
-    }
-
     companion object {
         private const val MAX_COMMAND_OUTPUT_CHARS = 500_000
         private const val COMMAND_OUTPUT_PREVIEW_CHARS = 4_000
