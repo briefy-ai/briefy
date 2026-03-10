@@ -64,6 +64,9 @@ security:
   encryption-key: ${ENCRYPTION_KEY:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
 
 extraction:
+  media:
+    ffmpeg-path: ${EXTRACTION_MEDIA_FFMPEG_PATH:${YOUTUBE_FFMPEG_PATH:ffmpeg}}
+    command-timeout-seconds: ${EXTRACTION_MEDIA_COMMAND_TIMEOUT_SECONDS:${YOUTUBE_COMMAND_TIMEOUT_SECONDS:180}}
   firecrawl:
     base-url: ${FIRECRAWL_BASE_URL:https://api.firecrawl.dev}
     wait-for-ms: ${FIRECRAWL_WAIT_FOR_MS:1000}
@@ -76,6 +79,10 @@ extraction:
     base-url: ${X_API_BASE_URL:https://api.x.com}
     timeout-ms: ${X_API_TIMEOUT_MS:10000}
     thread-max-results: ${X_API_THREAD_MAX_RESULTS:100}
+    video:
+      max-duration-seconds: ${X_API_VIDEO_MAX_DURATION_SECONDS:900}
+      max-download-bytes: ${X_API_VIDEO_MAX_DOWNLOAD_BYTES:104857600}
+      download-timeout-ms: ${X_API_VIDEO_DOWNLOAD_TIMEOUT_MS:15000}
   youtube:
     enabled: ${YOUTUBE_EXTRACTION_ENABLED:true}
     yt-dlp-path: ${YOUTUBE_YT_DLP_PATH:yt-dlp}

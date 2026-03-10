@@ -8,14 +8,22 @@ import org.springframework.http.HttpStatusCode
 import org.springframework.http.MediaType
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URI
+import java.nio.file.Files
 import java.time.Instant
 import java.time.format.DateTimeParseException
 
 class XApiExtractionProvider(
     private val restClient: RestClient,
+    private val mediaWhisperTranscriptionService: MediaWhisperTranscriptionService,
     private val bearerToken: String,
     private val timeoutMs: Long,
-    private val threadMaxResults: Int
+    private val threadMaxResults: Int,
+    private val maxVideoDurationSeconds: Int,
+    private val maxVideoDownloadBytes: Long,
+    private val mediaDownloadTimeoutMs: Int
 ) : ExtractionProvider {
     override val id: ExtractionProviderId = ExtractionProviderId.X_API
     private val logger = LoggerFactory.getLogger(XApiExtractionProvider::class.java)
@@ -23,6 +31,9 @@ class XApiExtractionProvider(
     init {
         require(timeoutMs > 0) { "timeoutMs must be greater than 0" }
         require(threadMaxResults in 10..100) { "threadMaxResults must be between 10 and 100" }
+        require(maxVideoDurationSeconds > 0) { "maxVideoDurationSeconds must be greater than 0" }
+        require(maxVideoDownloadBytes > 0) { "maxVideoDownloadBytes must be greater than 0" }
+        require(mediaDownloadTimeoutMs > 0) { "mediaDownloadTimeoutMs must be greater than 0" }
     }
 
     override fun extract(url: String): ExtractionResult {
@@ -55,6 +66,26 @@ class XApiExtractionProvider(
         val createdAt = parseInstant(rootData.createdAt)
         val conversationId = rootData.conversationId
         val ogImageUrl = resolveOgImageUrl(rootData, root.includes)
+        val primaryMedia = resolvePrimaryMedia(rootData, root.includes)
+
+        val videoExtraction = extractVideoContent(
+            url = url,
+            post = rootData,
+            authorName = authorName,
+            media = primaryMedia
+        )
+        if (videoExtraction != null) {
+            return ExtractionResult(
+                text = videoExtraction.text,
+                title = videoExtraction.title,
+                author = authorName,
+                publishedDate = createdAt,
+                ogImageUrl = ogImageUrl,
+                aiFormatted = false,
+                videoDurationSeconds = videoExtraction.durationSeconds,
+                transcriptSource = "whisper"
+            )
+        }
 
         val isArticle = rootData.article != null
         if (isArticle) {
@@ -109,6 +140,7 @@ class XApiExtractionProvider(
             "conversation_id",
             "created_at",
             "entities",
+            "in_reply_to_user_id",
             "note_tweet",
             "referenced_tweets",
             "text"
@@ -136,7 +168,7 @@ class XApiExtractionProvider(
                         .queryParam("ids", postId)
                         .queryParam("tweet.fields", tweetFields.joinToString(","))
                         .queryParam("expansions", expansions.joinToString(","))
-                        .queryParam("media.fields", "media_key,type,url,preview_image_url")
+                        .queryParam("media.fields", "media_key,type,url,preview_image_url,duration_ms,variants")
                         .build()
                 }
                 .accept(MediaType.APPLICATION_JSON)
@@ -197,21 +229,35 @@ class XApiExtractionProvider(
             return listOf(rootPost)
         }
 
-        return try {
+        val isThreadRootCandidate = rootPost.id == conversationId && rootPost.inReplyToUserId == null
+        val isSelfReply = !rootPost.inReplyToUserId.isNullOrBlank() && rootPost.inReplyToUserId == authorId
+        if (!isThreadRootCandidate && !isSelfReply) {
             logger.info(
-                "[twitter] request.lookup_thread method=GET path=/2/tweets/search/recent query=conversation_id:{} max_results={}",
+                "[twitter] thread.skip reason=not_self_thread rootPostId={} conversationId={} inReplyToUserId={} authorId={}",
+                rootPost.id,
                 conversationId,
+                rootPost.inReplyToUserId,
+                authorId
+            )
+            return listOf(rootPost)
+        }
+
+        return try {
+            val threadQuery = "conversation_id:$conversationId from:$authorId"
+            logger.info(
+                "[twitter] request.lookup_thread method=GET path=/2/tweets/search/recent query={} max_results={}",
+                threadQuery,
                 threadMaxResults.coerceIn(10, 100)
             )
             val response = xRequest {
                 restClient.get()
                     .uri { builder ->
                         builder.path("/2/tweets/search/recent")
-                            .queryParam("query", "conversation_id:$conversationId")
+                            .queryParam("query", threadQuery)
                             .queryParam("max_results", threadMaxResults.coerceIn(10, 100))
                             .queryParam(
                                 "tweet.fields",
-                                "author_id,conversation_id,created_at,note_tweet,text"
+                                "author_id,conversation_id,created_at,in_reply_to_user_id,note_tweet,text"
                             )
                             .build()
                     }
@@ -252,6 +298,133 @@ class XApiExtractionProvider(
             )
             listOf(rootPost)
         }
+    }
+
+    private fun resolvePrimaryMedia(post: TweetData, includes: Includes?): MediaData? {
+        val mediaByKey = includes?.media.orEmpty()
+            .mapNotNull { media -> media.mediaKey?.let { it to media } }
+            .toMap()
+
+        return post.attachments?.stringList("media_keys")
+            ?.asSequence()
+            ?.mapNotNull { mediaByKey[it] }
+            ?.firstOrNull()
+    }
+
+    private fun extractVideoContent(
+        url: String,
+        post: TweetData,
+        authorName: String?,
+        media: MediaData?
+    ): XVideoExtraction? {
+        val normalizedType = media?.type?.lowercase()
+        if (normalizedType != "video" && normalizedType != "animated_gif") {
+            return null
+        }
+
+        val durationSeconds = media.durationMs
+            ?.takeIf { it > 0 }
+            ?.let { (it / 1000L).toInt().coerceAtLeast(1) }
+        if (durationSeconds != null && durationSeconds > maxVideoDurationSeconds) {
+            logger.warn(
+                "[twitter] video.extraction_fallback postId={} mediaKey={} reason=duration_exceeds_limit durationSeconds={} limitSeconds={}",
+                post.id,
+                media.mediaKey,
+                durationSeconds,
+                maxVideoDurationSeconds
+            )
+            return null
+        }
+
+        val variants = media.videoVariantsByBitrateDesc()
+        if (variants.isEmpty()) {
+            logger.warn(
+                "[twitter] video.extraction_fallback postId={} mediaKey={} reason=no_downloadable_mp4_variant",
+                post.id,
+                media.mediaKey
+            )
+            return null
+        }
+
+        variants.forEach { variant ->
+            try {
+                val tempDir = Files.createTempDirectory("briefy-x-video-${post.id ?: "unknown"}-").toFile()
+                try {
+                    val mediaFile = downloadVideo(variant.url.orEmpty(), tempDir)
+                    val transcript = mediaWhisperTranscriptionService.transcribe(mediaFile, tempDir)
+                    if (transcript.isBlank()) {
+                        throw IllegalStateException("Whisper returned an empty transcript")
+                    }
+
+                    return XVideoExtraction(
+                        text = buildVideoMarkdown(url, post, authorName, transcript, durationSeconds),
+                        title = resolveVideoTitle(post),
+                        durationSeconds = durationSeconds
+                    )
+                } finally {
+                    tempDir.deleteRecursively()
+                }
+            } catch (error: Exception) {
+                logger.warn(
+                    "[twitter] video.variant_failed postId={} mediaKey={} bitRate={} reason={}",
+                    post.id,
+                    media.mediaKey,
+                    variant.bitRate,
+                    error.message
+                )
+            }
+        }
+
+        logger.warn(
+            "[twitter] video.extraction_fallback postId={} mediaKey={} reason=all_variants_failed variants={}",
+            post.id,
+            media.mediaKey,
+            variants.size
+        )
+        return null
+    }
+
+    private fun downloadVideo(videoUrl: String, tempDir: File): File {
+        val targetFile = File(tempDir, "video.mp4")
+        val connection = (URI.create(videoUrl).toURL().openConnection() as HttpURLConnection).apply {
+            connectTimeout = mediaDownloadTimeoutMs
+            readTimeout = mediaDownloadTimeoutMs
+            instanceFollowRedirects = true
+            requestMethod = "GET"
+        }
+
+        try {
+            connection.connect()
+            val statusCode = connection.responseCode
+            if (statusCode !in 200..299) {
+                throw IllegalStateException("Video download failed with status $statusCode")
+            }
+
+            val declaredLength = connection.contentLengthLong
+            if (declaredLength > maxVideoDownloadBytes) {
+                throw IllegalStateException("Video download exceeds max supported size")
+            }
+
+            connection.inputStream.use { input ->
+                targetFile.outputStream().use { output ->
+                    val buffer = ByteArray(DEFAULT_DOWNLOAD_BUFFER_BYTES)
+                    var totalBytes = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        totalBytes += read
+                        if (totalBytes > maxVideoDownloadBytes) {
+                            throw IllegalStateException("Video download exceeds max supported size")
+                        }
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+        } finally {
+            connection.disconnect()
+        }
+
+        return targetFile
     }
 
     private fun resolveAuthorName(authorId: String?, includes: Includes?): String? {
@@ -384,6 +557,50 @@ class XApiExtractionProvider(
         )
     }
 
+    private fun resolveVideoTitle(post: TweetData): String {
+        val snippet = extractPostTextOrNull(post)
+            ?.lineSequence()
+            ?.firstOrNull()
+            ?.trim()
+            .orEmpty()
+            .take(80)
+        return if (snippet.isNotBlank()) snippet else "X Video"
+    }
+
+    private fun buildVideoMarkdown(
+        url: String,
+        post: TweetData,
+        authorName: String?,
+        transcript: String,
+        durationSeconds: Int?
+    ): String {
+        return buildString {
+            appendLine("# X Video")
+            appendLine()
+            if (!authorName.isNullOrBlank()) appendLine("- Author: $authorName")
+            if (!post.createdAt.isNullOrBlank()) appendLine("- Created: ${post.createdAt}")
+            if (durationSeconds != null) appendLine("- Duration Seconds: $durationSeconds")
+            appendLine("- URL: $url")
+            appendLine()
+
+            val postText = extractPostTextOrNull(post)
+            if (!postText.isNullOrBlank()) {
+                appendLine("## Post")
+                appendLine()
+                appendLine(postText)
+                appendLine()
+            }
+
+            appendLine("## Transcript")
+            appendLine()
+            appendLine(transcript.trim())
+        }.trim()
+    }
+
+    private fun extractPostTextOrNull(post: TweetData): String? {
+        return runCatching { extractPostText(post) }.getOrNull()
+    }
+
     private fun extractPostId(url: String): String? {
         val match = STATUS_ID_REGEX.find(url) ?: return null
         return match.groupValues.getOrNull(1)
@@ -432,6 +649,7 @@ class XApiExtractionProvider(
 
     companion object {
         private val STATUS_ID_REGEX = Regex("""/(?:i/web/)?status/(\d+)""")
+        private const val DEFAULT_DOWNLOAD_BUFFER_BYTES = 16 * 1024
     }
 }
 
@@ -493,7 +711,10 @@ private data class MediaData(
     val type: String? = null,
     val url: String? = null,
     @param:JsonProperty("preview_image_url")
-    val previewImageUrl: String? = null
+    val previewImageUrl: String? = null,
+    @param:JsonProperty("duration_ms")
+    val durationMs: Long? = null,
+    val variants: List<MediaVariant>? = null
 ) {
     fun bestImageUrl(): String? {
         val normalizedType = type?.lowercase()
@@ -502,7 +723,23 @@ private data class MediaData(
             else -> previewImageUrl ?: url
         }?.takeIf { it.isNotBlank() }
     }
+
+    fun videoVariantsByBitrateDesc(): List<MediaVariant> {
+        return variants.orEmpty()
+            .filter { it.contentType.equals("video/mp4", ignoreCase = true) && !it.url.isNullOrBlank() }
+            .sortedByDescending { it.bitRate ?: -1 }
+            .map { variant -> variant.copy(url = variant.url.orEmpty()) }
+    }
 }
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+private data class MediaVariant(
+    @param:JsonProperty("bit_rate")
+    val bitRate: Int? = null,
+    @param:JsonProperty("content_type")
+    val contentType: String? = null,
+    val url: String? = null
+)
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 private data class TweetData(
@@ -514,9 +751,17 @@ private data class TweetData(
     val conversationId: String? = null,
     @param:JsonProperty("created_at")
     val createdAt: String? = null,
+    @param:JsonProperty("in_reply_to_user_id")
+    val inReplyToUserId: String? = null,
     @param:JsonProperty("note_tweet")
     val noteTweet: Map<String, Any?>? = null,
     val article: Map<String, Any?>? = null,
     val entities: Map<String, Any?>? = null,
     val attachments: Map<String, Any?>? = null
+)
+
+private data class XVideoExtraction(
+    val text: String,
+    val title: String,
+    val durationSeconds: Int?
 )
