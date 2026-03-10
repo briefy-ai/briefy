@@ -76,6 +76,10 @@ extraction:
     base-url: ${X_API_BASE_URL:https://api.x.com}
     timeout-ms: ${X_API_TIMEOUT_MS:10000}
     thread-max-results: ${X_API_THREAD_MAX_RESULTS:100}
+    video:
+      max-duration-seconds: ${X_API_VIDEO_MAX_DURATION_SECONDS:900}
+      max-download-bytes: ${X_API_VIDEO_MAX_DOWNLOAD_BYTES:104857600}
+      download-timeout-ms: ${X_API_VIDEO_DOWNLOAD_TIMEOUT_MS:15000}
   youtube:
     enabled: ${YOUTUBE_EXTRACTION_ENABLED:true}
     yt-dlp-path: ${YOUTUBE_YT_DLP_PATH:yt-dlp}

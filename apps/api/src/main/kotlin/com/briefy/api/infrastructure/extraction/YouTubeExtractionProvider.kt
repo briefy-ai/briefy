@@ -4,22 +4,17 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.io.File
-import java.io.InputStream
-import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
-import java.util.concurrent.TimeUnit
 
 @Component
 class YouTubeExtractionProvider(
-    private val whisperTranscriptionClient: OpenAiWhisperTranscriptionClient,
+    private val mediaWhisperTranscriptionService: MediaWhisperTranscriptionService,
     @param:Value("\${extraction.youtube.yt-dlp-path:yt-dlp}")
     private val ytDlpPath: String,
-    @param:Value("\${extraction.youtube.ffmpeg-path:ffmpeg}")
-    private val ffmpegPath: String,
     @param:Value("\${extraction.youtube.max-duration-seconds:7200}")
     private val maxDurationSeconds: Int,
     @param:Value("\${extraction.youtube.command-timeout-seconds:180}")
@@ -192,37 +187,7 @@ class YouTubeExtractionProvider(
     }
 
     private fun transcribeAudio(audioFile: File, tempDir: File): String {
-        val segmentDir = File(tempDir, "segments").apply { mkdirs() }
-        runCommand(
-            listOf(
-                ffmpegPath,
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-i",
-                audioFile.absolutePath,
-                "-f",
-                "segment",
-                "-segment_time",
-                "900",
-                "-c:a",
-                "libmp3lame",
-                "-b:a",
-                "64k",
-                File(segmentDir, "chunk-%03d.mp3").absolutePath
-            )
-        )
-
-        val chunks = segmentDir.listFiles()
-            ?.filter { it.isFile && it.extension == "mp3" }
-            ?.sortedBy { it.name }
-            .orEmpty()
-
-        if (chunks.isEmpty()) {
-            throw IllegalStateException("No audio chunks were created for transcription")
-        }
-
-        return chunks.joinToString("\n\n") { whisperTranscriptionClient.transcribe(it) }.trim()
+        return mediaWhisperTranscriptionService.transcribe(audioFile, tempDir)
     }
 
     private fun runCommand(command: List<String>): String {
@@ -241,13 +206,13 @@ class YouTubeExtractionProvider(
             isDaemon = true
             start()
         }
-        val completed = process.waitFor(commandTimeoutSeconds, TimeUnit.SECONDS)
+        val completed = process.waitFor(commandTimeoutSeconds, java.util.concurrent.TimeUnit.SECONDS)
 
         if (!completed) {
             process.destroyForcibly()
-            process.waitFor(5, TimeUnit.SECONDS)
+            process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
             outputThread.join(5_000)
-            val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos)
+            val elapsedMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos)
             val outputPreview = outputCollector.snapshot().take(COMMAND_OUTPUT_PREVIEW_CHARS)
             logger.error(
                 "[extractor:youtube] command_timeout elapsedMs={} command={} outputPreview={}",
@@ -260,7 +225,7 @@ class YouTubeExtractionProvider(
 
         outputThread.join(5_000)
         val output = outputCollector.snapshot()
-        val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos)
+        val elapsedMs = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAtNanos)
         logger.info(
             "[extractor:youtube] command_finished elapsedMs={} exitCode={} outputChars={} truncated={} command={}",
             elapsedMs,
@@ -294,7 +259,7 @@ class YouTubeExtractionProvider(
     }
 
     private class ProcessOutputCollector(
-        private val inputStream: InputStream,
+        private val inputStream: java.io.InputStream,
         private val maxChars: Int
     ) : Runnable {
         private val buffer = StringBuilder()
@@ -302,7 +267,7 @@ class YouTubeExtractionProvider(
         private var truncated = false
 
         override fun run() {
-            InputStreamReader(inputStream, StandardCharsets.UTF_8).use { reader ->
+            java.io.InputStreamReader(inputStream, StandardCharsets.UTF_8).use { reader ->
                 val chunk = CharArray(4096)
                 while (true) {
                     val read = reader.read(chunk)

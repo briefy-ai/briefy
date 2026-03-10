@@ -34,6 +34,7 @@ class SourceContentFormatterServiceTest {
     private val sharedSourceSnapshotRepository: SharedSourceSnapshotRepository = mock()
     private val jsoupFormatter: ExtractionContentFormatter = mock()
     private val youtubeFormatter: ExtractionContentFormatter = mock()
+    private val xApiFormatter: ExtractionContentFormatter = mock()
     private val userAiSettingsService: UserAiSettingsService = mock()
     private val idGenerator: IdGenerator = mock()
     private val eventPublisher: ApplicationEventPublisher = mock()
@@ -41,7 +42,7 @@ class SourceContentFormatterServiceTest {
     private val service = SourceContentFormatterService(
         sourceRepository = sourceRepository,
         sharedSourceSnapshotRepository = sharedSourceSnapshotRepository,
-        extractionContentFormatters = listOf(jsoupFormatter, youtubeFormatter),
+        extractionContentFormatters = listOf(jsoupFormatter, youtubeFormatter, xApiFormatter),
         userAiSettingsService = userAiSettingsService,
         idGenerator = idGenerator,
         eventPublisher = eventPublisher
@@ -236,6 +237,46 @@ class SourceContentFormatterServiceTest {
         verify(eventPublisher).publishEvent(eventCaptor.capture())
         assertEquals(sourceId, eventCaptor.firstValue.sourceId)
         assertEquals(userId, eventCaptor.firstValue.userId)
+    }
+
+    @Test
+    fun `formats x whisper transcript through x formatter`() {
+        val userId = UUID.randomUUID()
+        val sourceId = UUID.randomUUID()
+        val source = createActiveSource(
+            sourceId = sourceId,
+            userId = userId,
+            text = "# X Video\n\n## Transcript\n\nwhisper transcript text",
+            aiFormatted = false,
+            extractionProvider = "x_api",
+            platform = "twitter",
+            transcriptSource = "whisper"
+        )
+
+        whenever(sourceRepository.findByIdAndUserId(sourceId, userId)).thenReturn(source)
+        whenever(jsoupFormatter.supports(ExtractionProviderId.X_API)).thenReturn(false)
+        whenever(youtubeFormatter.supports(ExtractionProviderId.X_API)).thenReturn(false)
+        whenever(xApiFormatter.supports(ExtractionProviderId.X_API)).thenReturn(true)
+        whenever(userAiSettingsService.resolveUseCaseSelection(userId, UserAiSettingsService.SOURCE_FORMATTING))
+            .thenReturn(AiModelSelection(provider = "zhipuai", model = "glm-4.7"))
+        whenever(xApiFormatter.format(any(), any(), any())).thenReturn("# formatted x transcript")
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+        whenever(sharedSourceSnapshotRepository.findFirstByUrlNormalizedAndIsLatestTrue(source.url.normalized))
+            .thenReturn(null)
+
+        service.formatSourceContent(sourceId, userId, ExtractionProviderId.X_API)
+
+        verify(xApiFormatter).format(
+            "# X Video\n\n## Transcript\n\nwhisper transcript text",
+            "zhipuai",
+            "glm-4.7"
+        )
+        assertEquals("# formatted x transcript", source.content?.text)
+        assertTrue(source.metadata?.aiFormatted == true)
+        assertEquals(FormattingState.SUCCEEDED, source.metadata?.formattingState)
+        val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
+        verify(eventPublisher).publishEvent(eventCaptor.capture())
+        assertEquals(sourceId, eventCaptor.firstValue.sourceId)
     }
 
     @Test
