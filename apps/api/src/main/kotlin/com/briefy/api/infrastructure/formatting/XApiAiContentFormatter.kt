@@ -19,8 +19,9 @@ class XApiAiContentFormatter(
             the following content has been extracted from x (twitter). your job is to:
 
             1. format the content as clean markdown
-            2. keep the content identical
-            3. do not remove any text
+            2. keep the content identical — do not remove any text
+            3. if the content includes a transcript, break it into paragraphs at natural topic or speaker changes so it is easy to read
+            4. use paragraph and line breaks when appropriate
         """.trimIndent()
 
         val userPrompt = """

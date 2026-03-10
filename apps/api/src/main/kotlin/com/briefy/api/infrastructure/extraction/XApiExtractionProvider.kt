@@ -575,18 +575,8 @@ class XApiExtractionProvider(
         durationSeconds: Int?
     ): String {
         return buildString {
-            appendLine("# X Video")
-            appendLine()
-            if (!authorName.isNullOrBlank()) appendLine("- Author: $authorName")
-            if (!post.createdAt.isNullOrBlank()) appendLine("- Created: ${post.createdAt}")
-            if (durationSeconds != null) appendLine("- Duration Seconds: $durationSeconds")
-            appendLine("- URL: $url")
-            appendLine()
-
             val postText = extractPostTextOrNull(post)
             if (!postText.isNullOrBlank()) {
-                appendLine("## Post")
-                appendLine()
                 appendLine(postText)
                 appendLine()
             }
