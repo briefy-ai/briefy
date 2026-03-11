@@ -5,6 +5,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 
 ## Mistakes Log
 
+- [2026-03-11] Tightened X thread filtering but left a thread test fixture without `in_reply_to_user_id` on a legitimate self-reply -> updated the mock payload to include explicit self-reply metadata -> when testing X thread membership, always model reply tweets with `in_reply_to_user_id` so filters match real API payloads.
 - [2026-02-07 20:20] Wrote a brittle archive list assertion that depended on result ordering in `SourceControllerTest` -> changed to ID-presence assertion (`$[?(@.id=='...')]`) -> avoid index-based JSON assertions when endpoint order is not guaranteed.
 - [2026-02-09 08:35] Tried verifying event publication through `@MockitoBean ApplicationEventPublisher` in controller integration tests -> mock wasn't reliably intercepting Spring's publisher wiring -> moved publication verification to focused service unit tests (`SourceServiceEventTest`); keep controller tests on HTTP/state behavior only.
 - [2026-02-11 15:46] `POST /api/topics` returned 500 when `sourceIds` was omitted because request binding treated it as null for a non-null constructor param -> changed `CreateTopicRequest.sourceIds` to nullable, normalized via `orEmpty()` in controller -> make request fields nullable when they have a sensible empty default.
@@ -32,6 +33,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 
 ## Non-Obvious Code Findings
 
+- [2026-03-11] X conversation search can return the author's replies to third-party commenters in the same `conversation_id`; filtering thread posts by `author_id` alone is too broad, and `in_reply_to_user_id == authorId` is the key guard that keeps extraction on the original self-thread chain. [`apps/api/src/main/kotlin/com/briefy/api/infrastructure/extraction/XApiExtractionProvider.kt`]
 - [2026-02-09 08:35] Source restore is `ARCHIVED -> ACTIVE` only; no re-extraction, no status memory. Service behavior is idempotent (`Source.kt`, `SourceStatus.kt`, `SourceService.kt`).
 - [2026-02-11 10:19] Spring AI Zhipu starter requires explicitly disabling non-chat models (`spring.ai.model.embedding=none`, `spring.ai.model.image=none`); otherwise context boot fails without a Zhipu API key (`application.yml`, `application-test.yml`).
 - [2026-02-11 12:40] Zhipu 401s can come from platform/base-url mismatch despite a valid key: Z.ai keys require `https://api.z.ai/api/paas`, BigModel keys use `https://open.bigmodel.cn/api/paas`.
@@ -57,6 +59,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 
 ## User Preferences
 
+- [2026-03-11] For X thread sources, prefers lean extracted content without per-post metadata and without branch replies to other users -> keep extraction focused on the original thread text, not conversation noise.
 - [2026-02-07 20:19] "Delete" semantics for Sources must mean archive (DEC-012), including batch flows -> keep UI copy and API naming explicit about archive semantics behind delete actions.
 - [2026-02-11 13:58] Prefers a single "keep selected, discard rest" action over checkbox-per-suggestion UIs -> streamline batch-selection interactions in review flows.
 - [2026-02-11 14:18] Does not want archived topics surfaced in the Topics UI -> keep Topics page focused on active/suggested only.

@@ -44,6 +44,7 @@ class XApiExtractionProviderTest {
             assertEquals("Bearer token-1", request.getHeader("Authorization"))
             assertTrue(result.text.contains("# X Post"))
             assertTrue(result.text.contains("hello from x"))
+            assertTrue(!result.text.contains("Created:"))
             assertEquals("@alice", result.author)
         } finally {
             server.shutdown()
@@ -80,7 +81,7 @@ class XApiExtractionProviderTest {
     }
 
     @Test
-    fun `extract returns thread markdown with author-only posts sorted by created_at`() {
+    fun `extract returns thread markdown with self replies only and lean formatting`() {
         val server = MockWebServer()
         server.enqueue(
             jsonResponse(
@@ -105,9 +106,10 @@ class XApiExtractionProviderTest {
                 """
                 {
                   "data": [
-                    {"id":"c","text":"third","author_id":"42","created_at":"2026-02-12T10:03:00Z"},
+                    {"id":"c","text":"third","author_id":"42","in_reply_to_user_id":"42","created_at":"2026-02-12T10:03:00Z"},
+                    {"id":"d","text":"reply to commenter","author_id":"42","in_reply_to_user_id":"77","created_at":"2026-02-12T10:04:00Z"},
                     {"id":"b","text":"other user","author_id":"77","created_at":"2026-02-12T10:02:00Z"},
-                    {"id":"a","text":"first","author_id":"42","created_at":"2026-02-12T10:01:00Z"}
+                    {"id":"a","text":"first","author_id":"42","in_reply_to_user_id":"42","created_at":"2026-02-12T10:01:00Z"}
                   ]
                 }
                 """.trimIndent()
@@ -129,6 +131,10 @@ class XApiExtractionProviderTest {
             val thirdIdx = result.text.indexOf("third")
             assertTrue(firstIdx in 0 until thirdIdx)
             assertTrue(!result.text.contains("other user"))
+            assertTrue(!result.text.contains("reply to commenter"))
+            assertTrue(!result.text.contains("## Post"))
+            assertTrue(!result.text.contains("Created:"))
+            assertTrue(result.text.contains("---"))
         } finally {
             server.shutdown()
         }
@@ -335,7 +341,6 @@ class XApiExtractionProviderTest {
             assertTrue(apiRequest.path!!.startsWith("/2/tweets"))
             assertEquals("/video-high.mp4", mediaRequest.path)
             assertTrue(result.text.contains("# X Video"))
-            assertTrue(result.text.contains("## Post"))
             assertTrue(result.text.contains("watch this clip"))
             assertTrue(result.text.contains("## Transcript"))
             assertTrue(result.text.contains("transcribed words"))
@@ -493,6 +498,53 @@ class XApiExtractionProviderTest {
             assertEquals(0, server.requestCount - 1)
             assertTrue(result.text.contains("# X Post"))
             assertTrue(result.text.contains("replying to someone else"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `extract excludes author replies to other users from thread results`() {
+        val server = MockWebServer()
+        server.enqueue(
+            jsonResponse(
+                """
+                {
+                  "data": [{
+                    "id": "999",
+                    "text": "root",
+                    "author_id": "42",
+                    "conversation_id": "999",
+                    "created_at": "2026-02-12T10:00:00Z"
+                  }],
+                  "includes": {
+                    "users": [{"id":"42","name":"Alice","username":"alice"}]
+                  }
+                }
+                """.trimIndent()
+            )
+        )
+        server.enqueue(
+            jsonResponse(
+                """
+                {
+                  "data": [
+                    {"id":"1000","text":"first self reply","author_id":"42","in_reply_to_user_id":"42","created_at":"2026-02-12T10:01:00Z"},
+                    {"id":"1001","text":"replying to a commenter","author_id":"42","in_reply_to_user_id":"77","created_at":"2026-02-12T10:02:00Z"}
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        server.start()
+
+        try {
+            val provider = newProvider(server)
+
+            val result = provider.extract("https://x.com/alice/status/999")
+
+            assertTrue(result.text.contains("first self reply"))
+            assertTrue(!result.text.contains("replying to a commenter"))
         } finally {
             server.shutdown()
         }
