@@ -279,6 +279,7 @@ class XApiExtractionProvider(
             val posts = response.data.orEmpty()
                 .asSequence()
                 .filter { it.authorId == authorId }
+                .filter { isOriginalThreadPost(it, conversationId, authorId) }
                 .sortedBy { parseInstant(it.createdAt) ?: Instant.EPOCH }
                 .toList()
             logger.info(
@@ -495,7 +496,6 @@ class XApiExtractionProvider(
             appendLine("# X Post")
             appendLine()
             if (!authorName.isNullOrBlank()) appendLine("- Author: $authorName")
-            if (!post.createdAt.isNullOrBlank()) appendLine("- Created: ${post.createdAt}")
             appendLine("- URL: $url")
             appendLine()
             appendLine(text)
@@ -508,17 +508,21 @@ class XApiExtractionProvider(
             appendLine()
             if (!authorName.isNullOrBlank()) appendLine("- Author: $authorName")
             appendLine("- URL: $url")
-            appendLine("- Posts: ${posts.size}")
             appendLine()
 
             posts.forEachIndexed { index, post ->
-                appendLine("## Post ${index + 1}")
-                if (!post.createdAt.isNullOrBlank()) appendLine("Created: ${post.createdAt}")
-                appendLine()
                 appendLine(extractPostText(post))
-                appendLine()
+                if (index < posts.lastIndex) {
+                    appendLine()
+                    appendLine("---")
+                    appendLine()
+                }
             }
         }.trim()
+    }
+
+    private fun isOriginalThreadPost(post: TweetData, conversationId: String, authorId: String): Boolean {
+        return post.id == conversationId || post.inReplyToUserId == authorId
     }
 
     private fun buildArticleText(post: TweetData): String {
@@ -575,6 +579,8 @@ class XApiExtractionProvider(
         durationSeconds: Int?
     ): String {
         return buildString {
+            appendLine("# X Video")
+            appendLine()
             val postText = extractPostTextOrNull(post)
             if (!postText.isNullOrBlank()) {
                 appendLine(postText)
