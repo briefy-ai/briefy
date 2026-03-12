@@ -539,6 +539,22 @@ class SourceServiceEventTest {
     }
 
     @Test
+    fun `getSource does not auto-fail pending formatting that is not yet stuck`() {
+        val userId = UUID.randomUUID()
+        val recentUpdatedAt = Instant.now().minus(Duration.ofMinutes(4))
+        val source = createActiveSource(userId).apply {
+            updatedAt = recentUpdatedAt
+        }
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+
+        val response = service.getSource(source.id)
+
+        assertEquals("pending", response.metadata?.formattingState)
+        verify(sourceRepository, never()).save(any())
+    }
+
+    @Test
     fun `retryFormatting resets metadata state to pending and publishes formatting request`() {
         val userId = UUID.randomUUID()
         val source = createActiveSource(userId)
