@@ -43,6 +43,7 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import org.springframework.context.ApplicationEventPublisher
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
@@ -512,6 +513,29 @@ class SourceServiceEventTest {
         verify(eventPublisher, atLeastOnce()).publishEvent(eventCaptor.capture())
         val formattingEvents = eventCaptor.allValues.filterIsInstance<SourceContentFormattingRequestedEvent>()
         assertTrue(formattingEvents.isEmpty())
+    }
+
+    @Test
+    fun `getSource auto-fails stuck pending formatting`() {
+        val userId = UUID.randomUUID()
+        val staleUpdatedAt = Instant.now().minus(Duration.ofMinutes(6))
+        val source = createActiveSource(userId).apply {
+            updatedAt = staleUpdatedAt
+        }
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+
+        val response = service.getSource(source.id)
+
+        assertEquals("active", response.status)
+        assertEquals("failed", response.metadata?.formattingState)
+        assertEquals("stuck_pending", response.metadata?.formattingFailureReason)
+        assertEquals(FormattingState.FAILED, source.metadata?.formattingState)
+        assertEquals("stuck_pending", source.metadata?.formattingFailureReason)
+        assertTrue(response.updatedAt.isAfter(staleUpdatedAt))
+        verify(sourceRepository).save(source)
+        verify(eventPublisher, never()).publishEvent(any<Any>())
     }
 
     @Test
