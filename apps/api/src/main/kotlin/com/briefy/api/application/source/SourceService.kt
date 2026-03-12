@@ -182,12 +182,13 @@ class SourceService(
         )
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     fun getSource(id: UUID): SourceResponse {
         val userId = currentUserProvider.requireUserId()
         logger.info("[service] Getting source userId={} sourceId={}", userId, id)
         val source = sourceRepository.findByIdAndUserId(id, userId)
             ?: throw SourceNotFoundException(id)
+        maybeFailStuckPendingFormatting(source)
         logger.info("[service] Fetched source userId={} sourceId={} status={}", userId, source.id, source.status)
         return source.toResponse()
     }
@@ -443,6 +444,7 @@ class SourceService(
 
     companion object {
         private const val MAX_BATCH_ARCHIVE_SOURCE_IDS = 100
+        private const val STUCK_PENDING_FORMATTING_REASON = "stuck_pending"
         private val HARD_DELETE_ELIGIBLE_STATUSES = setOf(
             SourceStatus.ACTIVE,
             SourceStatus.FAILED,
@@ -450,6 +452,7 @@ class SourceService(
         )
         private val PENDING_TOPIC_LINK_TARGET_TYPE = TopicLinkTargetType.SOURCE
         private val PENDING_TOPIC_LINK_STATUS = TopicLinkStatus.SUGGESTED
+        private val STUCK_PENDING_FORMATTING_TIMEOUT = Duration.ofMinutes(5)
         private val LIVE_TOPIC_LINK_STATUSES = listOf(
             TopicLinkStatus.SUGGESTED,
             TopicLinkStatus.ACTIVE
@@ -733,6 +736,32 @@ class SourceService(
             provider
         )
         return true
+    }
+
+    private fun maybeFailStuckPendingFormatting(source: Source) {
+        val metadata = source.metadata ?: return
+        val now = Instant.now()
+        val isStuckPending = source.status == SourceStatus.ACTIVE &&
+            metadata.formattingState == FormattingState.PENDING &&
+            !metadata.aiFormatted &&
+            Duration.between(source.updatedAt, now) > STUCK_PENDING_FORMATTING_TIMEOUT
+
+        if (!isStuckPending) {
+            return
+        }
+
+        source.metadata = metadata.withFormattingState(
+            formattingState = FormattingState.FAILED,
+            formattingFailureReason = STUCK_PENDING_FORMATTING_REASON
+        )
+        source.updatedAt = now
+        sourceRepository.save(source)
+        logger.warn(
+            "[service] Auto-failed stuck pending formatting sourceId={} userId={} timeoutMinutes={}",
+            source.id,
+            source.userId,
+            STUCK_PENDING_FORMATTING_TIMEOUT.toMinutes()
+        )
     }
 
     private fun publishSourceContentFinalizedEvent(source: Source) {
