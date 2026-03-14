@@ -25,6 +25,7 @@ data class SourceResponse(
     val pendingSuggestedTopicsCount: Long,
     val read: Boolean,
     val reuse: ReuseInfoDto?,
+    val topics: List<SourceTopicChipDto> = emptyList(),
     val createdAt: Instant,
     val updatedAt: Instant
 )
@@ -40,6 +41,24 @@ data class ReuseInfoDto(
     val usedCache: Boolean,
     val cacheAgeSeconds: Long?,
     val freshnessTtlSeconds: Long
+)
+
+data class SourceTopicChipDto(
+    val id: UUID,
+    val name: String
+)
+
+data class SourceSearchResponse(
+    val items: List<SourceSearchResultDto>
+)
+
+data class SourceSearchResultDto(
+    val id: UUID,
+    val title: String?,
+    val author: String?,
+    val domain: String?,
+    val sourceType: String,
+    val topics: List<SourceTopicChipDto>
 )
 
 data class UrlDto(
@@ -72,7 +91,8 @@ data class MetadataDto(
 
 fun Source.toResponse(
     pendingSuggestedTopicsCount: Long = 0,
-    reuseInfo: ReuseInfoDto? = null
+    reuseInfo: ReuseInfoDto? = null,
+    topics: List<SourceTopicChipDto> = emptyList()
 ): SourceResponse = SourceResponse(
     id = id,
     url = url.toDto(),
@@ -85,6 +105,7 @@ fun Source.toResponse(
     pendingSuggestedTopicsCount = pendingSuggestedTopicsCount,
     read = isRead,
     reuse = reuseInfo,
+    topics = topics,
     createdAt = createdAt,
     updatedAt = updatedAt
 )
