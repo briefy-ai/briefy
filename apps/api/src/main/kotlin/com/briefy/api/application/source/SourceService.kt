@@ -20,7 +20,6 @@ import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
-import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
@@ -46,6 +45,8 @@ class SourceService(
     private val logger = LoggerFactory.getLogger(SourceService::class.java)
     private val defaultSourceListLimit = 20
     private val maxSourceListLimit = 100
+    private val defaultSourceSearchLimit = 10
+    private val maxSourceSearchLimit = 25
 
     @Transactional
     fun submitSource(command: CreateSourceCommand): SourceResponse {
@@ -127,34 +128,39 @@ class SourceService(
     }
 
     @Transactional(readOnly = true)
-    fun listSources(status: SourceStatus? = null, limit: Int? = null, cursor: String? = null): SourcePageResponse {
+    fun listSources(
+        status: SourceStatus? = null,
+        limit: Int? = null,
+        cursor: String? = null,
+        topicIds: List<UUID>? = null,
+        sourceType: SourceType? = null,
+        sort: String? = null
+    ): SourcePageResponse {
         val userId = currentUserProvider.requireUserId()
         val effectiveStatus = status ?: SourceStatus.ACTIVE
         val normalizedLimit = normalizeListLimit(limit)
-        val decodedCursor = cursor?.let { SourcePageCursorCodec.decode(it) }
+        val sortStrategy = SourceSortStrategy.fromParam(sort)
+        val normalizedTopicIds = topicIds?.distinct()?.takeIf { it.isNotEmpty() }
+        val decodedCursor = decodeListCursor(cursor, sortStrategy)
         logger.info(
-            "[service] Listing sources userId={} status={} limit={} hasCursor={}",
+            "[service] Listing sources userId={} status={} limit={} hasCursor={} topicCount={} sourceType={} sort={}",
             userId,
             effectiveStatus,
             normalizedLimit,
-            decodedCursor != null
+            decodedCursor != null,
+            normalizedTopicIds?.size ?: 0,
+            sourceType,
+            sortStrategy.paramValue
         )
-        val pageSize = normalizedLimit + 1
-        val sources = if (decodedCursor == null) {
-            sourceRepository.findFirstPageByUserIdAndStatus(
-                userId = userId,
-                status = effectiveStatus,
-                pageable = PageRequest.of(0, pageSize)
-            )
-        } else {
-            sourceRepository.findPageByUserIdAndStatusAfterCursor(
-                userId = userId,
-                status = effectiveStatus,
-                cursorUpdatedAt = decodedCursor.updatedAt,
-                cursorId = decodedCursor.id,
-                pageable = PageRequest.of(0, pageSize)
-            )
-        }
+        val sources = sourceRepository.findSourcesPage(
+            userId = userId,
+            status = effectiveStatus,
+            topicIds = normalizedTopicIds,
+            sourceType = sourceType,
+            sort = sortStrategy,
+            cursor = decodedCursor,
+            limit = normalizedLimit
+        )
         val hasMore = sources.size > normalizedLimit
         val pageItems = if (hasMore) sources.dropLast(1) else sources
         logger.info("[service] Listed sources userId={} count={} hasMore={}", userId, pageItems.size, hasMore)
@@ -163,13 +169,16 @@ class SourceService(
         } else {
             emptyMap()
         }
+        val activeTopicsBySourceId = loadActiveTopicsBySourceId(userId, pageItems.map { it.id })
 
         val items = pageItems.map { source ->
-            source.toResponse(pendingSuggestedTopicsCount = pendingSuggestionsBySourceId[source.id] ?: 0L)
+            source.toResponse(
+                pendingSuggestedTopicsCount = pendingSuggestionsBySourceId[source.id] ?: 0L,
+                topics = activeTopicsBySourceId[source.id].orEmpty()
+            )
         }
         val nextCursor = if (hasMore && pageItems.isNotEmpty()) {
-            val lastSource = pageItems.last()
-            SourcePageCursorCodec.encode(SourcePageCursor(updatedAt = lastSource.updatedAt, id = lastSource.id))
+            SourceListCursorCodec.encode(pageItems.last().toListCursor(sortStrategy))
         } else {
             null
         }
@@ -179,6 +188,43 @@ class SourceService(
             nextCursor = nextCursor,
             hasMore = hasMore,
             limit = normalizedLimit
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun searchSources(query: String, limit: Int? = null): SourceSearchResponse {
+        val trimmedQuery = query.trim()
+        if (trimmedQuery.isBlank()) {
+            return SourceSearchResponse(items = emptyList())
+        }
+
+        val userId = currentUserProvider.requireUserId()
+        val normalizedLimit = normalizeSearchLimit(limit)
+        logger.info(
+            "[service] Searching sources userId={} queryLength={} limit={}",
+            userId,
+            trimmedQuery.length,
+            normalizedLimit
+        )
+
+        val items = sourceRepository.searchSources(
+            userId = userId,
+            query = trimmedQuery,
+            limit = normalizedLimit
+        )
+        val activeTopicsBySourceId = loadActiveTopicsBySourceId(userId, items.map { it.id })
+
+        return SourceSearchResponse(
+            items = items.map { source ->
+                SourceSearchResultDto(
+                    id = source.id,
+                    title = source.title,
+                    author = source.author,
+                    domain = source.domain,
+                    sourceType = source.sourceType.name.lowercase(),
+                    topics = activeTopicsBySourceId[source.id].orEmpty()
+                )
+            }
         )
     }
 
@@ -467,6 +513,14 @@ class SourceService(
         return limit.coerceAtMost(maxSourceListLimit)
     }
 
+    private fun normalizeSearchLimit(limit: Int?): Int {
+        if (limit == null) {
+            return defaultSourceSearchLimit
+        }
+        require(limit > 0) { "limit must be greater than 0" }
+        return limit.coerceAtMost(maxSourceSearchLimit)
+    }
+
     private fun loadPendingSuggestionCountsBySourceId(userId: UUID, sources: List<Source>): Map<UUID, Long> {
         if (sources.isEmpty()) {
             return emptyMap()
@@ -478,6 +532,60 @@ class SourceService(
             status = PENDING_TOPIC_LINK_STATUS
         ).associate { projection ->
             projection.sourceId to projection.linkCount
+        }
+    }
+
+    private fun loadActiveTopicsBySourceId(
+        userId: UUID,
+        sourceIds: List<UUID>
+    ): Map<UUID, List<SourceTopicChipDto>> {
+        if (sourceIds.isEmpty()) {
+            return emptyMap()
+        }
+        return topicLinkRepository.findActiveTopicsBySourceIds(userId, sourceIds)
+            .groupBy(
+                keySelector = { it.sourceId },
+                valueTransform = { SourceTopicChipDto(id = it.topicId, name = it.topicName) }
+            )
+    }
+
+    private fun decodeListCursor(cursor: String?, sortStrategy: SourceSortStrategy): SourceListCursor? {
+        if (cursor.isNullOrBlank()) {
+            return null
+        }
+        return try {
+            SourceListCursorCodec.decode(cursor, sortStrategy)
+        } catch (ex: IllegalArgumentException) {
+            if (sortStrategy != SourceSortStrategy.NEWEST) {
+                throw ex
+            }
+            val legacyCursor = SourcePageCursorCodec.decode(cursor)
+            SourceListCursor(
+                sortStrategy = SourceSortStrategy.NEWEST,
+                id = legacyCursor.id,
+                instantValue = legacyCursor.updatedAt
+            )
+        }
+    }
+
+    private fun Source.toListCursor(sortStrategy: SourceSortStrategy): SourceListCursor {
+        return when (sortStrategy) {
+            SourceSortStrategy.NEWEST -> SourceListCursor(
+                sortStrategy = sortStrategy,
+                id = id,
+                instantValue = updatedAt
+            )
+            SourceSortStrategy.OLDEST -> SourceListCursor(
+                sortStrategy = sortStrategy,
+                id = id,
+                instantValue = createdAt
+            )
+            SourceSortStrategy.LONGEST_READ,
+            SourceSortStrategy.SHORTEST_READ -> SourceListCursor(
+                sortStrategy = sortStrategy,
+                id = id,
+                readingTime = metadata?.estimatedReadingTime
+            )
         }
     }
 
