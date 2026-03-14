@@ -10,6 +10,7 @@ const TanStackRouterDevtools =
         })),
       )
 import { LogOut, Settings, Sparkles } from 'lucide-react'
+import { SourceSearchDialog } from '@/features/sources/SourceSearchDialog'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -149,15 +150,18 @@ function RootLayoutContent() {
         <Outlet />
       </main>
       {isChatEligible && (
-        <Button
-          type="button"
-          size="icon"
-          className="fixed right-5 bottom-5 z-40 size-12 rounded-full shadow-lg shadow-primary/20"
-          onClick={openPanelWithDefaultContext}
-          aria-label="Open chat"
-        >
-          <Sparkles className="size-5" />
-        </Button>
+        <>
+          <SourceSearchDialog />
+          <Button
+            type="button"
+            size="icon"
+            className="fixed right-5 bottom-5 z-40 size-12 rounded-full shadow-lg shadow-primary/20"
+            onClick={openPanelWithDefaultContext}
+            aria-label="Open chat"
+          >
+            <Sparkles className="size-5" />
+          </Button>
+        </>
       )}
       <TanStackRouterDevtools />
     </div>
