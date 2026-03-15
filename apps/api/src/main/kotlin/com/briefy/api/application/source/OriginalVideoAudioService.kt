@@ -5,6 +5,7 @@ import com.briefy.api.domain.knowledgegraph.source.SharedAudioCache
 import com.briefy.api.domain.knowledgegraph.source.SharedAudioCacheRepository
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.tts.AudioStorageService
+import com.briefy.api.infrastructure.tts.TtsProviderType
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.time.Instant
@@ -16,8 +17,9 @@ class OriginalVideoAudioService(
     private val idGenerator: IdGenerator
 ) {
     fun findCachedAudio(videoId: String): AudioContent? {
-        val cache = sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+        val cache = sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(
             contentHash(videoId),
+            CACHE_PROVIDER_TYPE,
             ORIGINAL_VIDEO_AUDIO_VOICE_ID,
             ORIGINAL_VIDEO_AUDIO_MODEL_ID
         ) ?: return null
@@ -29,9 +31,20 @@ class OriginalVideoAudioService(
         findCachedAudio(videoId)?.let { return it }
 
         val hash = contentHash(videoId)
-        val objectKey = audioStorageService.objectKeyFor(hash, ORIGINAL_VIDEO_AUDIO_VOICE_ID, ORIGINAL_VIDEO_AUDIO_MODEL_ID)
+        val objectKey = audioStorageService.objectKeyFor(
+            hash,
+            CACHE_PROVIDER_TYPE,
+            ORIGINAL_VIDEO_AUDIO_VOICE_ID,
+            ORIGINAL_VIDEO_AUDIO_MODEL_ID
+        )
         try {
-            audioStorageService.uploadMp3(hash, ORIGINAL_VIDEO_AUDIO_VOICE_ID, ORIGINAL_VIDEO_AUDIO_MODEL_ID, audioBytes)
+            audioStorageService.uploadMp3(
+                hash,
+                CACHE_PROVIDER_TYPE,
+                ORIGINAL_VIDEO_AUDIO_VOICE_ID,
+                ORIGINAL_VIDEO_AUDIO_MODEL_ID,
+                audioBytes
+            )
         } catch (ex: Exception) {
             throw SourceAudioStorageException(
                 storageEndpoint = audioStorageService.endpoint,
@@ -41,7 +54,12 @@ class OriginalVideoAudioService(
             )
         }
         val audioUrl = try {
-            audioStorageService.generatePresignedGetUrl(hash, ORIGINAL_VIDEO_AUDIO_VOICE_ID, ORIGINAL_VIDEO_AUDIO_MODEL_ID)
+            audioStorageService.generatePresignedGetUrl(
+                hash,
+                CACHE_PROVIDER_TYPE,
+                ORIGINAL_VIDEO_AUDIO_VOICE_ID,
+                ORIGINAL_VIDEO_AUDIO_MODEL_ID
+            )
         } catch (ex: Exception) {
             throw SourceAudioPresignException(
                 storageEndpoint = audioStorageService.endpoint,
@@ -59,6 +77,7 @@ class OriginalVideoAudioService(
                 durationSeconds = durationSeconds,
                 format = AUDIO_FORMAT,
                 characterCount = 0,
+                providerType = CACHE_PROVIDER_TYPE,
                 voiceId = ORIGINAL_VIDEO_AUDIO_VOICE_ID,
                 modelId = ORIGINAL_VIDEO_AUDIO_MODEL_ID,
                 createdAt = generatedAt
@@ -73,9 +92,19 @@ class OriginalVideoAudioService(
     }
 
     private fun refresh(cache: SharedAudioCache): AudioContent {
-        val objectKey = audioStorageService.objectKeyFor(cache.contentHash, cache.voiceId, cache.modelId)
+        val objectKey = audioStorageService.objectKeyFor(
+            cache.contentHash,
+            cache.providerType,
+            cache.voiceId,
+            cache.modelId
+        )
         val refreshedUrl = try {
-            audioStorageService.generatePresignedGetUrl(cache.contentHash, cache.voiceId, cache.modelId)
+            audioStorageService.generatePresignedGetUrl(
+                cache.contentHash,
+                cache.providerType,
+                cache.voiceId,
+                cache.modelId
+            )
         } catch (ex: Exception) {
             throw SourceAudioPresignException(
                 storageEndpoint = audioStorageService.endpoint,
@@ -89,8 +118,9 @@ class OriginalVideoAudioService(
 
     private fun upsert(candidate: SharedAudioCache): SharedAudioCache {
         return try {
-            sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+            sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(
                 candidate.contentHash,
+                candidate.providerType,
                 candidate.voiceId,
                 candidate.modelId ?: ORIGINAL_VIDEO_AUDIO_MODEL_ID
             )?.also { existing ->
@@ -98,8 +128,9 @@ class OriginalVideoAudioService(
                 sharedAudioCacheRepository.save(existing)
             } ?: sharedAudioCacheRepository.save(candidate)
         } catch (_: DataIntegrityViolationException) {
-            sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+            sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(
                 candidate.contentHash,
+                candidate.providerType,
                 candidate.voiceId,
                 candidate.modelId ?: ORIGINAL_VIDEO_AUDIO_MODEL_ID
             )?.also { existing ->
@@ -115,6 +146,7 @@ class OriginalVideoAudioService(
             durationSeconds = durationSeconds,
             format = format,
             contentHash = contentHash,
+            providerType = providerType,
             voiceId = voiceId,
             modelId = modelId,
             generatedAt = createdAt
@@ -125,5 +157,6 @@ class OriginalVideoAudioService(
         const val ORIGINAL_VIDEO_AUDIO_VOICE_ID = "__youtube_original__"
         const val ORIGINAL_VIDEO_AUDIO_MODEL_ID = "source_audio_v1"
         private const val AUDIO_FORMAT = "mp3"
+        private val CACHE_PROVIDER_TYPE = TtsProviderType.ELEVENLABS
     }
 }

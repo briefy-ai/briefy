@@ -1,6 +1,7 @@
 package com.briefy.api.application.source
 
-import com.briefy.api.application.settings.UserSettingsService
+import com.briefy.api.application.settings.ResolvedTtsProviderConfig
+import com.briefy.api.application.settings.TtsSettingsService
 import com.briefy.api.domain.knowledgegraph.source.AudioContent
 import com.briefy.api.domain.knowledgegraph.source.NarrationState
 import com.briefy.api.domain.knowledgegraph.source.SharedAudioCache
@@ -13,10 +14,19 @@ import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.extraction.YouTubeExtractionProvider
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.briefy.api.infrastructure.tts.AudioStorageService
-import com.briefy.api.infrastructure.tts.ElevenLabsTtsAdapter
-import com.briefy.api.infrastructure.tts.ElevenLabsTtsException
+import com.briefy.api.infrastructure.tts.InworldTtsException
+import com.briefy.api.infrastructure.tts.InworldTtsProperties
 import com.briefy.api.infrastructure.tts.MarkdownStripper
-import com.briefy.api.infrastructure.tts.TtsProperties
+import com.briefy.api.infrastructure.tts.Mp3AudioAssembler
+import com.briefy.api.infrastructure.tts.NarrationLanguageResolver
+import com.briefy.api.infrastructure.tts.NarrationProperties
+import com.briefy.api.infrastructure.tts.TtsModelCatalog
+import com.briefy.api.infrastructure.tts.TtsProviderRegistry
+import com.briefy.api.infrastructure.tts.TtsProviderType
+import com.briefy.api.infrastructure.tts.TtsSynthesisRequest
+import com.briefy.api.infrastructure.tts.TtsTextChunker
+import com.briefy.api.infrastructure.tts.TtsVoiceResolver
+import com.briefy.api.infrastructure.tts.ElevenLabsTtsException
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.dao.DataIntegrityViolationException
@@ -30,13 +40,17 @@ import java.util.UUID
 class SourceNarrationService(
     private val sourceRepository: SourceRepository,
     private val sharedAudioCacheRepository: SharedAudioCacheRepository,
-    private val userSettingsService: UserSettingsService,
-    private val elevenLabsTtsAdapter: ElevenLabsTtsAdapter,
+    private val ttsSettingsService: TtsSettingsService,
+    private val ttsProviderRegistry: TtsProviderRegistry,
+    private val ttsModelCatalog: TtsModelCatalog,
     private val audioStorageService: AudioStorageService,
+    private val narrationLanguageResolver: NarrationLanguageResolver,
+    private val ttsVoiceResolver: TtsVoiceResolver,
     private val originalVideoAudioService: OriginalVideoAudioService,
     private val youTubeExtractionProvider: YouTubeExtractionProvider,
     private val markdownStripper: MarkdownStripper,
-    private val ttsProperties: TtsProperties,
+    private val narrationProperties: NarrationProperties,
+    private val inworldProperties: InworldTtsProperties,
     private val currentUserProvider: CurrentUserProvider,
     private val idGenerator: IdGenerator,
     private val eventPublisher: ApplicationEventPublisher,
@@ -61,7 +75,7 @@ class SourceNarrationService(
             validateYoutubeNarrationRequest(source.status, source.metadata?.videoId)
         } else {
             validateNarrationRequest(source.status, source.content?.text)
-            requireElevenLabsApiKey(userId)
+            requirePreferredProvider(userId)
         }
 
         source.requestNarration()
@@ -92,7 +106,7 @@ class SourceNarrationService(
             validateYoutubeNarrationRequest(source.status, source.metadata?.videoId)
         } else {
             validateNarrationRequest(source.status, source.content?.text)
-            requireElevenLabsApiKey(userId)
+            requirePreferredProvider(userId)
         }
 
         source.requestNarration()
@@ -120,15 +134,21 @@ class SourceNarrationService(
             )
         }
 
-        val voiceId = existingAudio.voiceId ?: ttsProperties.voiceId
+        val providerType = existingAudio.providerType ?: TtsProviderType.ELEVENLABS
+        val voiceId = existingAudio.voiceId ?: ttsVoiceResolver.resolveVoiceId(providerType, "en")
         val modelId = existingAudio.modelId
-        val refreshedUrl = audioStorageService.generatePresignedGetUrl(existingAudio.contentHash, voiceId, modelId)
+        val refreshedUrl = audioStorageService.generatePresignedGetUrl(existingAudio.contentHash, providerType, voiceId, modelId)
         val refreshedAudio = existingAudio.copy(audioUrl = refreshedUrl)
         source.completeNarration(refreshedAudio)
         sourceRepository.save(source)
 
         if (modelId != null) {
-            sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(existingAudio.contentHash, voiceId, modelId)?.let { cache ->
+            sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(
+                existingAudio.contentHash,
+                providerType,
+                voiceId,
+                modelId
+            )?.let { cache ->
                 cache.audioUrl = refreshedUrl
                 sharedAudioCacheRepository.save(cache)
             }
@@ -147,16 +167,22 @@ class SourceNarrationService(
             validateYoutubeNarrationRequest(source.status, source.metadata?.videoId)
             return NarrationEstimateResponse(
                 characterCount = 0,
-                modelId = OriginalVideoAudioService.ORIGINAL_VIDEO_AUDIO_MODEL_ID
+                provider = YOUTUBE_ORIGINAL_AUDIO_PROVIDER,
+                modelId = OriginalVideoAudioService.ORIGINAL_VIDEO_AUDIO_MODEL_ID,
+                estimatedCostUsd = java.math.BigDecimal.ZERO.setScale(3)
             )
         }
 
         validateNarrationRequest(source.status, source.content?.text)
-        requireElevenLabsApiKey(userId)
+        val providerConfig = requirePreferredProvider(userId)
+        val characterCount = markdownStripper.strip(source.content!!.text).length
+        val model = ttsModelCatalog.modelFor(providerConfig.providerType, providerConfig.modelId)
 
         return NarrationEstimateResponse(
-            characterCount = markdownStripper.strip(source.content!!.text).length,
-            modelId = ttsProperties.modelId
+            characterCount = characterCount,
+            provider = providerConfig.providerType.apiValue,
+            modelId = providerConfig.modelId,
+            estimatedCostUsd = model.estimateCostUsd(characterCount)
         )
     }
 
@@ -185,6 +211,7 @@ class SourceNarrationService(
                 TextNarrationInput(
                     sourceId = source.id,
                     userId = source.userId,
+                    transcriptLanguage = source.metadata?.transcriptLanguage,
                     contentText = contentText,
                     contentHash = NarrationContentHashing.hash(contentText)
                 )
@@ -202,18 +229,30 @@ class SourceNarrationService(
             markNarrationFailedIfCurrent(loaded, REASON_EMPTY_CONTENT)
             return
         }
-        if (plainText.length > ttsProperties.maxCharacters) {
+        if (plainText.length > narrationProperties.maxCharacters) {
             markNarrationFailedIfCurrent(loaded, REASON_CONTENT_TOO_LONG)
             return
         }
 
+        val providerConfig = try {
+            requirePreferredProvider(loaded.userId)
+        } catch (_: IllegalArgumentException) {
+            markNarrationFailedIfCurrent(loaded, REASON_PROVIDER_NOT_CONFIGURED)
+            logger.warn("[narration] skipped sourceId={} userId={} reason={}", loaded.sourceId, loaded.userId, REASON_PROVIDER_NOT_CONFIGURED)
+            return
+        }
+
+        val languageCode = narrationLanguageResolver.resolve(loaded.transcriptLanguage, loaded.contentText)
+        val voiceId = ttsVoiceResolver.resolveVoiceId(providerConfig.providerType, languageCode)
+
         val cachedAudio = transactionTemplate.execute {
             NarrationContentHashing.lookupHashes(loaded.contentText)
                 .firstNotNullOfOrNull { hash ->
-                    sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+                    sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(
                         hash,
-                        ttsProperties.voiceId,
-                        ttsProperties.modelId
+                        providerConfig.providerType,
+                        voiceId,
+                        providerConfig.modelId
                     )
                 }
         }
@@ -222,17 +261,13 @@ class SourceNarrationService(
             return
         }
 
-        val apiKey = try {
-            requireElevenLabsApiKey(loaded.userId)
-        } catch (ex: IllegalArgumentException) {
-            markNarrationFailedIfCurrent(loaded, REASON_PROVIDER_NOT_CONFIGURED)
-            logger.warn("[narration] skipped sourceId={} userId={} reason={}", loaded.sourceId, loaded.userId, REASON_PROVIDER_NOT_CONFIGURED)
-            return
-        }
-
         val audioBytes = try {
-            elevenLabsTtsAdapter.synthesize(plainText, apiKey)
+            synthesizeAudio(providerConfig, voiceId, plainText)
         } catch (ex: ElevenLabsTtsException) {
+            markNarrationFailedIfCurrent(loaded, ex.code)
+            logger.warn("[narration] tts_failed sourceId={} userId={} reason={}", loaded.sourceId, loaded.userId, ex.code, ex)
+            return
+        } catch (ex: InworldTtsException) {
             markNarrationFailedIfCurrent(loaded, ex.code)
             logger.warn("[narration] tts_failed sourceId={} userId={} reason={}", loaded.sourceId, loaded.userId, ex.code, ex)
             return
@@ -243,7 +278,13 @@ class SourceNarrationService(
         }
 
         try {
-            audioStorageService.uploadMp3(loaded.contentHash, ttsProperties.voiceId, ttsProperties.modelId, audioBytes)
+            audioStorageService.uploadMp3(
+                loaded.contentHash,
+                providerConfig.providerType,
+                voiceId,
+                providerConfig.modelId,
+                audioBytes
+            )
         } catch (ex: Exception) {
             markNarrationFailedIfCurrent(loaded, REASON_STORAGE_FAILED)
             logger.warn(
@@ -258,7 +299,12 @@ class SourceNarrationService(
 
         val generatedAt = Instant.now()
         val audioUrl = try {
-            audioStorageService.generatePresignedGetUrl(loaded.contentHash, ttsProperties.voiceId, ttsProperties.modelId)
+            audioStorageService.generatePresignedGetUrl(
+                loaded.contentHash,
+                providerConfig.providerType,
+                voiceId,
+                providerConfig.modelId
+            )
         } catch (ex: Exception) {
             markNarrationFailedIfCurrent(loaded, REASON_AUDIO_REFRESH_FAILED)
             logger.warn(
@@ -280,8 +326,9 @@ class SourceNarrationService(
                 durationSeconds = durationSeconds,
                 format = AUDIO_FORMAT,
                 characterCount = plainText.length,
-                voiceId = ttsProperties.voiceId,
-                modelId = ttsProperties.modelId,
+                providerType = providerConfig.providerType,
+                voiceId = voiceId,
+                modelId = providerConfig.modelId,
                 createdAt = generatedAt
             )
         )
@@ -293,6 +340,7 @@ class SourceNarrationService(
                 durationSeconds = sharedAudio.durationSeconds,
                 format = sharedAudio.format,
                 contentHash = sharedAudio.contentHash,
+                providerType = sharedAudio.providerType,
                 voiceId = sharedAudio.voiceId,
                 modelId = sharedAudio.modelId,
                 generatedAt = sharedAudio.createdAt
@@ -300,9 +348,10 @@ class SourceNarrationService(
         )
 
         logger.info(
-            "[narration] completed sourceId={} userId={} contentHash={} cached=false durationSeconds={}",
+            "[narration] completed sourceId={} userId={} provider={} contentHash={} cached=false durationSeconds={}",
             loaded.sourceId,
             loaded.userId,
+            providerConfig.providerType.apiValue,
             loaded.contentHash,
             durationSeconds
         )
@@ -310,7 +359,12 @@ class SourceNarrationService(
 
     private fun completeFromCache(loaded: TextNarrationInput, cachedAudio: SharedAudioCache) {
         val refreshedUrl = try {
-            audioStorageService.generatePresignedGetUrl(cachedAudio.contentHash, cachedAudio.voiceId, cachedAudio.modelId)
+            audioStorageService.generatePresignedGetUrl(
+                cachedAudio.contentHash,
+                cachedAudio.providerType,
+                cachedAudio.voiceId,
+                cachedAudio.modelId
+            )
         } catch (ex: Exception) {
             markNarrationFailedIfCurrent(loaded, REASON_AUDIO_REFRESH_FAILED)
             logger.warn(
@@ -325,8 +379,9 @@ class SourceNarrationService(
 
         transactionTemplate.execute<Unit?> {
             val modelId = cachedAudio.modelId ?: return@execute null
-            sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+            sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(
                 cachedAudio.contentHash,
+                cachedAudio.providerType,
                 cachedAudio.voiceId,
                 modelId
             )?.let { cache ->
@@ -343,6 +398,7 @@ class SourceNarrationService(
                 durationSeconds = cachedAudio.durationSeconds,
                 format = cachedAudio.format,
                 contentHash = cachedAudio.contentHash,
+                providerType = cachedAudio.providerType,
                 voiceId = cachedAudio.voiceId,
                 modelId = cachedAudio.modelId,
                 generatedAt = cachedAudio.createdAt
@@ -350,9 +406,10 @@ class SourceNarrationService(
         )
 
         logger.info(
-            "[narration] completed sourceId={} userId={} contentHash={} cached=true durationSeconds={}",
+            "[narration] completed sourceId={} userId={} provider={} contentHash={} cached=true durationSeconds={}",
             loaded.sourceId,
             loaded.userId,
+            cachedAudio.providerType.apiValue,
             loaded.contentHash,
             cachedAudio.durationSeconds
         )
@@ -535,10 +592,11 @@ class SourceNarrationService(
     private fun upsertSharedAudioCache(candidate: SharedAudioCache): SharedAudioCache {
         return try {
             transactionTemplate.execute {
-                sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+                sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(
                     candidate.contentHash,
+                    candidate.providerType,
                     candidate.voiceId,
-                    candidate.modelId ?: ttsProperties.modelId
+                    candidate.modelId ?: throw IllegalStateException("Model id is required for shared audio cache")
                 )
                     ?.also { existing ->
                         existing.audioUrl = candidate.audioUrl
@@ -548,16 +606,39 @@ class SourceNarrationService(
             } ?: candidate
         } catch (_: DataIntegrityViolationException) {
             transactionTemplate.execute {
-                sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+                sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(
                     candidate.contentHash,
+                    candidate.providerType,
                     candidate.voiceId,
-                    candidate.modelId ?: ttsProperties.modelId
+                    candidate.modelId ?: throw IllegalStateException("Model id is required for shared audio cache")
                 )?.also { existing ->
                     existing.audioUrl = candidate.audioUrl
                     sharedAudioCacheRepository.save(existing)
                 }
             } ?: throw IllegalStateException("Shared audio cache conflict could not be resolved")
         }
+    }
+
+    private fun synthesizeAudio(providerConfig: ResolvedTtsProviderConfig, voiceId: String, plainText: String): ByteArray {
+        val provider = ttsProviderRegistry.get(providerConfig.providerType)
+        val chunks = if (providerConfig.providerType == TtsProviderType.INWORLD) {
+            TtsTextChunker.split(plainText, inworldProperties.maxCharactersPerRequest)
+        } else {
+            listOf(plainText)
+        }
+
+        val audioChunks = chunks.map { chunk ->
+            provider.synthesize(
+                TtsSynthesisRequest(
+                    text = chunk,
+                    apiKey = providerConfig.apiKey,
+                    voiceId = voiceId,
+                    modelId = providerConfig.modelId
+                )
+            )
+        }
+
+        return Mp3AudioAssembler.concatenate(audioChunks)
     }
 
     private fun validateNarrationRequest(status: SourceStatus, contentText: String?) {
@@ -567,6 +648,11 @@ class SourceNarrationService(
         if (contentText.isNullOrBlank()) {
             throw InvalidSourceStateException("Cannot narrate a source without extracted content")
         }
+    }
+
+    private fun requirePreferredProvider(userId: UUID): ResolvedTtsProviderConfig {
+        return ttsSettingsService.resolvePreferredProvider(userId)
+            ?: throw IllegalArgumentException("Preferred TTS provider is not enabled or configured in Settings")
     }
 
     private fun validateYoutubeNarrationRequest(status: SourceStatus, videoId: String?) {
@@ -582,14 +668,10 @@ class SourceNarrationService(
         return source.sourceType == SourceType.VIDEO && source.url.platform.equals("youtube", ignoreCase = true)
     }
 
-    private fun requireElevenLabsApiKey(userId: UUID): String {
-        return userSettingsService.getElevenlabsApiKey(userId)
-            ?: throw IllegalArgumentException("ElevenLabs is not enabled or configured in Settings")
-    }
-
     private data class TextNarrationInput(
         val sourceId: UUID,
         val userId: UUID,
+        val transcriptLanguage: String?,
         val contentText: String,
         val contentHash: String
     )
@@ -604,9 +686,10 @@ class SourceNarrationService(
 
     companion object {
         private const val AUDIO_FORMAT = "mp3"
+        private const val YOUTUBE_ORIGINAL_AUDIO_PROVIDER = "youtube_original_audio"
         private const val REASON_EMPTY_CONTENT = "empty_plaintext_content"
         private const val REASON_CONTENT_TOO_LONG = "content_too_long"
-        private const val REASON_PROVIDER_NOT_CONFIGURED = "elevenlabs_not_configured"
+        private const val REASON_PROVIDER_NOT_CONFIGURED = "tts_provider_not_configured"
         private const val REASON_TTS_FAILED = "tts_generation_failed"
         private const val REASON_STORAGE_FAILED = "audio_storage_failed"
         private const val REASON_AUDIO_REFRESH_FAILED = "audio_url_refresh_failed"

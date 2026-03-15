@@ -1,5 +1,6 @@
 package com.briefy.api.api
 
+import com.briefy.api.application.source.NarrationContentHashing
 import com.briefy.api.domain.knowledgegraph.source.AudioContent
 import com.briefy.api.domain.knowledgegraph.source.Content
 import com.briefy.api.domain.knowledgegraph.source.Metadata
@@ -12,6 +13,7 @@ import com.briefy.api.domain.sharing.ShareLink
 import com.briefy.api.domain.sharing.ShareLinkEntityType
 import com.briefy.api.domain.sharing.ShareLinkRepository
 import com.briefy.api.infrastructure.tts.AudioStorageService
+import com.briefy.api.infrastructure.tts.TtsProviderType
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
 import org.springframework.beans.factory.annotation.Autowired
@@ -55,6 +57,7 @@ class ShareLinkControllerTest {
                     durationSeconds = 42,
                     format = "mp3",
                     contentHash = "source-hash",
+                    providerType = TtsProviderType.ELEVENLABS,
                     voiceId = "iiidtqDt9FBdT1vfBluA",
                     modelId = "eleven_flash_v2_5",
                     generatedAt = Instant.parse("2026-03-15T10:00:00Z")
@@ -64,7 +67,7 @@ class ShareLinkControllerTest {
         sourceRepository.save(source)
         val token = saveShareLink(source)
 
-        `when`(audioStorageService.generatePresignedGetUrl("source-hash", "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+        `when`(audioStorageService.generatePresignedGetUrl("source-hash", TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
             .thenReturn("https://fresh.example.com/source.mp3")
 
         mockMvc.perform(get("/api/public/share/$token"))
@@ -78,9 +81,7 @@ class ShareLinkControllerTest {
     fun `GET public share returns youtube original audio from shared cache`() {
         val source = saveActiveYoutubeSource()
         val token = saveShareLink(source)
-        val contentHash = java.security.MessageDigest.getInstance("SHA-256")
-            .digest("youtube-original:dQw4w9WgXcQ".toByteArray(Charsets.UTF_8))
-            .joinToString("") { byte -> "%02x".format(byte) }
+        val contentHash = NarrationContentHashing.hash("youtube-original:dQw4w9WgXcQ")
         sharedAudioCacheRepository.save(
             SharedAudioCache(
                 id = UUID.randomUUID(),
@@ -89,13 +90,14 @@ class ShareLinkControllerTest {
                 durationSeconds = 61,
                 format = "mp3",
                 characterCount = 0,
+                providerType = TtsProviderType.ELEVENLABS,
                 voiceId = "__youtube_original__",
                 modelId = "source_audio_v1",
                 createdAt = Instant.parse("2026-03-15T10:00:00Z")
             )
         )
 
-        `when`(audioStorageService.generatePresignedGetUrl(contentHash, "__youtube_original__", "source_audio_v1"))
+        `when`(audioStorageService.generatePresignedGetUrl(contentHash, TtsProviderType.ELEVENLABS, "__youtube_original__", "source_audio_v1"))
             .thenReturn("https://fresh.example.com/youtube.mp3")
 
         mockMvc.perform(get("/api/public/share/$token"))
@@ -117,13 +119,14 @@ class ShareLinkControllerTest {
                 durationSeconds = 17,
                 format = "mp3",
                 characterCount = source.content!!.text.length,
+                providerType = TtsProviderType.ELEVENLABS,
                 voiceId = "iiidtqDt9FBdT1vfBluA",
                 modelId = "eleven_flash_v2_5",
                 createdAt = Instant.parse("2026-03-15T10:00:00Z")
             )
         )
 
-        `when`(audioStorageService.generatePresignedGetUrl(contentHash, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+        `when`(audioStorageService.generatePresignedGetUrl(contentHash, TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
             .thenReturn("https://fresh.example.com/cached.mp3")
 
         mockMvc.perform(get("/api/public/share/$token"))
@@ -141,6 +144,7 @@ class ShareLinkControllerTest {
                     durationSeconds = 42,
                     format = "mp3",
                     contentHash = "source-hash",
+                    providerType = TtsProviderType.ELEVENLABS,
                     voiceId = "iiidtqDt9FBdT1vfBluA",
                     modelId = "eleven_flash_v2_5",
                     generatedAt = Instant.parse("2026-03-15T10:00:00Z")
@@ -150,12 +154,72 @@ class ShareLinkControllerTest {
         sourceRepository.save(source)
         val token = saveShareLink(source)
 
-        `when`(audioStorageService.generatePresignedGetUrl("source-hash", "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+        `when`(audioStorageService.generatePresignedGetUrl("source-hash", TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
             .thenReturn("https://fresh.example.com/source.mp3")
 
         mockMvc.perform(get("/api/public/share/$token/audio"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.audioUrl").value("https://fresh.example.com/source.mp3"))
+    }
+
+    @Test
+    fun `GET public share falls back to inworld cache using spanish voice`() {
+        val source = saveActiveSource(
+            contentText = "Hola, esta es una narracion compartida para una fuente en espanol.",
+            transcriptLanguage = "es"
+        )
+        val token = saveShareLink(source)
+        val contentHash = legacyHash(source.content!!.text)
+        sharedAudioCacheRepository.save(
+            SharedAudioCache(
+                id = UUID.randomUUID(),
+                contentHash = contentHash,
+                audioUrl = "https://old.example.com/cached-es.mp3",
+                durationSeconds = 21,
+                format = "mp3",
+                characterCount = source.content!!.text.length,
+                providerType = TtsProviderType.INWORLD,
+                voiceId = "Miguel",
+                modelId = "inworld-tts-1.5-mini",
+                createdAt = Instant.parse("2026-03-15T10:00:00Z")
+            )
+        )
+
+        `when`(audioStorageService.generatePresignedGetUrl(contentHash, TtsProviderType.INWORLD, "Miguel", "inworld-tts-1.5-mini"))
+            .thenReturn("https://fresh.example.com/cached-es.mp3")
+
+        mockMvc.perform(get("/api/public/share/$token"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.source.audio.audioUrl").value("https://fresh.example.com/cached-es.mp3"))
+            .andExpect(jsonPath("$.source.audio.durationSeconds").value(21))
+    }
+
+    @Test
+    fun `GET public share returns source narration for legacy source audio without stored voice id`() {
+        val source = saveActiveSource().apply {
+            completeNarration(
+                AudioContent(
+                    audioUrl = "https://old.example.com/source.mp3",
+                    durationSeconds = 18,
+                    format = "mp3",
+                    contentHash = "legacy-source-hash",
+                    providerType = TtsProviderType.ELEVENLABS,
+                    voiceId = null,
+                    modelId = "eleven_flash_v2_5",
+                    generatedAt = Instant.parse("2026-03-15T10:00:00Z")
+                )
+            )
+        }
+        sourceRepository.save(source)
+        val token = saveShareLink(source)
+
+        `when`(audioStorageService.generatePresignedGetUrl("legacy-source-hash", TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+            .thenReturn("https://fresh.example.com/source-legacy.mp3")
+
+        mockMvc.perform(get("/api/public/share/$token"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.source.audio.audioUrl").value("https://fresh.example.com/source-legacy.mp3"))
+            .andExpect(jsonPath("$.source.audio.durationSeconds").value(18))
     }
 
     @Test
@@ -167,6 +231,7 @@ class ShareLinkControllerTest {
                     durationSeconds = 24,
                     format = "mp3",
                     contentHash = "archived-hash",
+                    providerType = TtsProviderType.ELEVENLABS,
                     voiceId = "iiidtqDt9FBdT1vfBluA",
                     modelId = "eleven_flash_v2_5",
                     generatedAt = Instant.parse("2026-03-15T10:00:00Z")
@@ -177,7 +242,7 @@ class ShareLinkControllerTest {
         sourceRepository.save(source)
         val token = saveShareLink(source)
 
-        `when`(audioStorageService.generatePresignedGetUrl("archived-hash", "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+        `when`(audioStorageService.generatePresignedGetUrl("archived-hash", TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
             .thenReturn("https://fresh.example.com/archived.mp3")
 
         mockMvc.perform(get("/api/public/share/$token"))
@@ -197,9 +262,11 @@ class ShareLinkControllerTest {
         return shareLink.token
     }
 
-    private fun saveActiveSource(): Source {
+    private fun saveActiveSource(
+        contentText: String = "Shared source narration content ${UUID.randomUUID()}",
+        transcriptLanguage: String? = null
+    ): Source {
         val userId = UUID.randomUUID()
-        val contentText = "Shared source narration content ${UUID.randomUUID()}"
         val source = Source.create(
             id = UUID.randomUUID(),
             rawUrl = "https://example.com/source/${UUID.randomUUID()}",
@@ -216,7 +283,8 @@ class ShareLinkControllerTest {
                 platform = "web",
                 wordCount = content.wordCount,
                 aiFormatted = true,
-                extractionProvider = "jsoup"
+                extractionProvider = "jsoup",
+                transcriptLanguage = transcriptLanguage
             )
         )
         return sourceRepository.save(source)

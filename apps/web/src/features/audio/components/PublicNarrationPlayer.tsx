@@ -25,6 +25,23 @@ export function PublicNarrationPlayer({
   audioUrl,
   durationSeconds,
 }: PublicNarrationPlayerProps) {
+  return (
+    <PublicNarrationPlayerContent
+      key={`${token}:${audioUrl}:${durationSeconds}`}
+      token={token}
+      title={title}
+      audioUrl={audioUrl}
+      durationSeconds={durationSeconds}
+    />
+  )
+}
+
+function PublicNarrationPlayerContent({
+  token,
+  title,
+  audioUrl,
+  durationSeconds,
+}: PublicNarrationPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const currentUrlRef = useRef(audioUrl)
   const refreshAttemptsRef = useRef(0)
@@ -86,17 +103,6 @@ export function PublicNarrationPlayer({
       audio.src = ''
     }
   }, [])
-
-  useEffect(() => {
-    const audio = audioRef.current
-    playbackSessionRef.current += 1
-    currentUrlRef.current = audioUrl
-    refreshAttemptsRef.current = 0
-    hasStartedPlaybackRef.current = false
-    if (!audio) return
-    audio.pause()
-    audio.src = ''
-  }, [audioUrl, durationSeconds, token])
 
   const playFromUrl = useCallback(async (nextUrl: string, seekTo?: number) => {
     const audio = audioRef.current

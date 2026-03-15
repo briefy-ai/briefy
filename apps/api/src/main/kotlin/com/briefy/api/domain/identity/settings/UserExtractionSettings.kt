@@ -4,6 +4,9 @@ import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import com.briefy.api.infrastructure.tts.TtsProviderType
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
 import java.time.Instant
 import java.util.UUID
 
@@ -33,6 +36,22 @@ class UserExtractionSettings(
 
     @Column(name = "elevenlabs_api_key_encrypted", columnDefinition = "TEXT")
     var elevenlabsApiKeyEncrypted: String? = null,
+
+    @Column(name = "elevenlabs_model_id", length = 100)
+    var elevenlabsModelId: String? = null,
+
+    @Column(name = "inworld_enabled", nullable = false)
+    var inworldEnabled: Boolean = false,
+
+    @Column(name = "inworld_api_key_encrypted", columnDefinition = "TEXT")
+    var inworldApiKeyEncrypted: String? = null,
+
+    @Column(name = "inworld_model_id", length = 100)
+    var inworldModelId: String? = null,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tts_preferred_provider", nullable = false, length = 30)
+    var ttsPreferredProvider: TtsProviderType = TtsProviderType.ELEVENLABS,
 
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant = Instant.now(),

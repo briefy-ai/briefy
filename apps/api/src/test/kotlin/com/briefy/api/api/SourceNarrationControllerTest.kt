@@ -10,6 +10,7 @@ import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceType
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.briefy.api.infrastructure.tts.AudioStorageService
+import com.briefy.api.infrastructure.tts.TtsProviderType
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
@@ -48,10 +49,11 @@ class SourceNarrationControllerTest {
     @MockitoBean
     lateinit var audioStorageService: AudioStorageService
 
-    private val testUserId = UUID.fromString("11111111-1111-1111-1111-111111111111")
+    private lateinit var testUserId: UUID
 
     @BeforeEach
     fun setUp() {
+        testUserId = UUID.randomUUID()
         `when`(currentUserProvider.requireUserId()).thenReturn(testUserId)
     }
 
@@ -89,11 +91,13 @@ class SourceNarrationControllerTest {
         mockMvc.perform(get("/api/sources/${source.id}/narrate/estimate"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.characterCount").value(32))
+            .andExpect(jsonPath("$.provider").value("elevenlabs"))
             .andExpect(jsonPath("$.modelId").value("eleven_flash_v2_5"))
+            .andExpect(jsonPath("$.estimatedCostUsd").value(0.002))
     }
 
     @Test
-    fun `GET narration estimate returns bad request when ElevenLabs is not configured`() {
+    fun `GET narration estimate returns bad request when preferred provider is not configured`() {
         val source = saveActiveSource()
 
         mockMvc.perform(get("/api/sources/${source.id}/narrate/estimate"))
@@ -149,6 +153,7 @@ class SourceNarrationControllerTest {
                     durationSeconds = 12,
                     format = "mp3",
                     contentHash = "abc123",
+                    providerType = TtsProviderType.ELEVENLABS,
                     voiceId = "iiidtqDt9FBdT1vfBluA",
                     modelId = "eleven_flash_v2_5",
                     generatedAt = Instant.parse("2026-03-15T10:00:00Z")
@@ -156,7 +161,7 @@ class SourceNarrationControllerTest {
             )
         }
         sourceRepository.save(source)
-        `when`(audioStorageService.generatePresignedGetUrl("abc123", "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+        `when`(audioStorageService.generatePresignedGetUrl("abc123", TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
             .thenReturn("https://new.example.com/audio.mp3")
 
         mockMvc.perform(get("/api/sources/${source.id}/audio"))
@@ -165,6 +170,31 @@ class SourceNarrationControllerTest {
             .andExpect(jsonPath("$.durationSeconds").value(12))
             .andExpect(jsonPath("$.format").value("mp3"))
             .andExpect(jsonPath("$.contentHash").value("abc123"))
+    }
+
+    @Test
+    fun `GET audio refreshes legacy source audio without stored voice id`() {
+        val source = saveActiveSource().apply {
+            completeNarration(
+                AudioContent(
+                    audioUrl = "https://old.example.com/audio.mp3",
+                    durationSeconds = 12,
+                    format = "mp3",
+                    contentHash = "legacy123",
+                    providerType = TtsProviderType.ELEVENLABS,
+                    voiceId = null,
+                    modelId = "eleven_flash_v2_5",
+                    generatedAt = Instant.parse("2026-03-15T10:00:00Z")
+                )
+            )
+        }
+        sourceRepository.save(source)
+        `when`(audioStorageService.generatePresignedGetUrl("legacy123", TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+            .thenReturn("https://new.example.com/audio-legacy.mp3")
+
+        mockMvc.perform(get("/api/sources/${source.id}/audio"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.audioUrl").value("https://new.example.com/audio-legacy.mp3"))
     }
 
     @Test
@@ -178,9 +208,9 @@ class SourceNarrationControllerTest {
 
     private fun enableElevenLabs() {
         mockMvc.perform(
-            put("/api/settings/extraction/providers/elevenlabs")
+            put("/api/settings/tts/providers/elevenlabs")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"enabled":true,"apiKey":"el-user-key"}""")
+                .content("""{"enabled":true,"apiKey":"el-user-key","modelId":"eleven_flash_v2_5"}""")
         )
             .andExpect(status().isOk)
     }

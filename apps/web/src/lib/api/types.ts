@@ -169,7 +169,7 @@ export interface LoginRequest {
   password: string
 }
 
-export type ExtractionProviderType = 'firecrawl' | 'x_api' | 'jsoup' | 'elevenlabs'
+export type ExtractionProviderType = 'firecrawl' | 'x_api' | 'jsoup'
 
 export interface ProviderSettingDto {
   type: ExtractionProviderType
@@ -186,6 +186,40 @@ export interface ExtractionSettingsResponse {
 export interface UpdateProviderRequest {
   enabled: boolean
   apiKey?: string
+}
+
+export type TtsProviderType = 'elevenlabs' | 'inworld'
+
+export interface TtsModelDto {
+  id: string
+  label: string
+  estimatedCostPerMinuteUsd: number
+  estimatedCostTenMinutesUsd: number
+}
+
+export interface TtsProviderSettingDto {
+  type: TtsProviderType
+  label: string
+  enabled: boolean
+  configured: boolean
+  description: string
+  selectedModelId: string
+  models: TtsModelDto[]
+}
+
+export interface TtsSettingsResponse {
+  preferredProvider: TtsProviderType
+  providers: TtsProviderSettingDto[]
+}
+
+export interface UpdateTtsProviderRequest {
+  enabled: boolean
+  apiKey?: string
+  modelId?: string
+}
+
+export interface UpdatePreferredTtsProviderRequest {
+  preferredProvider: TtsProviderType
 }
 
 export interface TelegramLinkStatusResponse {

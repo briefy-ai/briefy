@@ -111,11 +111,17 @@ audio:
     presigned-url-expiry-hours: ${AUDIO_STORAGE_PRESIGNED_URL_EXPIRY_HOURS:24}
 
 tts:
+  max-characters: ${TTS_MAX_CHARACTERS:${ELEVENLABS_MAX_CHARACTERS:100000}}
   elevenlabs:
     base-url: ${ELEVENLABS_BASE_URL:https://api.elevenlabs.io}
     voice-id: ${ELEVENLABS_VOICE_ID:iiidtqDt9FBdT1vfBluA}
-    model-id: ${ELEVENLABS_MODEL_ID:eleven_flash_v2_5}
-    max-characters: ${ELEVENLABS_MAX_CHARACTERS:100000}
+    default-model-id: ${ELEVENLABS_MODEL_ID:eleven_flash_v2_5}
+  inworld:
+    base-url: ${INWORLD_BASE_URL:https://api.inworld.ai}
+    english-voice-id: ${INWORLD_ENGLISH_VOICE_ID:Craig}
+    spanish-voice-id: ${INWORLD_SPANISH_VOICE_ID:Miguel}
+    default-model-id: ${INWORLD_MODEL_ID:inworld-tts-1.5-mini}
+    max-characters-per-request: ${INWORLD_MAX_CHARACTERS_PER_REQUEST:2000}
 
 google:
   auth:

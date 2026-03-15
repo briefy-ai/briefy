@@ -1,7 +1,10 @@
 package com.briefy.api.domain.knowledgegraph.source
 
+import com.briefy.api.infrastructure.tts.TtsProviderType
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.UniqueConstraint
@@ -13,8 +16,8 @@ import java.util.UUID
     name = "shared_audio_cache",
     uniqueConstraints = [
         UniqueConstraint(
-            name = "uq_shared_audio_hash_voice_model",
-            columnNames = ["content_hash", "voice_id", "model_id"]
+            name = "uq_shared_audio_hash_provider_voice_model",
+            columnNames = ["content_hash", "provider_type", "voice_id", "model_id"]
         )
     ]
 )
@@ -36,6 +39,10 @@ class SharedAudioCache(
 
     @Column(name = "character_count", nullable = false)
     val characterCount: Int,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "provider_type", nullable = false, length = 30)
+    val providerType: TtsProviderType,
 
     @Column(name = "voice_id", nullable = false, length = 100)
     val voiceId: String,

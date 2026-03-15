@@ -21,7 +21,7 @@ import java.util.UUID
 @SpringBootTest
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
-class SettingsControllerTest {
+class TtsSettingsControllerTest {
 
     @Autowired
     lateinit var mockMvc: MockMvc
@@ -29,74 +29,89 @@ class SettingsControllerTest {
     @MockitoBean
     lateinit var currentUserProvider: CurrentUserProvider
 
-    private val testUserId: UUID = UUID.fromString("11111111-1111-1111-1111-111111111111")
+    private lateinit var testUserId: UUID
 
     @BeforeEach
     fun setupCurrentUser() {
+        testUserId = UUID.randomUUID()
         `when`(currentUserProvider.requireUserId()).thenReturn(testUserId)
     }
 
     @Test
-    fun `GET extraction settings includes firecrawl x_api and jsoup without secrets`() {
-        mockMvc.perform(get("/api/settings/extraction"))
+    fun `GET tts settings includes elevenlabs and inworld`() {
+        mockMvc.perform(get("/api/settings/tts"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.providers[0].type").value("firecrawl"))
-            .andExpect(jsonPath("$.providers[1].type").value("x_api"))
-            .andExpect(jsonPath("$.providers[2].type").value("jsoup"))
+            .andExpect(jsonPath("$.preferredProvider").value("elevenlabs"))
+            .andExpect(jsonPath("$.providers[0].type").value("elevenlabs"))
+            .andExpect(jsonPath("$.providers[1].type").value("inworld"))
     }
 
     @Test
-    fun `PUT firecrawl updates enabled and configured state`() {
+    fun `PUT elevenlabs settings updates enabled configured and model`() {
         mockMvc.perform(
-            put("/api/settings/extraction/providers/firecrawl")
+            put("/api/settings/tts/providers/elevenlabs")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"enabled":true,"apiKey":"fc-user-key"}""")
+                .content("""{"enabled":true,"apiKey":"el-user-key","modelId":"eleven_turbo_v2_5"}""")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.providers[0].enabled").value(true))
             .andExpect(jsonPath("$.providers[0].configured").value(true))
+            .andExpect(jsonPath("$.providers[0].selectedModelId").value("eleven_turbo_v2_5"))
     }
 
     @Test
-    fun `PUT x_api updates enabled and configured state`() {
+    fun `PUT inworld settings updates enabled configured and model`() {
         mockMvc.perform(
-            put("/api/settings/extraction/providers/x_api")
+            put("/api/settings/tts/providers/inworld")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"enabled":true,"apiKey":"x-user-token"}""")
+                .content("""{"enabled":true,"apiKey":"in-user-key","modelId":"inworld-tts-1.5-max"}""")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.providers[1].enabled").value(true))
             .andExpect(jsonPath("$.providers[1].configured").value(true))
+            .andExpect(jsonPath("$.providers[1].selectedModelId").value("inworld-tts-1.5-max"))
     }
 
     @Test
-    fun `DELETE firecrawl key disables provider`() {
+    fun `PUT preferred provider updates selected provider`() {
         mockMvc.perform(
-            put("/api/settings/extraction/providers/firecrawl")
+            put("/api/settings/tts/providers/inworld")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"enabled":true,"apiKey":"fc-user-key"}""")
+                .content("""{"enabled":true,"apiKey":"in-user-key","modelId":"inworld-tts-1.5-max"}""")
         )
             .andExpect(status().isOk)
 
-        mockMvc.perform(delete("/api/settings/extraction/providers/firecrawl/key"))
+        mockMvc.perform(
+            put("/api/settings/tts/preferred-provider")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"preferredProvider":"inworld"}""")
+        )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.providers[0].enabled").value(false))
-            .andExpect(jsonPath("$.providers[0].configured").value(false))
+            .andExpect(jsonPath("$.preferredProvider").value("inworld"))
     }
 
     @Test
-    fun `DELETE x_api key disables provider`() {
+    fun `PUT preferred provider rejects unconfigured provider`() {
         mockMvc.perform(
-            put("/api/settings/extraction/providers/x_api")
+            put("/api/settings/tts/preferred-provider")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"enabled":true,"apiKey":"x-user-token"}""")
+                .content("""{"preferredProvider":"inworld"}""")
+        )
+            .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `DELETE inworld key disables provider`() {
+        mockMvc.perform(
+            put("/api/settings/tts/providers/inworld")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":true,"apiKey":"in-user-key","modelId":"inworld-tts-1.5-mini"}""")
         )
             .andExpect(status().isOk)
 
-        mockMvc.perform(delete("/api/settings/extraction/providers/x_api/key"))
+        mockMvc.perform(delete("/api/settings/tts/providers/inworld/key"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.providers[1].enabled").value(false))
             .andExpect(jsonPath("$.providers[1].configured").value(false))
     }
-
 }
