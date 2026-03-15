@@ -1,12 +1,18 @@
 package com.briefy.api.application.sharing
 
+import com.briefy.api.application.source.NarrationContentHashing
+import com.briefy.api.domain.knowledgegraph.source.AudioContent
+import com.briefy.api.domain.knowledgegraph.source.SharedAudioCacheRepository
 import com.briefy.api.domain.knowledgegraph.source.Source
+import com.briefy.api.domain.knowledgegraph.source.SourceStatus
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceType
 import com.briefy.api.domain.sharing.ShareLink
 import com.briefy.api.domain.sharing.ShareLinkEntityType
 import com.briefy.api.domain.sharing.ShareLinkRepository
 import com.briefy.api.infrastructure.security.CurrentUserProvider
+import com.briefy.api.infrastructure.tts.AudioStorageService
+import com.briefy.api.infrastructure.tts.TtsProperties
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -25,7 +31,10 @@ import javax.imageio.ImageIO
 class ShareLinkService(
     private val shareLinkRepository: ShareLinkRepository,
     private val sourceRepository: SourceRepository,
-    private val currentUserProvider: CurrentUserProvider
+    private val currentUserProvider: CurrentUserProvider,
+    private val sharedAudioCacheRepository: SharedAudioCacheRepository,
+    private val audioStorageService: AudioStorageService,
+    private val ttsProperties: TtsProperties
 ) {
     private val logger = LoggerFactory.getLogger(ShareLinkService::class.java)
 
@@ -186,9 +195,84 @@ class ShareLinkService(
                 author = source.metadata?.author,
                 publishedDate = source.metadata?.publishedDate,
                 readingTimeMinutes = source.metadata?.estimatedReadingTime,
-                content = source.content?.text
+                content = source.content?.text,
+                audio = resolveSharedNarration(source)
             )
         )
+    }
+
+    @Transactional(readOnly = true)
+    fun resolveAudio(token: String): ShareLinkAudioResponse {
+        val shareLink = resolveActiveShareLink(token)
+        if (shareLink.entityType != ShareLinkEntityType.SOURCE) {
+            throw ShareLinkNotFoundException(token)
+        }
+
+        val source = resolveSourceEntity(shareLink)
+        val audio = resolveSharedNarration(source)
+            ?: throw ShareLinkAudioUnavailableException(token)
+
+        return ShareLinkAudioResponse(audioUrl = audio.audioUrl)
+    }
+
+    private fun resolveSharedNarration(source: Source): SharedSourceAudioData? {
+        if (source.status != SourceStatus.ACTIVE) {
+            return null
+        }
+
+        source.audioContent?.let { audioContent ->
+            return buildSharedSourceAudio(audioContent)
+        }
+
+        val contentText = source.content?.text?.takeIf { it.isNotBlank() } ?: return null
+        val contentHash = NarrationContentHashing.hash(contentText)
+        val cachedAudio = sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+            contentHash,
+            ttsProperties.voiceId,
+            ttsProperties.modelId
+        ) ?: return null
+
+        return try {
+            SharedSourceAudioData(
+                audioUrl = audioStorageService.generatePresignedGetUrl(
+                    cachedAudio.contentHash,
+                    cachedAudio.voiceId,
+                    cachedAudio.modelId
+                ),
+                durationSeconds = cachedAudio.durationSeconds,
+                format = cachedAudio.format
+            )
+        } catch (ex: Exception) {
+            logger.warn(
+                "[service] Share narration cache presign failed sourceId={} contentHash={}",
+                source.id,
+                cachedAudio.contentHash,
+                ex
+            )
+            null
+        }
+    }
+
+    private fun buildSharedSourceAudio(audioContent: AudioContent): SharedSourceAudioData? {
+        return try {
+            val voiceId = audioContent.voiceId ?: ttsProperties.voiceId
+            SharedSourceAudioData(
+                audioUrl = audioStorageService.generatePresignedGetUrl(
+                    audioContent.contentHash,
+                    voiceId,
+                    audioContent.modelId
+                ),
+                durationSeconds = audioContent.durationSeconds,
+                format = audioContent.format
+            )
+        } catch (ex: Exception) {
+            logger.warn(
+                "[service] Share narration source presign failed contentHash={}",
+                audioContent.contentHash,
+                ex
+            )
+            null
+        }
     }
 
     private fun resolveOgImageUrl(source: Source, baseUrl: String, token: String): String {

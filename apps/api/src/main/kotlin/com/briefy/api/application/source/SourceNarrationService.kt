@@ -21,9 +21,7 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
-import java.security.MessageDigest
 import java.time.Instant
-import java.util.HexFormat
 import java.util.UUID
 
 @Service
@@ -157,7 +155,7 @@ class SourceNarrationService(
                 sourceId = source.id,
                 userId = source.userId,
                 contentText = contentText,
-                contentHash = hash(contentText)
+                contentHash = NarrationContentHashing.hash(contentText)
             )
         } ?: return
 
@@ -326,7 +324,7 @@ class SourceNarrationService(
             if (source.status != SourceStatus.ACTIVE || source.narrationState != NarrationState.PENDING) {
                 return@execute null
             }
-            if (hash(source.content?.text.orEmpty()) != loaded.contentHash) {
+            if (NarrationContentHashing.hash(source.content?.text.orEmpty()) != loaded.contentHash) {
                 return@execute null
             }
 
@@ -343,7 +341,7 @@ class SourceNarrationService(
             if (source.status != SourceStatus.ACTIVE || source.narrationState != NarrationState.PENDING) {
                 return@execute null
             }
-            if (hash(source.content?.text.orEmpty()) != loaded.contentHash) {
+            if (NarrationContentHashing.hash(source.content?.text.orEmpty()) != loaded.contentHash) {
                 return@execute null
             }
 
@@ -393,11 +391,6 @@ class SourceNarrationService(
     private fun requireElevenLabsApiKey(userId: UUID): String {
         return userSettingsService.getElevenlabsApiKey(userId)
             ?: throw IllegalArgumentException("ElevenLabs is not enabled or configured in Settings")
-    }
-
-    private fun hash(contentText: String): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(contentText.toByteArray(Charsets.UTF_8))
-        return HexFormat.of().formatHex(digest)
     }
 
     private data class NarrationInput(

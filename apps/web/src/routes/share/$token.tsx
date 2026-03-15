@@ -1,10 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ExternalLink, Headphones, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { MarkdownContent } from '@/components/content/MarkdownContent'
 import { ApiClientError } from '@/lib/api/client'
-import { resolveShareLink, type SharedSourceResponse } from '@/lib/api/shareLinks'
+import { getShareLinkAudio, resolveShareLink, type SharedSourceResponse } from '@/lib/api/shareLinks'
 
 export const Route = createFileRoute('/share/$token')({
   component: SharedSourcePage,
@@ -133,6 +134,14 @@ function SharedSourcePage() {
         )}
       </div>
 
+      {source.audio && (
+        <SharedNarrationCard
+          token={token}
+          data={source.audio}
+          title={source.title ?? source.url}
+        />
+      )}
+
       {source.content ? (
         <MarkdownContent content={source.content} variant="article" />
       ) : (
@@ -153,6 +162,108 @@ function SharedSourcePage() {
   )
 }
 
+function SharedNarrationCard({
+  token,
+  data,
+  title,
+}: {
+  token: string
+  data: NonNullable<SharedSourceResponse['source']['audio']>
+  title: string
+}) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [audioUrl, setAudioUrl] = useState(data.audioUrl)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshAttempted, setRefreshAttempted] = useState(false)
+  const [audioError, setAudioError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setAudioUrl(data.audioUrl)
+    setRefreshing(false)
+    setRefreshAttempted(false)
+    setAudioError(null)
+    audioRef.current?.pause()
+  }, [data.audioUrl, token])
+
+  useEffect(() => {
+    audioRef.current?.load()
+  }, [audioUrl])
+
+  async function handleAudioError() {
+    if (refreshAttempted || refreshing) {
+      setAudioError('Audio is temporarily unavailable.')
+      return
+    }
+
+    setRefreshing(true)
+    setRefreshAttempted(true)
+    try {
+      const refreshed = await getShareLinkAudio(token)
+      setAudioUrl(refreshed.audioUrl)
+      setAudioError(null)
+    } catch {
+      setAudioError('Audio is temporarily unavailable.')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  return (
+    <section className="mb-8 rounded-xl border border-primary/15 bg-primary/5 p-4">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Headphones className="size-4" aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">Prefer listening?</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Audio narration is available for {title}.
+          </p>
+          <div className="mt-3 space-y-2">
+            <audio
+              ref={audioRef}
+              controls
+              preload="none"
+              className="w-full"
+              src={audioUrl}
+              onError={() => void handleAudioError()}
+            >
+              Your browser does not support audio playback.
+            </audio>
+            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span>{formatDuration(data.durationSeconds)}</span>
+              {refreshing && (
+                <span className="inline-flex items-center gap-1">
+                  <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                  Refreshing audio link...
+                </span>
+              )}
+            </div>
+            {audioError && (
+              <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-muted-foreground">
+                <span>{audioError}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setRefreshAttempted(false)
+                    setAudioError(null)
+                    void handleAudioError()
+                  }}
+                  disabled={refreshing}
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function extractDomain(url: string): string {
   try {
     const hostname = new URL(url.startsWith('http') ? url : `https://${url}`).hostname
@@ -160,4 +271,11 @@ function extractDomain(url: string): string {
   } catch {
     return url
   }
+}
+
+function formatDuration(totalSeconds: number): string {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return 'Audio narration'
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')} audio`
 }

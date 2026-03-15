@@ -47,6 +47,13 @@ class ShareLinkController(
         return ResponseEntity.ok(response)
     }
 
+    @GetMapping("/api/public/share/{token}/audio")
+    fun resolveAudio(@PathVariable token: String): ResponseEntity<ShareLinkAudioResponse> {
+        logger.info("[controller] Resolve share link audio token={}…", token.take(8))
+        val response = shareLinkService.resolveAudio(token)
+        return ResponseEntity.ok(response)
+    }
+
     @GetMapping("/api/public/share-html/{token}", produces = [MediaType.TEXT_HTML_VALUE])
     fun shareHtml(
         @PathVariable token: String,
