@@ -553,19 +553,7 @@ class SourceService(
         if (cursor.isNullOrBlank()) {
             return null
         }
-        return try {
-            SourceListCursorCodec.decode(cursor, sortStrategy)
-        } catch (ex: IllegalArgumentException) {
-            if (sortStrategy != SourceSortStrategy.NEWEST) {
-                throw ex
-            }
-            val legacyCursor = SourcePageCursorCodec.decode(cursor)
-            SourceListCursor(
-                sortStrategy = SourceSortStrategy.NEWEST,
-                id = legacyCursor.id,
-                instantValue = legacyCursor.updatedAt
-            )
-        }
+        return SourceListCursorCodec.decode(cursor, sortStrategy)
     }
 
     private fun Source.toListCursor(sortStrategy: SourceSortStrategy): SourceListCursor {
@@ -573,7 +561,7 @@ class SourceService(
             SourceSortStrategy.NEWEST -> SourceListCursor(
                 sortStrategy = sortStrategy,
                 id = id,
-                instantValue = updatedAt
+                instantValue = createdAt
             )
             SourceSortStrategy.OLDEST -> SourceListCursor(
                 sortStrategy = sortStrategy,
