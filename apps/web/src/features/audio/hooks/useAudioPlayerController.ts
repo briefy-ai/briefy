@@ -5,6 +5,7 @@ import { useMediaSession } from './useMediaSession'
 export interface AudioPlayerState {
   currentSourceId: string | null
   currentSourceTitle: string | null
+  currentArtworkUrl: string | null
   isPlaying: boolean
   isLoading: boolean
   currentTime: number
@@ -18,6 +19,7 @@ export function useAudioPlayerController() {
   const [state, setState] = useState<AudioPlayerState>({
     currentSourceId: null,
     currentSourceTitle: null,
+    currentArtworkUrl: null,
     isPlaying: false,
     isLoading: false,
     currentTime: 0,
@@ -74,7 +76,7 @@ export function useAudioPlayerController() {
   }, [])
 
   const playSource = useCallback(
-    (sourceId: string, title: string, audioUrl: string, duration?: number) => {
+    (sourceId: string, title: string, audioUrl: string, duration?: number, artworkUrl?: string | null) => {
       const audio = audioRef.current
       if (!audio) return
 
@@ -86,6 +88,7 @@ export function useAudioPlayerController() {
       setState({
         currentSourceId: sourceId,
         currentSourceTitle: title,
+        currentArtworkUrl: artworkUrl ?? null,
         isPlaying: true,
         isLoading: true,
         currentTime: 0,
@@ -119,6 +122,7 @@ export function useAudioPlayerController() {
     setState({
       currentSourceId: null,
       currentSourceTitle: null,
+      currentArtworkUrl: null,
       isPlaying: false,
       isLoading: false,
       currentTime: 0,
@@ -182,6 +186,7 @@ export function useAudioPlayerController() {
 
   useMediaSession({
     title: state.currentSourceTitle,
+    artworkUrl: state.currentArtworkUrl,
     isPlaying: state.isPlaying,
     onPlay: resume,
     onPause: pause,

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 
 interface UseMediaSessionOptions {
   title: string | null
+  artworkUrl: string | null
   isPlaying: boolean
   onPlay: () => void
   onPause: () => void
@@ -10,8 +11,14 @@ interface UseMediaSessionOptions {
   onStop: () => void
 }
 
+const BRIEFY_ICON_ARTWORK: MediaImage[] = [
+  { src: '/pwa/icon-192.png', sizes: '192x192', type: 'image/png' },
+  { src: '/pwa/icon-512.png', sizes: '512x512', type: 'image/png' },
+]
+
 export function useMediaSession({
   title,
+  artworkUrl,
   isPlaying,
   onPlay,
   onPause,
@@ -26,15 +33,20 @@ export function useMediaSession({
       return
     }
 
+    const artwork: MediaImage[] = artworkUrl
+      ? [{ src: artworkUrl, sizes: '512x512', type: 'image/png' }]
+      : BRIEFY_ICON_ARTWORK
+
     navigator.mediaSession.metadata = new MediaMetadata({
       title,
       artist: 'Briefy',
+      artwork,
     })
 
     return () => {
       navigator.mediaSession.metadata = null
     }
-  }, [title])
+  }, [title, artworkUrl])
 
   useEffect(() => {
     if (!('mediaSession' in navigator)) return

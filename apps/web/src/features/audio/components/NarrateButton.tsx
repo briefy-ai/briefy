@@ -189,7 +189,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
         variant="ghost"
         size="sm"
         onClick={() =>
-          playSource(source.id, title, source.audio!.audioUrl, source.audio!.durationSeconds)
+          playSource(source.id, title, source.audio!.audioUrl, source.audio!.durationSeconds, source.metadata?.ogImageUrl)
         }
         aria-label="Listen to source"
       >

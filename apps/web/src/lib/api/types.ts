@@ -19,6 +19,7 @@ export interface SourceMetadata {
   extractionProvider: string | null
   formattingState: 'pending' | 'succeeded' | 'failed' | 'not_required'
   formattingFailureReason: string | null
+  ogImageUrl: string | null
   videoId: string | null
   videoEmbedUrl: string | null
   videoDurationSeconds: number | null

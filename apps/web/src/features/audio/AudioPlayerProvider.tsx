@@ -6,11 +6,12 @@ import { AudioPlayerBar } from './components/AudioPlayerBar'
 interface AudioPlayerContextValue {
   currentSourceId: string | null
   currentSourceTitle: string | null
+  currentArtworkUrl: string | null
   isPlaying: boolean
   isLoading: boolean
   currentTime: number
   duration: number
-  playSource: (sourceId: string, title: string, audioUrl: string, duration?: number) => void
+  playSource: (sourceId: string, title: string, audioUrl: string, duration?: number, artworkUrl?: string | null) => void
   pause: () => void
   resume: () => void
   seek: (time: number) => void
@@ -31,6 +32,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         value={{
           currentSourceId: controller.currentSourceId,
           currentSourceTitle: controller.currentSourceTitle,
+          currentArtworkUrl: controller.currentArtworkUrl,
           isPlaying: controller.isPlaying,
           isLoading: controller.isLoading,
           currentTime: controller.currentTime,
