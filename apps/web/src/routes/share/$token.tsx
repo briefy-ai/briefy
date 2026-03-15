@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { MarkdownContent } from '@/components/content/MarkdownContent'
 import { PublicNarrationPlayer } from '@/features/audio/components/PublicNarrationPlayer'
 import { ApiClientError } from '@/lib/api/client'
-import { resolveShareLink } from '@/lib/api/shareLinks'
+import { resolveShareLink, type SharedSourceResponse } from '@/lib/api/shareLinks'
 
 export const Route = createFileRoute('/share/$token')({
   component: SharedSourcePage,
