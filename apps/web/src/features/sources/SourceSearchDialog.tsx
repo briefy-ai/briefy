@@ -23,9 +23,9 @@ export function SourceSearchDialog() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const hasModifier = e.metaKey || e.ctrlKey
       if (
-        hasModifier &&
+        e.metaKey &&
+        !e.ctrlKey &&
         !e.altKey &&
         !e.shiftKey &&
         e.key.toLowerCase() === 'o'

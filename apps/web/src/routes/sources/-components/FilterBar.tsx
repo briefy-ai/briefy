@@ -192,16 +192,25 @@ function TopicMultiSelect({
                   className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] leading-tight text-primary/80"
                 >
                   <span className="max-w-[100px] truncate">{t.name}</span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onMouseDown={(e) => {
                       e.stopPropagation()
+                      e.preventDefault()
                       onRemove(t.id)
                     }}
-                    className="hover:text-primary"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        onRemove(t.id)
+                      }
+                    }}
+                    className="hover:text-primary cursor-pointer"
                   >
                     <X className="size-3" />
-                  </button>
+                  </span>
                 </span>
               ))}
               {selectedTopics.length > 2 && (

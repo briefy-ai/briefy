@@ -194,8 +194,10 @@ function SourcesPage() {
 
     try {
       const source = await createSource({ url: url.trim() })
-      if (filter === 'active') {
+      if (filter === 'active' && !activeTopicIds && !activeSourceType) {
         setSources((prev) => [source, ...prev])
+      } else if (filter === 'active') {
+        void fetchSources()
       }
       setUrl('')
     } catch (e) {
