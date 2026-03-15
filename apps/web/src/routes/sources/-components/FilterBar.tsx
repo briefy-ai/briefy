@@ -68,7 +68,7 @@ export function FilterBar({
   const selectedTopicNames = topics.filter((t) => value.topicIds.includes(t.id))
 
   return (
-    <div className="flex items-center gap-3 flex-wrap">
+    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
       {topics.length > 0 && (
         <TopicMultiSelect
           topics={topics}
@@ -80,7 +80,7 @@ export function FilterBar({
       )}
 
       {topics.length > 0 && (
-        <div className="h-5 w-px bg-border/50 shrink-0" />
+        <div className="hidden sm:block h-5 w-px bg-border/50 shrink-0" />
       )}
 
       <TooltipProvider>
@@ -110,13 +110,13 @@ export function FilterBar({
         </div>
       </TooltipProvider>
 
-      <div className="h-5 w-px bg-border/50 shrink-0" />
+      <div className="hidden sm:block h-5 w-px bg-border/50 shrink-0" />
 
       <Select
         value={value.sort}
         onValueChange={(sort) => onChange({ ...value, sort })}
       >
-        <SelectTrigger className="h-7 w-[140px] text-xs border-border/50 bg-transparent shrink-0">
+        <SelectTrigger className="h-7 w-[120px] sm:w-[140px] text-xs border-border/50 bg-transparent shrink-0">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -185,34 +185,42 @@ function TopicMultiSelect({
           <span>Topics</span>
         ) : (
           <span className="flex items-center gap-1.5">
-            {selectedTopics.slice(0, 2).map((t) => (
-              <span
-                key={t.id}
-                className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] leading-tight text-primary/80"
-              >
-                <span className="max-w-[100px] truncate">{t.name}</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onRemove(t.id)
-                  }}
-                  className="hover:text-primary"
+            <span className="hidden sm:contents">
+              {selectedTopics.slice(0, 2).map((t) => (
+                <span
+                  key={t.id}
+                  className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] leading-tight text-primary/80"
                 >
-                  <X className="size-3" />
-                </button>
-              </span>
-            ))}
-            {selectedTopics.length > 2 && (
-              <span className="text-[11px] text-primary/60">+{selectedTopics.length - 2}</span>
-            )}
+                  <span className="max-w-[100px] truncate">{t.name}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onRemove(t.id)
+                    }}
+                    className="hover:text-primary"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </span>
+              ))}
+              {selectedTopics.length > 2 && (
+                <span className="text-[11px] text-primary/60">+{selectedTopics.length - 2}</span>
+              )}
+            </span>
+            <span className="sm:hidden inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] leading-tight text-primary/80">
+              <span className="max-w-[80px] truncate">{selectedTopics[0].name}</span>
+              {selectedTopics.length > 1 && (
+                <span className="text-primary/60">+{selectedTopics.length - 1}</span>
+              )}
+            </span>
           </span>
         )}
         <ChevronDown className={cn('size-3 opacity-60 shrink-0 ml-1 transition-transform', open && 'rotate-180')} />
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-56 max-h-64 overflow-y-auto rounded-md border border-border/60 bg-popover shadow-lg py-1">
+        <div className="absolute left-0 top-full z-50 mt-1 w-[calc(100vw-3rem)] sm:w-56 max-h-64 overflow-y-auto rounded-md border border-border/60 bg-popover shadow-lg py-1">
           {topics.map((topic) => {
             const checked = selectedIds.includes(topic.id)
             return (

@@ -98,7 +98,7 @@ export function SourceSearchDialog() {
         className="fixed inset-0 bg-black/60 backdrop-blur-sm"
         onClick={() => setOpen(false)}
       />
-      <div className="fixed left-1/2 top-[20%] z-50 w-full max-w-lg -translate-x-1/2 rounded-xl border border-border/60 bg-card shadow-2xl">
+      <div className="fixed left-1/2 top-[15%] sm:top-[20%] z-50 w-[calc(100%-2rem)] sm:w-full max-w-lg -translate-x-1/2 rounded-xl border border-border/60 bg-card shadow-2xl">
         <div className="flex items-center gap-2 border-b border-border/40 px-4">
           <Search className="size-4 text-muted-foreground shrink-0" strokeWidth={1.8} />
           <Command.Input

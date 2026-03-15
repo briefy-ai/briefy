@@ -689,14 +689,21 @@ function SourceCard({
             {source.content?.wordCount && (
               <span>{source.content.wordCount.toLocaleString()} words</span>
             )}
-            {topics.slice(0, 3).map((topic) => (
-              <span
-                key={topic.id}
-                className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary/70"
-              >
-                {topic.name}
-              </span>
-            ))}
+            {topics.length > 0 && (
+              <>
+                <span className="sm:hidden text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary/70 truncate max-w-[120px]">
+                  {topics[0].name}
+                </span>
+                {topics.slice(0, 2).map((topic) => (
+                  <span
+                    key={topic.id}
+                    className="hidden sm:inline text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary/70"
+                  >
+                    {topic.name}
+                  </span>
+                ))}
+              </>
+            )}
           </div>
         )}
       </div>
