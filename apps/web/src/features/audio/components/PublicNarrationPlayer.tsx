@@ -28,6 +28,7 @@ export function PublicNarrationPlayer({
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const currentUrlRef = useRef(audioUrl)
   const refreshAttemptsRef = useRef(0)
+  const hasStartedPlaybackRef = useRef(false)
   const [state, setState] = useState<PlayerState>({
     isPlaying: false,
     isLoading: false,
@@ -89,6 +90,7 @@ export function PublicNarrationPlayer({
     const audio = audioRef.current
     currentUrlRef.current = audioUrl
     refreshAttemptsRef.current = 0
+    hasStartedPlaybackRef.current = false
     setState({
       isPlaying: false,
       isLoading: false,
@@ -221,11 +223,15 @@ export function PublicNarrationPlayer({
     }
   }, [refreshAudioUrl])
 
-  const handlePlay = useCallback(() => {
+  const handlePlay = useCallback((userInitiated: boolean) => {
+    if (!userInitiated && !hasStartedPlaybackRef.current) {
+      return
+    }
     if (audioRef.current?.src) {
       resume()
       return
     }
+    hasStartedPlaybackRef.current = true
     void playFromUrl(currentUrlRef.current)
   }, [playFromUrl, resume])
 
@@ -233,7 +239,7 @@ export function PublicNarrationPlayer({
     title,
     artworkUrl: null,
     isPlaying: state.isPlaying,
-    onPlay: handlePlay,
+    onPlay: () => handlePlay(false),
     onPause: pause,
     onSeekForward: skipForward,
     onSeekBackward: skipBackward,
@@ -243,14 +249,14 @@ export function PublicNarrationPlayer({
   const progress = state.duration > 0 ? (state.currentTime / state.duration) * 100 : 0
 
   return (
-    <div className="mt-4 rounded-xl border border-border/60 bg-background/95 shadow-sm">
+    <div className="mt-4 mb-10 rounded-xl border border-border/60 bg-background/95 shadow-sm">
       <div className="flex items-center gap-3 border-b border-border/40 px-4 py-3">
         <div className="flex size-9 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
           <Headphones className="size-4" aria-hidden="true" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-            Listen instead of reading
+            Prefer listening?
           </p>
           <p className="truncate text-sm font-medium text-foreground">{title}</p>
         </div>
@@ -277,7 +283,7 @@ export function PublicNarrationPlayer({
                 pause()
                 return
               }
-              handlePlay()
+              handlePlay(true)
             }}
             aria-label={state.isPlaying ? 'Pause' : 'Play'}
             disabled={state.isLoading}
