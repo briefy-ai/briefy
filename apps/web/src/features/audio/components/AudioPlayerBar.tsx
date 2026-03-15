@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Loader2, Pause, Play, RotateCcw, RotateCw, X } from 'lucide-react'
+import { Headphones, Loader2, Pause, Play, RotateCcw, RotateCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAudioPlayer } from '../AudioPlayerProvider'
 
@@ -14,6 +14,7 @@ export function AudioPlayerBar() {
   const {
     currentSourceId,
     currentSourceTitle,
+    currentArtworkUrl,
     isPlaying,
     isLoading,
     currentTime,
@@ -36,6 +37,27 @@ export function AudioPlayerBar() {
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-2 px-4 sm:gap-3 sm:px-6">
+        {/* Cover art */}
+        <Link
+          to="/sources/$sourceId"
+          params={{ sourceId: currentSourceId }}
+          className="hidden shrink-0 sm:block"
+        >
+          <div className="size-9 overflow-hidden rounded bg-muted">
+            {currentArtworkUrl ? (
+              <img
+                src={currentArtworkUrl}
+                alt=""
+                className="size-full object-cover"
+              />
+            ) : (
+              <div className="flex size-full items-center justify-center text-muted-foreground">
+                <Headphones className="size-4" />
+              </div>
+            )}
+          </div>
+        </Link>
+
         {/* Source title */}
         <Link
           to="/sources/$sourceId"
