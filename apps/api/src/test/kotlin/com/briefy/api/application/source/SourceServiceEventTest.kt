@@ -383,6 +383,51 @@ class SourceServiceEventTest {
     }
 
     @Test
+    fun `submitSource cache reuse still succeeds when youtube audio lookup fails`() {
+        val userId = UUID.randomUUID()
+        val sourceId = UUID.randomUUID()
+        val url = "https://youtube.com/watch?v=dQw4w9WgXcQ"
+        val normalizedUrl = "https://youtube.com/watch?v=dQw4w9WgXcQ"
+        val now = Instant.now()
+        val snapshot = SharedSourceSnapshot(
+            id = UUID.randomUUID(),
+            urlNormalized = normalizedUrl,
+            sourceType = SourceType.VIDEO,
+            status = SharedSourceSnapshotStatus.ACTIVE,
+            content = Content.from("Cached video transcript"),
+            metadata = Metadata(
+                title = "Cached Video",
+                platform = "youtube",
+                extractionProvider = "youtube",
+                videoId = "dQw4w9WgXcQ",
+                videoEmbedUrl = "https://www.youtube.com/embed/dQw4w9WgXcQ",
+                videoDurationSeconds = 61,
+                transcriptSource = "whisper"
+            ),
+            fetchedAt = now.minusSeconds(120),
+            expiresAt = now.plusSeconds(3600),
+            version = 1,
+            isLatest = true
+        )
+
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.countByUrlNormalized(normalizedUrl)).thenReturn(1)
+        whenever(sourceRepository.findByUserIdAndUrlNormalized(userId, normalizedUrl)).thenReturn(null)
+        whenever(sourceTypeClassifier.classify(normalizedUrl)).thenReturn(SourceType.VIDEO)
+        whenever(freshnessPolicy.ttlSeconds(SourceType.VIDEO)).thenReturn(7 * 24 * 60 * 60L)
+        whenever(sharedSourceSnapshotRepository.findFirstByUrlNormalizedAndIsLatestTrue(normalizedUrl)).thenReturn(snapshot)
+        whenever(freshnessPolicy.isFresh(any(), any())).thenReturn(true)
+        whenever(idGenerator.newId()).thenReturn(sourceId)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+        whenever(originalVideoAudioService.findCachedAudio("dQw4w9WgXcQ")).thenThrow(IllegalStateException("presign failed"))
+
+        val response = service.submitSource(CreateSourceCommand(url = url))
+
+        assertEquals("active", response.status)
+        assertEquals("not_generated", response.narrationState)
+    }
+
+    @Test
     fun `submitSource publishes SourceContentFinalizedEvent when extractor output is already formatted`() {
         val userId = UUID.randomUUID()
         val sourceId = UUID.randomUUID()

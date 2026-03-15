@@ -211,7 +211,6 @@ class YouTubeExtractionProvider(
             val audioFile = try {
                 downloadAudio(ref.canonicalUrl, tempDir)
             } catch (ex: InterruptedException) {
-                Thread.currentThread().interrupt()
                 throw SourceAudioDownloadException("Failed to download original YouTube audio", ex)
             } catch (ex: Exception) {
                 throw SourceAudioDownloadException("Failed to download original YouTube audio", ex)

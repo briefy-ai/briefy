@@ -763,7 +763,17 @@ class SourceService(
         snapshotMetadata.videoId
             ?.takeIf { latestSnapshot.sourceType == SourceType.VIDEO && source.url.platform.equals("youtube", ignoreCase = true) }
             ?.let { videoId ->
-                originalVideoAudioService.findCachedAudio(videoId)?.let(source::completeNarration)
+                try {
+                    originalVideoAudioService.findCachedAudio(videoId)?.let(source::completeNarration)
+                } catch (ex: Exception) {
+                    logger.warn(
+                        "[service] Cache hit original audio lookup failed sourceId={} snapshotId={} videoId={}",
+                        source.id,
+                        latestSnapshot.id,
+                        videoId,
+                        ex
+                    )
+                }
             }
         source.markTopicExtractionPending()
         sourceRepository.save(source)

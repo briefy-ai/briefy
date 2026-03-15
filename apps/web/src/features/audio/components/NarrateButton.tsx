@@ -182,10 +182,12 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
     if (isYouTubeSource) {
       return (
         <MessageTooltip message={message ?? 'Original audio is unavailable for this video.'}>
-          <Button type="button" variant="ghost" size="sm" disabled aria-label="Audio unavailable">
-            <Headphones className="size-4" aria-hidden="true" />
-            <span className="hidden sm:inline">Audio unavailable</span>
-          </Button>
+          <span className="inline-flex">
+            <Button type="button" variant="ghost" size="sm" disabled aria-label="Audio unavailable">
+              <Headphones className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Audio unavailable</span>
+            </Button>
+          </span>
         </MessageTooltip>
       )
     }
