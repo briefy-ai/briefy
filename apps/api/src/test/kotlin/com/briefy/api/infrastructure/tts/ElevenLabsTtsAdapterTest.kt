@@ -129,4 +129,42 @@ class ElevenLabsTtsAdapterTest {
             server.shutdown()
         }
     }
+
+    @Test
+    fun `synthesize keeps internal retryable code for unknown retryable provider errors`() {
+        val server = MockWebServer()
+        server.start()
+        try {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(429)
+                    .setHeader("Content-Type", "application/json")
+                    .setBody(
+                        """
+                        {"detail":{"type":"rate_limit_error","code":"queue_full","message":"Please retry shortly."}}
+                        """.trimIndent()
+                    )
+            )
+
+            val adapter = ElevenLabsTtsAdapter(
+                restClientBuilder = RestClient.builder(),
+                properties = TtsProperties(
+                    baseUrl = server.url("/").toString().removeSuffix("/"),
+                    voiceId = "voice-123",
+                    modelId = "model-1"
+                ),
+                objectMapper = jacksonObjectMapper()
+            )
+
+            val ex = assertThrows<ElevenLabsTtsException> {
+                adapter.synthesize("hello narration", "secret-key")
+            }
+
+            assertEquals("elevenlabs_request_retryable", ex.code)
+            assertEquals("Please retry shortly.", ex.userMessage)
+            assertEquals(true, ex.retryable)
+        } finally {
+            server.shutdown()
+        }
+    }
 }
