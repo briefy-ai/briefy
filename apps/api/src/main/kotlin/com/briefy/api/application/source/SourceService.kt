@@ -37,6 +37,7 @@ class SourceService(
     private val extractionProviderResolver: ExtractionProviderResolver,
     private val sourceTypeClassifier: SourceTypeClassifier,
     private val freshnessPolicy: FreshnessPolicy,
+    private val originalVideoAudioService: OriginalVideoAudioService,
     private val currentUserProvider: CurrentUserProvider,
     private val idGenerator: IdGenerator,
     private val eventPublisher: ApplicationEventPublisher,
@@ -747,18 +748,23 @@ class SourceService(
         snapshotCacheAge: Long?
     ): SourceResponse {
         requireNotNull(latestSnapshot)
-        requireNotNull(latestSnapshot.content)
-        requireNotNull(latestSnapshot.metadata)
+        val snapshotContent = requireNotNull(latestSnapshot.content)
+        val snapshotMetadata = requireNotNull(latestSnapshot.metadata)
 
         val source = Source(
             id = idGenerator.newId(),
             url = Url.from(command.url),
             status = SourceStatus.ACTIVE,
-            content = latestSnapshot.content,
-            metadata = latestSnapshot.metadata,
+            content = snapshotContent,
+            metadata = snapshotMetadata,
             sourceType = latestSnapshot.sourceType,
             userId = userId
         )
+        snapshotMetadata.videoId
+            ?.takeIf { latestSnapshot.sourceType == SourceType.VIDEO && source.url.platform.equals("youtube", ignoreCase = true) }
+            ?.let { videoId ->
+                originalVideoAudioService.findCachedAudio(videoId)?.let(source::completeNarration)
+            }
         source.markTopicExtractionPending()
         sourceRepository.save(source)
         eventPublisher.publishEvent(

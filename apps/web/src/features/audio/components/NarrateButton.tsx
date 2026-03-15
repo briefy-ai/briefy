@@ -179,6 +179,17 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
     }
 
     // Non-retryable — configuration issue, point user to settings
+    if (isYouTubeSource) {
+      return (
+        <MessageTooltip message={message ?? 'Original audio is unavailable for this video.'}>
+          <Button type="button" variant="ghost" size="sm" disabled aria-label="Audio unavailable">
+            <Headphones className="size-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Audio unavailable</span>
+          </Button>
+        </MessageTooltip>
+      )
+    }
+
     return (
       <MessageTooltip message={message ?? 'Check your ElevenLabs configuration in Settings.'}>
         <Button type="button" variant="ghost" size="sm" asChild>

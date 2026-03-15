@@ -84,10 +84,6 @@ class OriginalVideoAudioService(
                 cause = ex
             )
         }
-        if (cache.audioUrl != refreshedUrl) {
-            cache.audioUrl = refreshedUrl
-            sharedAudioCacheRepository.save(cache)
-        }
         return cache.toAudioContent(refreshedUrl)
     }
 

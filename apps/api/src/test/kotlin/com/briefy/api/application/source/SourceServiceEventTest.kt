@@ -1,6 +1,7 @@
 package com.briefy.api.application.source
 
 import com.briefy.api.application.annotation.SourceAnnotationService
+import com.briefy.api.domain.knowledgegraph.source.AudioContent
 import com.briefy.api.domain.knowledgegraph.source.Content
 import com.briefy.api.domain.knowledgegraph.source.FormattingState
 import com.briefy.api.domain.knowledgegraph.source.Metadata
@@ -58,6 +59,7 @@ class SourceServiceEventTest {
     private val extractionProvider: ExtractionProvider = mock()
     private val sourceTypeClassifier: SourceTypeClassifier = mock()
     private val freshnessPolicy: FreshnessPolicy = mock()
+    private val originalVideoAudioService: OriginalVideoAudioService = mock()
     private val currentUserProvider: CurrentUserProvider = mock()
     private val idGenerator: IdGenerator = mock()
     private val eventPublisher: ApplicationEventPublisher = mock()
@@ -77,6 +79,7 @@ class SourceServiceEventTest {
         extractionProviderResolver = extractionProviderResolver,
         sourceTypeClassifier = sourceTypeClassifier,
         freshnessPolicy = freshnessPolicy,
+        originalVideoAudioService = originalVideoAudioService,
         currentUserProvider = currentUserProvider,
         idGenerator = idGenerator,
         eventPublisher = eventPublisher,
@@ -322,6 +325,61 @@ class SourceServiceEventTest {
         assertEquals(sourceId, finalizedEvent.sourceId)
         assertEquals(userId, finalizedEvent.userId)
         assertTrue(eventCaptor.allValues.none { it is SourceContentFormattingRequestedEvent })
+    }
+
+    @Test
+    fun `submitSource cache reuse attaches cached youtube audio when available`() {
+        val userId = UUID.randomUUID()
+        val sourceId = UUID.randomUUID()
+        val url = "https://youtube.com/watch?v=dQw4w9WgXcQ"
+        val normalizedUrl = "https://youtube.com/watch?v=dQw4w9WgXcQ"
+        val now = Instant.now()
+        val snapshot = SharedSourceSnapshot(
+            id = UUID.randomUUID(),
+            urlNormalized = normalizedUrl,
+            sourceType = SourceType.VIDEO,
+            status = SharedSourceSnapshotStatus.ACTIVE,
+            content = Content.from("Cached video transcript"),
+            metadata = Metadata(
+                title = "Cached Video",
+                platform = "youtube",
+                extractionProvider = "youtube",
+                videoId = "dQw4w9WgXcQ",
+                videoEmbedUrl = "https://www.youtube.com/embed/dQw4w9WgXcQ",
+                videoDurationSeconds = 61,
+                transcriptSource = "whisper"
+            ),
+            fetchedAt = now.minusSeconds(120),
+            expiresAt = now.plusSeconds(3600),
+            version = 1,
+            isLatest = true
+        )
+        val cachedAudio = AudioContent(
+            audioUrl = "https://fresh.example.com/youtube.mp3",
+            durationSeconds = 61,
+            format = "mp3",
+            contentHash = "youtube-hash",
+            voiceId = OriginalVideoAudioService.ORIGINAL_VIDEO_AUDIO_VOICE_ID,
+            modelId = OriginalVideoAudioService.ORIGINAL_VIDEO_AUDIO_MODEL_ID,
+            generatedAt = Instant.parse("2026-03-15T10:00:00Z")
+        )
+
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.countByUrlNormalized(normalizedUrl)).thenReturn(1)
+        whenever(sourceRepository.findByUserIdAndUrlNormalized(userId, normalizedUrl)).thenReturn(null)
+        whenever(sourceTypeClassifier.classify(normalizedUrl)).thenReturn(SourceType.VIDEO)
+        whenever(freshnessPolicy.ttlSeconds(SourceType.VIDEO)).thenReturn(7 * 24 * 60 * 60L)
+        whenever(sharedSourceSnapshotRepository.findFirstByUrlNormalizedAndIsLatestTrue(normalizedUrl)).thenReturn(snapshot)
+        whenever(freshnessPolicy.isFresh(any(), any())).thenReturn(true)
+        whenever(idGenerator.newId()).thenReturn(sourceId)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+        whenever(originalVideoAudioService.findCachedAudio("dQw4w9WgXcQ")).thenReturn(cachedAudio)
+
+        val response = service.submitSource(CreateSourceCommand(url = url))
+
+        assertEquals("succeeded", response.narrationState)
+        assertEquals("https://fresh.example.com/youtube.mp3", response.audio?.audioUrl)
+        verify(originalVideoAudioService).findCachedAudio("dQw4w9WgXcQ")
     }
 
     @Test
