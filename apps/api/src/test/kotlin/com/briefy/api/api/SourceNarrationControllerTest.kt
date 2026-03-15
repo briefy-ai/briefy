@@ -139,7 +139,7 @@ class SourceNarrationControllerTest {
             )
         }
         sourceRepository.save(source)
-        `when`(audioStorageService.generatePresignedGetUrl("abc123", "21m00Tcm4TlvDq8ikWAM"))
+        `when`(audioStorageService.generatePresignedGetUrl("abc123", "iiidtqDt9FBdT1vfBluA"))
             .thenReturn("https://new.example.com/audio.mp3")
 
         mockMvc.perform(get("/api/sources/${source.id}/audio"))

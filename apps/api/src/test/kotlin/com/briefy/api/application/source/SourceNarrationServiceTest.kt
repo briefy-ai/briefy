@@ -115,7 +115,7 @@ class SourceNarrationServiceTest {
             durationSeconds = 17,
             format = "mp3",
             characterCount = 24,
-            voiceId = "21m00Tcm4TlvDq8ikWAM",
+            voiceId = "iiidtqDt9FBdT1vfBluA",
             createdAt = Instant.parse("2026-03-15T10:00:00Z")
         )
         whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
@@ -141,11 +141,11 @@ class SourceNarrationServiceTest {
         }
         val hash = contentHash(source.content!!.text)
         whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
-        whenever(sharedAudioCacheRepository.findByContentHashAndVoiceId(hash, "21m00Tcm4TlvDq8ikWAM"))
+        whenever(sharedAudioCacheRepository.findByContentHashAndVoiceId(hash, "iiidtqDt9FBdT1vfBluA"))
             .thenReturn(null)
         whenever(userSettingsService.getElevenlabsApiKey(userId)).thenReturn("el-key")
         whenever(elevenLabsTtsAdapter.synthesize(any(), any())).thenReturn(sampleMp3Bytes())
-        whenever(audioStorageService.generatePresignedGetUrl(hash, "21m00Tcm4TlvDq8ikWAM"))
+        whenever(audioStorageService.generatePresignedGetUrl(hash, "iiidtqDt9FBdT1vfBluA"))
             .thenReturn("https://fresh.example.com/generated.mp3")
         whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
         whenever(sharedAudioCacheRepository.save(any())).thenAnswer { it.arguments[0] as SharedAudioCache }
@@ -155,7 +155,7 @@ class SourceNarrationServiceTest {
 
         verify(elevenLabsTtsAdapter).synthesize("Heading This is narration content.", "el-key")
         val audioCaptor = argumentCaptor<ByteArray>()
-        verify(audioStorageService).uploadMp3(org.mockito.kotlin.eq(hash), org.mockito.kotlin.eq("21m00Tcm4TlvDq8ikWAM"), audioCaptor.capture())
+        verify(audioStorageService).uploadMp3(org.mockito.kotlin.eq(hash), org.mockito.kotlin.eq("iiidtqDt9FBdT1vfBluA"), audioCaptor.capture())
         assertTrue(audioCaptor.firstValue.contentEquals(sampleMp3Bytes()))
         assertEquals(NarrationState.SUCCEEDED, source.narrationState)
         assertEquals("https://fresh.example.com/generated.mp3", source.audioContent?.audioUrl)
@@ -206,15 +206,15 @@ class SourceNarrationServiceTest {
             durationSeconds = 11,
             format = "mp3",
             characterCount = 30,
-            voiceId = "21m00Tcm4TlvDq8ikWAM",
+            voiceId = "iiidtqDt9FBdT1vfBluA",
             createdAt = Instant.parse("2026-03-15T10:00:00Z")
         )
         whenever(currentUserProvider.requireUserId()).thenReturn(userId)
         whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
-        whenever(audioStorageService.generatePresignedGetUrl("hash123", "21m00Tcm4TlvDq8ikWAM"))
+        whenever(audioStorageService.generatePresignedGetUrl("hash123", "iiidtqDt9FBdT1vfBluA"))
             .thenReturn("https://new.example.com/audio.mp3")
         whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
-        whenever(sharedAudioCacheRepository.findByContentHashAndVoiceId("hash123", "21m00Tcm4TlvDq8ikWAM"))
+        whenever(sharedAudioCacheRepository.findByContentHashAndVoiceId("hash123", "iiidtqDt9FBdT1vfBluA"))
             .thenReturn(cache)
         whenever(sharedAudioCacheRepository.save(any())).thenAnswer { it.arguments[0] as SharedAudioCache }
 

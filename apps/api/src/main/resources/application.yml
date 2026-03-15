@@ -113,7 +113,7 @@ audio:
 tts:
   elevenlabs:
     base-url: ${ELEVENLABS_BASE_URL:https://api.elevenlabs.io}
-    voice-id: ${ELEVENLABS_VOICE_ID:21m00Tcm4TlvDq8ikWAM}
+    voice-id: ${ELEVENLABS_VOICE_ID:iiidtqDt9FBdT1vfBluA}
     model-id: ${ELEVENLABS_MODEL_ID:eleven_flash_v2_5}
     max-characters: ${ELEVENLABS_MAX_CHARACTERS:100000}
 
