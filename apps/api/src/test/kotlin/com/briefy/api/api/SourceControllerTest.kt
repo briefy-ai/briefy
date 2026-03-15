@@ -1,7 +1,5 @@
 package com.briefy.api.api
 
-import com.briefy.api.application.source.SourcePageCursor
-import com.briefy.api.application.source.SourcePageCursorCodec
 import com.briefy.api.domain.knowledgegraph.source.Content
 import com.briefy.api.domain.knowledgegraph.source.FormattingState
 import com.briefy.api.domain.knowledgegraph.source.Metadata
@@ -42,7 +40,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
+import java.nio.charset.StandardCharsets
 import java.time.Instant
+import java.util.Base64
 import java.util.UUID
 
 @SpringBootTest
@@ -306,6 +306,34 @@ class SourceControllerTest {
     }
 
     @Test
+    fun `GET list newest sorts by createdAt desc even when updatedAt differs`() {
+        val oldestButRecentlyUpdated = saveSource(
+            url = "https://sort-test.com/old-created-new-updated",
+            title = "Old Created",
+            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-03T00:00:00Z")
+        )
+        val newestButOlderUpdate = saveSource(
+            url = "https://sort-test.com/new-created-old-updated",
+            title = "New Created",
+            createdAt = Instant.parse("2025-01-02T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-01T12:00:00Z")
+        )
+        val topic = createActiveTopic("sort-created-desc")
+        linkTopicToSource(topic.id, oldestButRecentlyUpdated.id)
+        linkTopicToSource(topic.id, newestButOlderUpdate.id)
+
+        mockMvc.perform(
+            get("/api/sources")
+                .param("sort", "newest")
+                .param("topicIds", topic.id.toString())
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items[0].id").value(newestButOlderUpdate.id.toString()))
+            .andExpect(jsonPath("$.items[1].id").value(oldestButRecentlyUpdated.id.toString()))
+    }
+
+    @Test
     fun `GET list returns bad request for invalid status`() {
         mockMvc.perform(get("/api/sources").param("status", "unknown"))
             .andExpect(status().isBadRequest)
@@ -366,31 +394,63 @@ class SourceControllerTest {
     }
 
     @Test
-    fun `GET list accepts legacy newest cursor`() {
+    fun `GET list rejects pre deploy newest cursor prefix`() {
+        val oldCursor = Base64.getUrlEncoder().withoutPadding().encodeToString(
+            "u|2025-01-02T00:00:00Z|${UUID.randomUUID()}".toByteArray(StandardCharsets.UTF_8)
+        )
+
+        mockMvc.perform(get("/api/sources").param("sort", "newest").param("cursor", oldCursor))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.message").value("Invalid cursor"))
+    }
+
+    @Test
+    fun `GET list paginates newest by createdAt desc`() {
         val oldest = saveSource(
-            url = "https://legacy-cursor-test.com/oldest",
+            url = "https://created-cursor-test.com/oldest",
             title = "Oldest",
             createdAt = Instant.parse("2025-01-01T00:00:00Z"),
-            updatedAt = Instant.parse("2025-01-01T01:00:00Z")
+            updatedAt = Instant.parse("2025-01-03T00:00:00Z")
         )
         val middle = saveSource(
-            url = "https://legacy-cursor-test.com/middle",
+            url = "https://created-cursor-test.com/middle",
             title = "Middle",
-            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
-            updatedAt = Instant.parse("2025-01-01T02:00:00Z")
+            createdAt = Instant.parse("2025-01-02T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-02T00:00:00Z")
         )
-        saveSource(
-            url = "https://legacy-cursor-test.com/newest",
+        val newest = saveSource(
+            url = "https://created-cursor-test.com/newest",
             title = "Newest",
-            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
-            updatedAt = Instant.parse("2025-01-01T03:00:00Z")
+            createdAt = Instant.parse("2025-01-03T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-01T00:00:00Z")
         )
+        val topic = createActiveTopic("sort-created-cursor")
+        linkTopicToSource(topic.id, oldest.id)
+        linkTopicToSource(topic.id, middle.id)
+        linkTopicToSource(topic.id, newest.id)
 
-        val legacyCursor = SourcePageCursorCodec.encode(
-            SourcePageCursor(updatedAt = middle.updatedAt, id = middle.id)
+        val firstPageJson = mockMvc.perform(
+            get("/api/sources")
+                .param("sort", "newest")
+                .param("topicIds", topic.id.toString())
+                .param("limit", "2")
         )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items[0].id").value(newest.id.toString()))
+            .andExpect(jsonPath("$.items[1].id").value(middle.id.toString()))
+            .andReturn()
+            .response
+            .contentAsString
 
-        mockMvc.perform(get("/api/sources").param("cursor", legacyCursor).param("limit", "2"))
+        val nextCursor = objectMapper.readTree(firstPageJson).get("nextCursor").asText()
+
+        mockMvc.perform(
+            get("/api/sources")
+                .param("sort", "newest")
+                .param("topicIds", topic.id.toString())
+                .param("cursor", nextCursor)
+                .param("limit", "2")
+        )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.items[?(@.id=='${oldest.id}')]").isNotEmpty)
     }
