@@ -30,13 +30,24 @@ data class SharedSourceData(
     val author: String?,
     val publishedDate: Instant?,
     val readingTimeMinutes: Int?,
-    val content: String?
+    val content: String?,
+    val audio: SharedSourceAudioData?
+)
+
+data class SharedSourceAudioData(
+    val audioUrl: String,
+    val durationSeconds: Int,
+    val format: String
 )
 
 data class SharedSourceResponse(
     val entityType: ShareLinkEntityType,
     val expiresAt: Instant?,
     val source: SharedSourceData
+)
+
+data class ShareLinkAudioResponse(
+    val audioUrl: String
 )
 
 fun ShareLink.toResponse() = ShareLinkResponse(

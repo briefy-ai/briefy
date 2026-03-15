@@ -4,6 +4,7 @@ import com.briefy.api.application.auth.*
 import com.briefy.api.application.briefing.BriefingNotFoundException
 import com.briefy.api.application.briefing.ExecutionRunNotFoundException
 import com.briefy.api.application.sharing.ShareLinkExpiredException
+import com.briefy.api.application.sharing.ShareLinkAudioUnavailableException
 import com.briefy.api.application.sharing.ShareLinkNotFoundException
 import com.briefy.api.application.briefing.BriefingSourceAccessException
 import com.briefy.api.application.briefing.InvalidBriefingRequestException
@@ -332,6 +333,16 @@ class GlobalExceptionHandler {
                 status = HttpStatus.GONE.value(),
                 error = "Gone",
                 message = ex.message ?: "Share link has expired"
+            ))
+    }
+
+    @ExceptionHandler(ShareLinkAudioUnavailableException::class)
+    fun handleShareLinkAudioUnavailable(ex: ShareLinkAudioUnavailableException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(
+                status = HttpStatus.NOT_FOUND.value(),
+                error = "Not Found",
+                message = ex.message ?: "Share link audio is not available"
             ))
     }
 

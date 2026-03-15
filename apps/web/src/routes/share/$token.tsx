@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { MarkdownContent } from '@/components/content/MarkdownContent'
+import { PublicNarrationPlayer } from '@/features/audio/components/PublicNarrationPlayer'
 import { ApiClientError } from '@/lib/api/client'
-import { resolveShareLink, type SharedSourceResponse } from '@/lib/api/shareLinks'
+import { resolveShareLink } from '@/lib/api/shareLinks'
 
 export const Route = createFileRoute('/share/$token')({
   component: SharedSourcePage,
@@ -132,6 +133,15 @@ function SharedSourcePage() {
           </div>
         )}
       </div>
+
+      {source.audio && (
+        <PublicNarrationPlayer
+          token={token}
+          title={source.title ?? source.url}
+          audioUrl={source.audio.audioUrl}
+          durationSeconds={source.audio.durationSeconds}
+        />
+      )}
 
       {source.content ? (
         <MarkdownContent content={source.content} variant="article" />

@@ -17,18 +17,18 @@ import {
   type ShareLinkDto,
 } from '@/lib/api/shareLinks'
 
-type Validity = '1d' | '7d' | '30d' | 'never'
+type Validity = '7d' | '30d' | '90d' | 'never'
 
 const VALIDITY_OPTIONS: { value: Validity; label: string }[] = [
   { value: '7d', label: '7 days' },
-  { value: '1d', label: '1 day' },
   { value: '30d', label: '30 days' },
+  { value: '90d', label: '90 days' },
   { value: 'never', label: 'Never expires' },
 ]
 
 function computeExpiresAt(validity: Validity): string | undefined {
   if (validity === 'never') return undefined
-  const ms = { '1d': 86400000, '7d': 604800000, '30d': 2592000000 }[validity]
+  const ms = { '7d': 604800000, '30d': 2592000000, '90d': 7776000000 }[validity]
   return new Date(Date.now() + ms).toISOString()
 }
 
@@ -39,7 +39,7 @@ interface ShareDialogProps {
 }
 
 export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) {
-  const [validity, setValidity] = useState<Validity>('7d')
+  const [validity, setValidity] = useState<Validity>('never')
   const [creating, setCreating] = useState(false)
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
   const [links, setLinks] = useState<ShareLinkDto[]>([])
@@ -69,6 +69,7 @@ export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) 
     if (open) {
       setJustCreated(null)
       setCopiedToken(null)
+      setValidity('never')
       void loadLinks()
     }
   }, [open, loadLinks])
