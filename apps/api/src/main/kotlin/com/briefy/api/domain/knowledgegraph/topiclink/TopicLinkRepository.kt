@@ -128,6 +128,23 @@ interface TopicLinkRepository : JpaRepository<TopicLink, UUID> {
         @Param("targetType") targetType: TopicLinkTargetType,
         @Param("status") status: TopicLinkStatus
     ): List<SourceTopicSuggestionCountProjection>
+
+    @Query(
+        """
+        select tl.targetId as sourceId, tl.topicId as topicId, t.name as topicName
+        from TopicLink tl
+        join Topic t on t.id = tl.topicId
+        where tl.userId = :userId
+          and tl.targetType = 'SOURCE'
+          and tl.status = 'ACTIVE'
+          and tl.targetId in :sourceIds
+        order by tl.targetId asc, t.name asc
+        """
+    )
+    fun findActiveTopicsBySourceIds(
+        @Param("userId") userId: UUID,
+        @Param("sourceIds") sourceIds: Collection<UUID>
+    ): List<SourceActiveTopicProjection>
 }
 
 interface TopicLinkCountProjection {
@@ -138,4 +155,10 @@ interface TopicLinkCountProjection {
 interface SourceTopicSuggestionCountProjection {
     val sourceId: UUID
     val linkCount: Long
+}
+
+interface SourceActiveTopicProjection {
+    val sourceId: UUID
+    val topicId: UUID
+    val topicName: String
 }

@@ -6,6 +6,7 @@ import type {
   Source,
   SourceActiveTopic,
   SourceAnnotation,
+  SourceSearchResponse,
   TopicSuggestion,
   UpdateSourceAnnotationRequest,
 } from './types'
@@ -18,6 +19,9 @@ export async function listSources(options?: {
   status?: string
   limit?: number
   cursor?: string
+  topicIds?: string[]
+  sourceType?: string
+  sort?: string
 }): Promise<PaginatedSourcesResponse> {
   const params = new URLSearchParams()
   if (options?.status) {
@@ -29,8 +33,24 @@ export async function listSources(options?: {
   if (options?.cursor) {
     params.set('cursor', options.cursor)
   }
+  if (options?.topicIds) {
+    for (const id of options.topicIds) {
+      params.append('topicIds', id)
+    }
+  }
+  if (options?.sourceType) {
+    params.set('sourceType', options.sourceType)
+  }
+  if (options?.sort) {
+    params.set('sort', options.sort)
+  }
   const query = params.toString()
   return apiGet<PaginatedSourcesResponse>(`/api/sources${query ? `?${query}` : ''}`)
+}
+
+export async function searchSources(query: string, limit = 10): Promise<SourceSearchResponse> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) })
+  return apiGet<SourceSearchResponse>(`/api/sources/search?${params}`)
 }
 
 export async function getSource(id: string): Promise<Source> {

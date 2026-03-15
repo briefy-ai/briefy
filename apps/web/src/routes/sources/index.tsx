@@ -1,6 +1,18 @@
 import { createFileRoute, Link as RouterLink } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BookOpen, CheckSquare, Clock3, Link2, MoreHorizontal, RotateCcw, Trash2, User } from 'lucide-react'
+import {
+  BookOpen,
+  CheckSquare,
+  Clock3,
+  FlaskConical,
+  Link2,
+  MoreHorizontal,
+  Newspaper,
+  Play,
+  RotateCcw,
+  Trash2,
+  User,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -27,8 +39,10 @@ import { ApiClientError } from '@/lib/api/client'
 import { requireAuth } from '@/lib/auth/requireAuth'
 import { cn } from '@/lib/utils'
 import type { Source } from '@/lib/api/types'
+import { FilterBar, type FilterState } from './-components/FilterBar'
 
 const SOURCE_PAGE_SIZE = 20
+const RECENTLY_ADDED_COUNT = 5
 
 export const Route = createFileRoute('/sources/')({
   beforeLoad: async () => {
@@ -53,9 +67,24 @@ function SourcesPage() {
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([])
   const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number | null>(null)
   const [confirmDeleteIds, setConfirmDeleteIds] = useState<string[]>([])
+  const [filterState, setFilterState] = useState<FilterState>({
+    topicIds: [],
+    sourceType: null,
+    sort: 'newest',
+  })
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const isFetchingMoreRef = useRef(false)
   const fetchTokenRef = useRef(0)
+
+  const isDefaultView =
+    filter === 'active' &&
+    filterState.topicIds.length === 0 &&
+    filterState.sourceType === null &&
+    filterState.sort === 'newest'
+  const activeTopicIds =
+    filter === 'active' && filterState.topicIds.length > 0 ? filterState.topicIds : undefined
+  const activeSourceType = filter === 'active' ? filterState.sourceType ?? undefined : undefined
+  const activeSort = filter === 'active' ? filterState.sort : undefined
 
   const fetchSources = useCallback(async () => {
     const currentFetchToken = ++fetchTokenRef.current
@@ -66,29 +95,29 @@ function SourcesPage() {
       setSources([])
       setNextCursor(null)
       setHasMore(false)
-      const page = await listSources({ status: filter, limit: SOURCE_PAGE_SIZE })
-      if (currentFetchToken !== fetchTokenRef.current) {
-        return
-      }
+      const page = await listSources({
+        status: filter,
+        limit: SOURCE_PAGE_SIZE,
+        topicIds: activeTopicIds,
+        sourceType: activeSourceType,
+        sort: activeSort,
+      })
+      if (currentFetchToken !== fetchTokenRef.current) return
       setSources(page.items)
       setNextCursor(page.nextCursor)
       setHasMore(page.hasMore)
     } catch (e) {
-      if (currentFetchToken !== fetchTokenRef.current) {
-        return
-      }
+      if (currentFetchToken !== fetchTokenRef.current) return
       setError(e instanceof Error ? e.message : 'Failed to load sources')
     } finally {
       if (currentFetchToken === fetchTokenRef.current) {
         setLoading(false)
       }
     }
-  }, [filter])
+  }, [activeSort, activeSourceType, activeTopicIds, filter])
 
   const fetchMoreSources = useCallback(async () => {
-    if (isFetchingMoreRef.current || !hasMore || !nextCursor) {
-      return
-    }
+    if (isFetchingMoreRef.current || !hasMore || !nextCursor) return
     const currentFetchToken = fetchTokenRef.current
     try {
       isFetchingMoreRef.current = true
@@ -97,10 +126,11 @@ function SourcesPage() {
         status: filter,
         limit: SOURCE_PAGE_SIZE,
         cursor: nextCursor,
+        topicIds: activeTopicIds,
+        sourceType: activeSourceType,
+        sort: activeSort,
       })
-      if (currentFetchToken !== fetchTokenRef.current) {
-        return
-      }
+      if (currentFetchToken !== fetchTokenRef.current) return
       setSources((prev) => {
         const existingIds = new Set(prev.map((source) => source.id))
         const merged = [...prev]
@@ -114,9 +144,7 @@ function SourcesPage() {
       setNextCursor(page.nextCursor)
       setHasMore(page.hasMore)
     } catch (e) {
-      if (currentFetchToken !== fetchTokenRef.current) {
-        return
-      }
+      if (currentFetchToken !== fetchTokenRef.current) return
       setError(e instanceof Error ? e.message : 'Failed to load more sources')
     } finally {
       if (currentFetchToken === fetchTokenRef.current) {
@@ -124,20 +152,16 @@ function SourcesPage() {
       }
       isFetchingMoreRef.current = false
     }
-  }, [filter, hasMore, nextCursor])
+  }, [activeSort, activeSourceType, activeTopicIds, filter, hasMore, nextCursor])
 
   useEffect(() => {
     fetchSources()
   }, [fetchSources])
 
   useEffect(() => {
-    if (!hasMore) {
-      return
-    }
+    if (!hasMore) return
     const node = loadMoreRef.current
-    if (!node) {
-      return
-    }
+    if (!node) return
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -170,8 +194,10 @@ function SourcesPage() {
 
     try {
       const source = await createSource({ url: url.trim() })
-      if (filter === 'active') {
+      if (filter === 'active' && !activeTopicIds && !activeSourceType) {
         setSources((prev) => [source, ...prev])
+      } else if (filter === 'active') {
+        void fetchSources()
       }
       setUrl('')
     } catch (e) {
@@ -269,8 +295,12 @@ function SourcesPage() {
   const hasSelection = selectedSourceIds.length > 0
   const hasDeletingSelection = selectedSourceIds.some((id) => deletingSourceIds.includes(id))
 
+  const showRecentSection = isDefaultView && sources.length > RECENTLY_ADDED_COUNT
+  const recentlyAdded = showRecentSection ? sources.slice(0, RECENTLY_ADDED_COUNT) : []
+  const restOfSources = showRecentSection ? sources.slice(RECENTLY_ADDED_COUNT) : sources
+
   return (
-    <div className="max-w-2xl mx-auto space-y-8 animate-fade-in">
+    <div className="max-w-3xl mx-auto space-y-8 animate-fade-in">
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -337,6 +367,10 @@ function SourcesPage() {
           )}
         </Button>
       </form>
+
+      {filter === 'active' && (
+        <FilterBar value={filterState} onChange={setFilterState} />
+      )}
 
       {hasSelection && filter === 'active' && (
         <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
@@ -458,26 +492,64 @@ function SourcesPage() {
         </div>
       ) : (
         <div className="space-y-1.5">
-          {sources.map((source, index) => (
-            <div
-              key={source.id}
-              className="animate-slide-up"
-              style={{
-                animationDelay: `${index * 40}ms`,
-                animationFillMode: 'backwards',
-              }}
-            >
-              <SourceCard
-                source={source}
-                selected={selectedSourceIds.includes(source.id)}
-                onCardClick={(event) => handleSourceCardClick(event, index, source.id)}
-                showPendingSuggestionIndicator={filter === 'active'}
-                showRestoreAction={filter === 'archived'}
-                restoring={restoringSourceIds.includes(source.id)}
-                onRestore={() => void handleRestore(source.id)}
-              />
-            </div>
-          ))}
+          {showRecentSection && recentlyAdded.length > 0 && (
+            <>
+              <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase mb-2">
+                Recently added
+              </p>
+              {recentlyAdded.map((source, index) => (
+                <div
+                  key={source.id}
+                  className="animate-slide-up"
+                  style={{
+                    animationDelay: `${index * 40}ms`,
+                    animationFillMode: 'backwards',
+                  }}
+                >
+                  <SourceCard
+                    source={source}
+                    selected={selectedSourceIds.includes(source.id)}
+                    onCardClick={(event) => handleSourceCardClick(event, index, source.id)}
+                    showPendingSuggestionIndicator={filter === 'active'}
+                    showRestoreAction={false}
+                    restoring={false}
+                    onRestore={() => {}}
+                    variant="recent"
+                  />
+                </div>
+              ))}
+              {restOfSources.length > 0 && (
+                <div className="flex items-center gap-3 py-3">
+                  <div className="h-px flex-1 bg-border/40" />
+                  <span className="text-xs text-muted-foreground/60">All sources</span>
+                  <div className="h-px flex-1 bg-border/40" />
+                </div>
+              )}
+            </>
+          )}
+          {restOfSources.map((source, i) => {
+            const globalIndex = showRecentSection ? i + RECENTLY_ADDED_COUNT : i
+            return (
+              <div
+                key={source.id}
+                className="animate-slide-up"
+                style={{
+                  animationDelay: `${globalIndex * 40}ms`,
+                  animationFillMode: 'backwards',
+                }}
+              >
+                <SourceCard
+                  source={source}
+                  selected={selectedSourceIds.includes(source.id)}
+                  onCardClick={(event) => handleSourceCardClick(event, globalIndex, source.id)}
+                  showPendingSuggestionIndicator={filter === 'active'}
+                  showRestoreAction={filter === 'archived'}
+                  restoring={restoringSourceIds.includes(source.id)}
+                  onRestore={() => void handleRestore(source.id)}
+                />
+              </div>
+            )
+          })}
           {hasMore && <div ref={loadMoreRef} className="h-2" aria-hidden="true" />}
           {loadingMore && (
             <div className="py-2 text-center text-xs text-muted-foreground">
@@ -488,6 +560,13 @@ function SourcesPage() {
       )}
     </div>
   )
+}
+
+const SOURCE_TYPE_ICON: Record<string, typeof Newspaper> = {
+  news: Newspaper,
+  blog: BookOpen,
+  research: FlaskConical,
+  video: Play,
 }
 
 const STATUS_CONFIG: Record<
@@ -509,6 +588,7 @@ function SourceCard({
   showRestoreAction,
   restoring,
   onRestore,
+  variant = 'default',
 }: {
   source: Source
   selected: boolean
@@ -517,11 +597,14 @@ function SourceCard({
   showRestoreAction: boolean
   restoring: boolean
   onRestore: () => void
+  variant?: 'default' | 'recent'
 }) {
   const status = STATUS_CONFIG[source.status]
   const domain = extractDomain(source.url.normalized)
   const hasPendingTopicSuggestions = showPendingSuggestionIndicator && source.pendingSuggestedTopicsCount > 0
   const showUnreadIndicator = showPendingSuggestionIndicator && source.status === 'active' && !source.read
+  const TypeIcon = SOURCE_TYPE_ICON[source.sourceType]
+  const topics = source.topics ?? []
 
   return (
     <RouterLink
@@ -535,7 +618,10 @@ function SourceCard({
           'rounded-lg border px-4 py-3.5 transition-all duration-150',
           selected
             ? 'border-primary/50 bg-primary/5'
-            : 'border-border/40 bg-card/40 hover:bg-card/70 hover:border-border/60'
+            : variant === 'recent'
+              ? 'border-border/40 bg-card/60 hover:bg-card/80 hover:border-border/60'
+              : 'border-border/40 bg-card/40 hover:bg-card/70 hover:border-border/60',
+          showUnreadIndicator && !selected && 'border-l-2 border-l-primary/40'
         )}
       >
         <div className="flex items-start justify-between gap-3">
@@ -550,7 +636,8 @@ function SourceCard({
                 />
               )}
             </h3>
-            <p className="mt-0.5 text-xs text-muted-foreground truncate">
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground truncate">
+              {TypeIcon && <TypeIcon className="size-3 opacity-50 shrink-0" strokeWidth={1.5} />}
               {domain}
             </p>
           </div>
@@ -587,8 +674,8 @@ function SourceCard({
             )}
           </div>
         </div>
-        {(source.metadata?.author || source.content?.wordCount) && (
-          <div className="mt-2.5 flex items-center gap-3 text-xs text-muted-foreground">
+        {(source.metadata?.author || source.content?.wordCount || topics.length > 0) && (
+          <div className="mt-2.5 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
             {source.metadata?.author && (
               <span className="flex items-center gap-1">
                 <User className="size-3 opacity-40" strokeWidth={1.5} />
@@ -603,6 +690,21 @@ function SourceCard({
             )}
             {source.content?.wordCount && (
               <span>{source.content.wordCount.toLocaleString()} words</span>
+            )}
+            {topics.length > 0 && (
+              <>
+                <span className="sm:hidden text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary/70 truncate max-w-[120px]">
+                  {topics[0].name}
+                </span>
+                {topics.slice(0, 2).map((topic) => (
+                  <span
+                    key={topic.id}
+                    className="hidden sm:inline text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary/70"
+                  >
+                    {topic.name}
+                  </span>
+                ))}
+              </>
             )}
           </div>
         )}

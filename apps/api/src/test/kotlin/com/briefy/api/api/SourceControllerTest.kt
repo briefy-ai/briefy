@@ -1,7 +1,21 @@
 package com.briefy.api.api
 
+import com.briefy.api.application.source.SourcePageCursor
+import com.briefy.api.application.source.SourcePageCursorCodec
+import com.briefy.api.domain.knowledgegraph.source.Content
+import com.briefy.api.domain.knowledgegraph.source.FormattingState
+import com.briefy.api.domain.knowledgegraph.source.Metadata
+import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.application.topic.TopicSuggestionEventHandler
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
+import com.briefy.api.domain.knowledgegraph.source.SourceStatus
+import com.briefy.api.domain.knowledgegraph.source.SourceType
+import com.briefy.api.domain.knowledgegraph.source.TopicExtractionState
+import com.briefy.api.domain.knowledgegraph.source.Url
+import com.briefy.api.domain.knowledgegraph.topic.Topic
+import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLink
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkRepository
 import com.briefy.api.infrastructure.extraction.ExtractionProvider
 import com.briefy.api.infrastructure.extraction.ExtractionProviderException
 import com.briefy.api.infrastructure.extraction.ExtractionFailureReason
@@ -41,6 +55,12 @@ class SourceControllerTest {
 
     @Autowired
     lateinit var sourceRepository: SourceRepository
+
+    @Autowired
+    lateinit var topicRepository: TopicRepository
+
+    @Autowired
+    lateinit var topicLinkRepository: TopicLinkRepository
 
     @MockitoBean
     lateinit var extractionProviderResolver: ExtractionProviderResolver
@@ -205,9 +225,97 @@ class SourceControllerTest {
     }
 
     @Test
+    fun `GET list filters by topic and source type and includes topics`() {
+        val matchingSource = saveSource(
+            url = "https://filters-test.com/blog",
+            title = "Matching Source",
+            sourceType = SourceType.BLOG,
+            readingTime = 8,
+            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-03T00:00:00Z")
+        )
+        val excludedByType = saveSource(
+            url = "https://filters-test.com/video",
+            title = "Video Source",
+            sourceType = SourceType.VIDEO,
+            readingTime = 4,
+            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-02T00:00:00Z")
+        )
+        val otherTopicSource = saveSource(
+            url = "https://filters-test.com/other-topic",
+            title = "Other Topic Source",
+            sourceType = SourceType.BLOG,
+            readingTime = 6,
+            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-01T12:00:00Z")
+        )
+
+        val kotlinTopicId = createActiveTopicLink(matchingSource.id, "Kotlin")
+        linkTopicToSource(kotlinTopicId, excludedByType.id)
+        createActiveTopicLink(otherTopicSource.id, "Architecture")
+
+        mockMvc.perform(
+            get("/api/sources")
+                .param("topicIds", kotlinTopicId.toString())
+                .param("sourceType", "blog")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items.length()").value(1))
+            .andExpect(jsonPath("$.items[0].id").value(matchingSource.id.toString()))
+            .andExpect(jsonPath("$.items[0].topics[0].name").value("Kotlin"))
+    }
+
+    @Test
+    fun `GET list sorts by longest read with nulls last`() {
+        val longest = saveSource(
+            url = "https://sort-test.com/longest",
+            title = "Longest",
+            readingTime = 15,
+            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-01T03:00:00Z")
+        )
+        val medium = saveSource(
+            url = "https://sort-test.com/medium",
+            title = "Medium",
+            readingTime = 5,
+            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-01T02:00:00Z")
+        )
+        val noReadingTime = saveSource(
+            url = "https://sort-test.com/null",
+            title = "No Reading Time",
+            readingTime = null,
+            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-01T01:00:00Z")
+        )
+        val topic = createActiveTopic("sort-longest")
+        linkTopicToSource(topic.id, longest.id)
+        linkTopicToSource(topic.id, medium.id)
+        linkTopicToSource(topic.id, noReadingTime.id)
+
+        mockMvc.perform(
+            get("/api/sources")
+                .param("sort", "longest")
+                .param("topicIds", topic.id.toString())
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items[0].id").value(longest.id.toString()))
+            .andExpect(jsonPath("$.items[1].id").value(medium.id.toString()))
+            .andExpect(jsonPath("$.items[2].id").value(noReadingTime.id.toString()))
+    }
+
+    @Test
     fun `GET list returns bad request for invalid status`() {
         mockMvc.perform(get("/api/sources").param("status", "unknown"))
             .andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `GET list returns bad request for invalid sort`() {
+        mockMvc.perform(get("/api/sources").param("sort", "sideways"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.message").value("Invalid sort"))
     }
 
     @Test
@@ -255,6 +363,63 @@ class SourceControllerTest {
         mockMvc.perform(get("/api/sources").param("cursor", "invalid-cursor"))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.message").value("Invalid cursor"))
+    }
+
+    @Test
+    fun `GET list accepts legacy newest cursor`() {
+        val oldest = saveSource(
+            url = "https://legacy-cursor-test.com/oldest",
+            title = "Oldest",
+            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-01T01:00:00Z")
+        )
+        val middle = saveSource(
+            url = "https://legacy-cursor-test.com/middle",
+            title = "Middle",
+            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-01T02:00:00Z")
+        )
+        saveSource(
+            url = "https://legacy-cursor-test.com/newest",
+            title = "Newest",
+            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-01T03:00:00Z")
+        )
+
+        val legacyCursor = SourcePageCursorCodec.encode(
+            SourcePageCursor(updatedAt = middle.updatedAt, id = middle.id)
+        )
+
+        mockMvc.perform(get("/api/sources").param("cursor", legacyCursor).param("limit", "2"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items[?(@.id=='${oldest.id}')]").isNotEmpty)
+    }
+
+    @Test
+    fun `GET search returns active source matches with topic chips`() {
+        val topicName = "AI-${UUID.randomUUID()}"
+        val topicMatched = saveSource(
+            url = "https://search-test.com/topic-match",
+            title = "Unrelated Title",
+            author = "Briefy",
+            readingTime = 7,
+            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-01T02:00:00Z")
+        )
+        createActiveTopicLink(topicMatched.id, topicName)
+        saveSource(
+            url = "https://search-test.com/archived",
+            title = "Archived $topicName",
+            status = SourceStatus.ARCHIVED,
+            createdAt = Instant.parse("2025-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2025-01-01T01:00:00Z")
+        )
+
+        mockMvc.perform(get("/api/sources/search").param("q", topicName))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items.length()").value(1))
+            .andExpect(jsonPath("$.items[0].id").value(topicMatched.id.toString()))
+            .andExpect(jsonPath("$.items[0].topics[0].name").value(topicName))
     }
 
     @Test
@@ -650,5 +815,53 @@ class SourceControllerTest {
             .andReturn()
 
         return objectMapper.readTree(result.response.contentAsString).get("id").asText()
+    }
+
+    private fun saveSource(
+        url: String,
+        title: String,
+        author: String? = "Test Author",
+        sourceType: SourceType = SourceType.BLOG,
+        readingTime: Int? = 5,
+        status: SourceStatus = SourceStatus.ACTIVE,
+        createdAt: Instant,
+        updatedAt: Instant
+    ): Source {
+        val normalizedUrl = Url.from(url)
+        val source = Source(
+            id = UUID.randomUUID(),
+            url = normalizedUrl,
+            status = status,
+            content = Content.from("Deterministic source content for controller tests."),
+            metadata = Metadata(
+                title = title,
+                author = author,
+                platform = normalizedUrl.platform,
+                estimatedReadingTime = readingTime,
+                aiFormatted = true,
+                formattingState = FormattingState.SUCCEEDED
+            ),
+            sourceType = sourceType,
+            userId = testUserId,
+            createdAt = createdAt,
+            updatedAt = updatedAt,
+            isRead = false,
+            topicExtractionState = TopicExtractionState.SUCCEEDED
+        )
+        return sourceRepository.save(source)
+    }
+
+    private fun createActiveTopicLink(sourceId: UUID, topicName: String): UUID {
+        val topic = createActiveTopic(topicName)
+        linkTopicToSource(topic.id, sourceId)
+        return topic.id
+    }
+
+    private fun createActiveTopic(topicName: String): Topic {
+        return topicRepository.save(Topic.activeUser(UUID.randomUUID(), testUserId, topicName))
+    }
+
+    private fun linkTopicToSource(topicId: UUID, sourceId: UUID) {
+        topicLinkRepository.save(TopicLink.activeUserForSource(UUID.randomUUID(), topicId, sourceId, testUserId))
     }
 }

@@ -26,6 +26,11 @@ export interface SourceMetadata {
   transcriptLanguage: string | null
 }
 
+export interface SourceTopicChip {
+  id: string
+  name: string
+}
+
 export interface Source {
   id: string
   url: SourceUrl
@@ -37,6 +42,7 @@ export interface Source {
   topicExtractionFailureReason: string | null
   pendingSuggestedTopicsCount: number
   read: boolean
+  topics: SourceTopicChip[]
   createdAt: string
   updatedAt: string
 }
@@ -401,4 +407,17 @@ export interface BriefingRunEventsPageResponse {
 export interface CreateBriefingRequest {
   sourceIds: string[]
   enrichmentIntent: 'deep_dive' | 'contextual_expansion' | 'truth_grounding'
+}
+
+export interface SourceSearchResultDto {
+  id: string
+  title: string | null
+  author: string | null
+  domain: string | null
+  sourceType: 'news' | 'blog' | 'research' | 'video'
+  topics: SourceTopicChip[]
+}
+
+export interface SourceSearchResponse {
+  items: SourceSearchResultDto[]
 }

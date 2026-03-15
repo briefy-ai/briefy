@@ -5,6 +5,7 @@ import com.briefy.api.application.topic.SourceActiveTopicResponse
 import com.briefy.api.application.topic.SourceTopicSuggestionResponse
 import com.briefy.api.application.topic.TopicService
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
+import com.briefy.api.domain.knowledgegraph.source.SourceType
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
@@ -35,22 +36,51 @@ class SourceController(
     fun listSources(
         @RequestParam(required = false) status: String?,
         @RequestParam(required = false) limit: Int?,
-        @RequestParam(required = false) cursor: String?
+        @RequestParam(required = false) cursor: String?,
+        @RequestParam(required = false) topicIds: List<UUID>?,
+        @RequestParam(required = false) sourceType: String?,
+        @RequestParam(required = false) sort: String?
     ): ResponseEntity<SourcePageResponse> {
         logger.info(
-            "[controller] List sources request received status={} limit={} hasCursor={}",
+            "[controller] List sources request received status={} limit={} hasCursor={} topicCount={} sourceType={} sort={}",
             status ?: "all",
             limit ?: "default",
-            !cursor.isNullOrBlank()
+            !cursor.isNullOrBlank(),
+            topicIds?.size ?: 0,
+            sourceType ?: "all",
+            sort ?: "default"
         )
         val statusEnum = status?.let { SourceStatus.valueOf(it.uppercase()) }
-        val sourcesPage = sourceService.listSources(status = statusEnum, limit = limit, cursor = cursor)
+        val sourceTypeEnum = sourceType?.let { SourceType.valueOf(it.uppercase()) }
+        val sourcesPage = sourceService.listSources(
+            status = statusEnum,
+            limit = limit,
+            cursor = cursor,
+            topicIds = topicIds,
+            sourceType = sourceTypeEnum,
+            sort = sort
+        )
         logger.info(
             "[controller] List sources request completed count={} hasMore={}",
             sourcesPage.items.size,
             sourcesPage.hasMore
         )
         return ResponseEntity.ok(sourcesPage)
+    }
+
+    @GetMapping("/search")
+    fun searchSources(
+        @RequestParam q: String,
+        @RequestParam(required = false, defaultValue = "10") limit: Int
+    ): ResponseEntity<SourceSearchResponse> {
+        logger.info(
+            "[controller] Search sources request received queryLength={} limit={}",
+            q.length,
+            limit
+        )
+        val response = sourceService.searchSources(query = q, limit = limit)
+        logger.info("[controller] Search sources request completed count={}", response.items.size)
+        return ResponseEntity.ok(response)
     }
 
     @GetMapping("/{id}")

@@ -5,6 +5,8 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 
 ## Mistakes Log
 
+- [2026-03-15] Wrote source filter coverage with two separate same-name `Kotlin` topics -> the request filters by `topicId`, so the test never actually exercised `sourceType` exclusion -> when testing `topicIds` filters, reuse the exact same topic id across fixtures rather than relying on topic names.
+- [2026-03-14] Mapped native `sources.id` search rows with `toString()` -> H2 returned UUID columns as `ByteArray`, causing `GET /api/sources/search` to 500 with `Invalid UUID string` -> when mapping native UUID columns, handle both `UUID` and `ByteArray` so H2 tests match PostgreSQL behavior.
 - [2026-03-11] Tightened X thread filtering but left a thread test fixture without `in_reply_to_user_id` on a legitimate self-reply -> updated the mock payload to include explicit self-reply metadata -> when testing X thread membership, always model reply tweets with `in_reply_to_user_id` so filters match real API payloads.
 - [2026-02-07 20:20] Wrote a brittle archive list assertion that depended on result ordering in `SourceControllerTest` -> changed to ID-presence assertion (`$[?(@.id=='...')]`) -> avoid index-based JSON assertions when endpoint order is not guaranteed.
 - [2026-02-09 08:35] Tried verifying event publication through `@MockitoBean ApplicationEventPublisher` in controller integration tests -> mock wasn't reliably intercepting Spring's publisher wiring -> moved publication verification to focused service unit tests (`SourceServiceEventTest`); keep controller tests on HTTP/state behavior only.
@@ -33,6 +35,8 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 
 ## Non-Obvious Code Findings
 
+- [2026-03-15] `idx_topic_links_source_suggestions` already covers the active-topic-by-source lookup pattern via its `(user_id, target_type, target_id, status, assigned_at)` prefix, so an extra partial index on `topic_links(target_id, status)` is redundant write overhead for this code path. [`apps/api/src/main/resources/db/migration/V20260211104500__topics_slice2.sql`, `apps/api/src/main/resources/db/migration/V20260314120000__source_list_filters_and_search.sql`]
+- [2026-03-14] Source list filtering uses `topicIds` exactly, not topic names; same-name topics remain separate filters unless they share the same `Topic.id` (matters for repeated-param semantics and test fixtures). [`apps/api/src/main/kotlin/com/briefy/api/domain/knowledgegraph/source/SourceRepositoryCustomImpl.kt`, `apps/api/src/test/kotlin/com/briefy/api/api/SourceControllerTest.kt`]
 - [2026-03-11] X conversation search can return the author's replies to third-party commenters in the same `conversation_id`; filtering thread posts by `author_id` alone is too broad, and `in_reply_to_user_id == authorId` is the key guard that keeps extraction on the original self-thread chain. [`apps/api/src/main/kotlin/com/briefy/api/infrastructure/extraction/XApiExtractionProvider.kt`]
 - [2026-02-09 08:35] Source restore is `ARCHIVED -> ACTIVE` only; no re-extraction, no status memory. Service behavior is idempotent (`Source.kt`, `SourceStatus.kt`, `SourceService.kt`).
 - [2026-02-11 10:19] Spring AI Zhipu starter requires explicitly disabling non-chat models (`spring.ai.model.embedding=none`, `spring.ai.model.image=none`); otherwise context boot fails without a Zhipu API key (`application.yml`, `application-test.yml`).
