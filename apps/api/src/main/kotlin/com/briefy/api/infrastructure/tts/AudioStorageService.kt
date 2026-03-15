@@ -13,6 +13,7 @@ import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 import software.amazon.awssdk.services.s3.model.CreateBucketConfiguration
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.presigner.S3Presigner
@@ -78,9 +79,10 @@ class AudioStorageService(
         voiceId: String,
         modelId: String? = null
     ): String {
+        val key = resolveGetObjectKey(contentHash, providerType, voiceId, modelId)
         val getObjectRequest = GetObjectRequest.builder()
             .bucket(properties.bucket)
-            .key(objectKey(contentHash, providerType, voiceId, modelId))
+            .key(key)
             .build()
 
         return presigner.presignGetObject(
@@ -89,6 +91,21 @@ class AudioStorageService(
                 .getObjectRequest(getObjectRequest)
                 .build()
         ).url().toString()
+    }
+
+    private fun resolveGetObjectKey(
+        contentHash: String,
+        providerType: TtsProviderType,
+        voiceId: String,
+        modelId: String?
+    ): String {
+        val primaryKey = objectKey(contentHash, providerType, voiceId, modelId)
+        if (providerType != TtsProviderType.ELEVENLABS || objectExists(primaryKey)) {
+            return primaryKey
+        }
+
+        val legacyKey = legacyObjectKey(contentHash, voiceId, modelId)
+        return if (objectExists(legacyKey)) legacyKey else primaryKey
     }
 
     private fun ensureBucketExistsIfNeeded() {
@@ -140,11 +157,37 @@ class AudioStorageService(
         return builder.build()
     }
 
+    private fun objectExists(key: String): Boolean {
+        return try {
+            s3Client.headObject(
+                HeadObjectRequest.builder()
+                    .bucket(properties.bucket)
+                    .key(key)
+                    .build()
+            )
+            true
+        } catch (ex: S3Exception) {
+            if (ex.statusCode() == 404 || ex.awsErrorDetails()?.errorCode() == "NoSuchKey") {
+                false
+            } else {
+                throw ex
+            }
+        }
+    }
+
     private fun objectKey(contentHash: String, providerType: TtsProviderType, voiceId: String, modelId: String?): String {
         return if (modelId.isNullOrBlank()) {
             "audio/${providerType.apiValue}/$contentHash/$voiceId.mp3"
         } else {
             "audio/${providerType.apiValue}/$contentHash/$voiceId/$modelId.mp3"
+        }
+    }
+
+    private fun legacyObjectKey(contentHash: String, voiceId: String, modelId: String?): String {
+        return if (modelId.isNullOrBlank()) {
+            "audio/$contentHash/$voiceId.mp3"
+        } else {
+            "audio/$contentHash/$voiceId/$modelId.mp3"
         }
     }
 }

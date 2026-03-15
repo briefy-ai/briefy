@@ -10,11 +10,11 @@ data class TtsModelPricing(
     val pricePerMillionCharsUsd: Double
 ) {
     fun estimateCostUsd(characterCount: Int): BigDecimal {
-        if (characterCount <= 0) return BigDecimal.ZERO.setScale(2)
+        if (characterCount <= 0) return BigDecimal.ZERO.setScale(3)
         return BigDecimal.valueOf(characterCount.toDouble())
             .divide(BigDecimal.valueOf(1_000_000.0), 8, RoundingMode.HALF_UP)
             .multiply(BigDecimal.valueOf(pricePerMillionCharsUsd))
-            .setScale(2, RoundingMode.CEILING)
+            .setScale(3, RoundingMode.HALF_UP)
     }
 
     fun estimatedCostPerMinuteUsd(charsPerMinute: Int): BigDecimal = estimateCostUsd(charsPerMinute)

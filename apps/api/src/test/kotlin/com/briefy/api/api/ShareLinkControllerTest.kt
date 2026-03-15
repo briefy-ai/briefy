@@ -7,12 +7,9 @@ import com.briefy.api.domain.knowledgegraph.source.SharedAudioCache
 import com.briefy.api.domain.knowledgegraph.source.SharedAudioCacheRepository
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
-import com.briefy.api.domain.identity.settings.UserExtractionSettings
-import com.briefy.api.domain.identity.settings.UserExtractionSettingsRepository
 import com.briefy.api.domain.sharing.ShareLink
 import com.briefy.api.domain.sharing.ShareLinkEntityType
 import com.briefy.api.domain.sharing.ShareLinkRepository
-import com.briefy.api.infrastructure.security.ApiKeyEncryptionService
 import com.briefy.api.infrastructure.tts.AudioStorageService
 import com.briefy.api.infrastructure.tts.TtsProviderType
 import org.junit.jupiter.api.Test
@@ -45,12 +42,6 @@ class ShareLinkControllerTest {
 
     @Autowired
     lateinit var sharedAudioCacheRepository: SharedAudioCacheRepository
-
-    @Autowired
-    lateinit var userExtractionSettingsRepository: UserExtractionSettingsRepository
-
-    @Autowired
-    lateinit var apiKeyEncryptionService: ApiKeyEncryptionService
 
     @MockitoBean
     lateinit var audioStorageService: AudioStorageService
@@ -87,7 +78,6 @@ class ShareLinkControllerTest {
     @Test
     fun `GET public share falls back to legacy shared audio cache hash`() {
         val source = saveActiveSource()
-        enableElevenLabs(source.userId)
         val token = saveShareLink(source)
         val contentHash = legacyHash(source.content!!.text)
         sharedAudioCacheRepository.save(
@@ -147,7 +137,6 @@ class ShareLinkControllerTest {
             contentText = "Hola, esta es una narracion compartida para una fuente en espanol.",
             transcriptLanguage = "es"
         )
-        enableInworld(source.userId)
         val token = saveShareLink(source)
         val contentHash = legacyHash(source.content!!.text)
         sharedAudioCacheRepository.save(
@@ -172,6 +161,34 @@ class ShareLinkControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.source.audio.audioUrl").value("https://fresh.example.com/cached-es.mp3"))
             .andExpect(jsonPath("$.source.audio.durationSeconds").value(21))
+    }
+
+    @Test
+    fun `GET public share returns source narration for legacy source audio without stored voice id`() {
+        val source = saveActiveSource().apply {
+            completeNarration(
+                AudioContent(
+                    audioUrl = "https://old.example.com/source.mp3",
+                    durationSeconds = 18,
+                    format = "mp3",
+                    contentHash = "legacy-source-hash",
+                    providerType = TtsProviderType.ELEVENLABS,
+                    voiceId = null,
+                    modelId = "eleven_flash_v2_5",
+                    generatedAt = Instant.parse("2026-03-15T10:00:00Z")
+                )
+            )
+        }
+        sourceRepository.save(source)
+        val token = saveShareLink(source)
+
+        `when`(audioStorageService.generatePresignedGetUrl("legacy-source-hash", TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+            .thenReturn("https://fresh.example.com/source-legacy.mp3")
+
+        mockMvc.perform(get("/api/public/share/$token"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.source.audio.audioUrl").value("https://fresh.example.com/source-legacy.mp3"))
+            .andExpect(jsonPath("$.source.audio.durationSeconds").value(18))
     }
 
     @Test
@@ -212,32 +229,6 @@ class ShareLinkControllerTest {
         )
         shareLinkRepository.save(shareLink)
         return shareLink.token
-    }
-
-    private fun enableElevenLabs(userId: UUID) {
-        userExtractionSettingsRepository.save(
-            UserExtractionSettings(
-                id = UUID.randomUUID(),
-                userId = userId,
-                elevenlabsEnabled = true,
-                elevenlabsApiKeyEncrypted = apiKeyEncryptionService.encrypt("test-key"),
-                elevenlabsModelId = "eleven_flash_v2_5",
-                ttsPreferredProvider = TtsProviderType.ELEVENLABS
-            )
-        )
-    }
-
-    private fun enableInworld(userId: UUID) {
-        userExtractionSettingsRepository.save(
-            UserExtractionSettings(
-                id = UUID.randomUUID(),
-                userId = userId,
-                inworldEnabled = true,
-                inworldApiKeyEncrypted = apiKeyEncryptionService.encrypt("test-key"),
-                inworldModelId = "inworld-tts-1.5-mini",
-                ttsPreferredProvider = TtsProviderType.INWORLD
-            )
-        )
     }
 
     private fun saveActiveSource(

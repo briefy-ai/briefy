@@ -182,7 +182,7 @@ private object NarrationFailureCatalog {
             "quota_exceeded" -> "Your ElevenLabs quota has been exceeded. Check your ElevenLabs account and try again."
             "too_many_concurrent_requests", "system_busy", "voice_not_ready" ->
                 "ElevenLabs is temporarily unable to generate audio. Try again shortly."
-            "tts_provider_not_configured" -> "Your preferred TTS provider is not configured in Settings."
+            "tts_provider_not_configured", "elevenlabs_not_configured" -> "Your preferred TTS provider is not configured in Settings."
             "inworld_invalid_api_key" -> "Your Inworld API key is invalid. Update it in Settings and try again."
             "inworld_rate_limited" -> "Inworld is temporarily unable to generate audio. Try again shortly."
             "content_too_long" -> "This source is too long to narrate with the current limits."
@@ -197,7 +197,7 @@ private object NarrationFailureCatalog {
     fun retryableFor(code: String?): Boolean? {
         return when (code) {
             null -> null
-            "paid_plan_required", "invalid_api_key", "quota_exceeded", "tts_provider_not_configured", "content_too_long", "empty_plaintext_content", "elevenlabs_request_failed", "inworld_invalid_api_key", "inworld_request_failed" -> false
+            "paid_plan_required", "invalid_api_key", "quota_exceeded", "tts_provider_not_configured", "elevenlabs_not_configured", "content_too_long", "empty_plaintext_content", "elevenlabs_request_failed", "inworld_invalid_api_key", "inworld_request_failed" -> false
             "too_many_concurrent_requests", "system_busy", "voice_not_ready", "audio_storage_failed", "audio_url_refresh_failed", "tts_generation_failed", "elevenlabs_server_error", "elevenlabs_request_retryable", "inworld_server_error", "inworld_request_retryable", "inworld_rate_limited" -> true
             else -> false
         }

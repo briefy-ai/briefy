@@ -27,7 +27,7 @@ class TtsSettingsService(
     private val elevenLabsProperties: ElevenLabsTtsProperties,
     private val inworldProperties: InworldTtsProperties
 ) {
-    @Transactional(readOnly = true)
+    @Transactional
     fun getSettings(userId: UUID): TtsSettingsResponse {
         val settings = userSettingsService.getOrCreateSettings(userId)
 
@@ -109,19 +109,24 @@ class TtsSettingsService(
     @Transactional
     fun updatePreferredProvider(userId: UUID, command: UpdatePreferredTtsProviderCommand): TtsSettingsResponse {
         val settings = userSettingsService.getOrCreateSettings(userId)
-        settings.ttsPreferredProvider = TtsProviderType.fromApiValue(command.preferredProvider)
+        val providerType = TtsProviderType.fromApiValue(command.preferredProvider)
+        if (!isEnabled(settings, providerType) || encryptedApiKey(settings, providerType) == null) {
+            throw IllegalArgumentException("Preferred TTS provider must be enabled and configured before selection")
+        }
+
+        settings.ttsPreferredProvider = providerType
         settings.updatedAt = Instant.now()
         userExtractionSettingsRepository.save(settings)
         return getSettings(userId)
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     fun resolvePreferredProvider(userId: UUID): ResolvedTtsProviderConfig? {
         val settings = userSettingsService.getOrCreateSettings(userId)
         return resolveProvider(settings, settings.ttsPreferredProvider)
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     fun preferredProviderType(userId: UUID): TtsProviderType {
         return userSettingsService.getOrCreateSettings(userId).ttsPreferredProvider
     }

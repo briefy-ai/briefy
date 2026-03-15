@@ -92,7 +92,7 @@ class SourceNarrationControllerTest {
             .andExpect(jsonPath("$.characterCount").value(32))
             .andExpect(jsonPath("$.provider").value("elevenlabs"))
             .andExpect(jsonPath("$.modelId").value("eleven_flash_v2_5"))
-            .andExpect(jsonPath("$.estimatedCostUsd").value(0.01))
+            .andExpect(jsonPath("$.estimatedCostUsd").value(0.002))
     }
 
     @Test
@@ -169,6 +169,31 @@ class SourceNarrationControllerTest {
             .andExpect(jsonPath("$.durationSeconds").value(12))
             .andExpect(jsonPath("$.format").value("mp3"))
             .andExpect(jsonPath("$.contentHash").value("abc123"))
+    }
+
+    @Test
+    fun `GET audio refreshes legacy source audio without stored voice id`() {
+        val source = saveActiveSource().apply {
+            completeNarration(
+                AudioContent(
+                    audioUrl = "https://old.example.com/audio.mp3",
+                    durationSeconds = 12,
+                    format = "mp3",
+                    contentHash = "legacy123",
+                    providerType = TtsProviderType.ELEVENLABS,
+                    voiceId = null,
+                    modelId = "eleven_flash_v2_5",
+                    generatedAt = Instant.parse("2026-03-15T10:00:00Z")
+                )
+            )
+        }
+        sourceRepository.save(source)
+        `when`(audioStorageService.generatePresignedGetUrl("legacy123", TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+            .thenReturn("https://new.example.com/audio-legacy.mp3")
+
+        mockMvc.perform(get("/api/sources/${source.id}/audio"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.audioUrl").value("https://new.example.com/audio-legacy.mp3"))
     }
 
     private fun enableElevenLabs() {

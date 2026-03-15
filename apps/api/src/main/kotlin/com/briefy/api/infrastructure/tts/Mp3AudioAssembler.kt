@@ -1,14 +1,16 @@
 package com.briefy.api.infrastructure.tts
 
+import java.io.ByteArrayOutputStream
+
 object Mp3AudioAssembler {
     fun concatenate(chunks: List<ByteArray>): ByteArray {
         if (chunks.isEmpty()) return ByteArray(0)
         if (chunks.size == 1) return chunks.first()
 
-        val assembled = ArrayList<Byte>(chunks.sumOf { it.size })
+        val assembled = ByteArrayOutputStream(chunks.sumOf { it.size })
         chunks.forEachIndexed { index, chunk ->
             val bytes = if (index == 0) chunk else stripLeadingId3(chunk)
-            bytes.forEach(assembled::add)
+            assembled.write(bytes)
         }
 
         return assembled.toByteArray()
@@ -32,6 +34,7 @@ object Mp3AudioAssembler {
             ((audioBytes[7].toInt() and 0x7F) shl 14) or
             ((audioBytes[8].toInt() and 0x7F) shl 7) or
             (audioBytes[9].toInt() and 0x7F)
-        return 10 + size
+        val hasFooter = (audioBytes[5].toInt() and 0x10) != 0
+        return 10 + size + if (hasFooter) 10 else 0
     }
 }

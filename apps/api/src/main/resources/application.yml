@@ -111,7 +111,7 @@ audio:
     presigned-url-expiry-hours: ${AUDIO_STORAGE_PRESIGNED_URL_EXPIRY_HOURS:24}
 
 tts:
-  max-characters: ${TTS_MAX_CHARACTERS:100000}
+  max-characters: ${TTS_MAX_CHARACTERS:${ELEVENLABS_MAX_CHARACTERS:100000}}
   elevenlabs:
     base-url: ${ELEVENLABS_BASE_URL:https://api.elevenlabs.io}
     voice-id: ${ELEVENLABS_VOICE_ID:iiidtqDt9FBdT1vfBluA}

@@ -13,4 +13,6 @@ interface SharedAudioCacheRepository : JpaRepository<SharedAudioCache, UUID> {
         voiceId: String,
         modelId: String
     ): SharedAudioCache?
+
+    fun findFirstByContentHashOrderByCreatedAtDesc(contentHash: String): SharedAudioCache?
 }

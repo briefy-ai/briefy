@@ -37,6 +37,9 @@ SET provider_type = 'ELEVENLABS'
 WHERE provider_type IS NULL;
 
 ALTER TABLE shared_audio_cache
+    ALTER COLUMN provider_type SET NOT NULL;
+
+ALTER TABLE shared_audio_cache
     DROP CONSTRAINT IF EXISTS uq_shared_audio_hash_voice_model;
 
 ALTER TABLE shared_audio_cache

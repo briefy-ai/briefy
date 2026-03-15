@@ -75,12 +75,29 @@ class TtsSettingsControllerTest {
     @Test
     fun `PUT preferred provider updates selected provider`() {
         mockMvc.perform(
+            put("/api/settings/tts/providers/inworld")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":true,"apiKey":"in-user-key","modelId":"inworld-tts-1.5-max"}""")
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
             put("/api/settings/tts/preferred-provider")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"preferredProvider":"inworld"}""")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.preferredProvider").value("inworld"))
+    }
+
+    @Test
+    fun `PUT preferred provider rejects unconfigured provider`() {
+        mockMvc.perform(
+            put("/api/settings/tts/preferred-provider")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"preferredProvider":"inworld"}""")
+        )
+            .andExpect(status().isBadRequest)
     }
 
     @Test

@@ -123,7 +123,7 @@ class SourceNarrationService(
         }
 
         val providerType = existingAudio.providerType ?: TtsProviderType.ELEVENLABS
-        val voiceId = existingAudio.voiceId ?: throw InvalidSourceStateException("Audio voice is unavailable for source $id")
+        val voiceId = existingAudio.voiceId ?: ttsVoiceResolver.resolveVoiceId(providerType, "en")
         val modelId = existingAudio.modelId
         val refreshedUrl = audioStorageService.generatePresignedGetUrl(existingAudio.contentHash, providerType, voiceId, modelId)
         val refreshedAudio = existingAudio.copy(audioUrl = refreshedUrl)

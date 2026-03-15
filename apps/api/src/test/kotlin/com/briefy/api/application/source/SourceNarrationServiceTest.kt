@@ -133,7 +133,7 @@ class SourceNarrationServiceTest {
         assertEquals(34, estimate.characterCount)
         assertEquals("elevenlabs", estimate.provider)
         assertEquals("eleven_flash_v2_5", estimate.modelId)
-        assertEquals(BigDecimal("0.01"), estimate.estimatedCostUsd)
+        assertEquals(BigDecimal("0.002"), estimate.estimatedCostUsd)
         verify(sourceRepository, never()).save(any())
         verify(sharedAudioCacheRepository, never()).save(any())
         verify(eventPublisher, never()).publishEvent(any())
@@ -323,6 +323,35 @@ class SourceNarrationServiceTest {
         assertEquals("https://new.example.com/audio.mp3", refreshed.audioUrl)
         assertEquals("https://new.example.com/audio.mp3", source.audioContent?.audioUrl)
         assertEquals("https://new.example.com/audio.mp3", cache.audioUrl)
+    }
+
+    @Test
+    fun `refreshAudio falls back to default elevenlabs voice for legacy rows`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId).apply {
+            completeNarration(
+                AudioContent(
+                    audioUrl = "https://old.example.com/audio.mp3",
+                    durationSeconds = 11,
+                    format = "mp3",
+                    contentHash = "hash-legacy",
+                    providerType = TtsProviderType.ELEVENLABS,
+                    voiceId = null,
+                    modelId = "eleven_flash_v2_5",
+                    generatedAt = Instant.parse("2026-03-15T10:00:00Z")
+                )
+            )
+        }
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(audioStorageService.generatePresignedGetUrl("hash-legacy", TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+            .thenReturn("https://new.example.com/audio-legacy.mp3")
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+
+        val refreshed = service.refreshAudio(source.id)
+
+        assertEquals("https://new.example.com/audio-legacy.mp3", refreshed.audioUrl)
+        assertEquals("https://new.example.com/audio-legacy.mp3", source.audioContent?.audioUrl)
     }
 
     private fun createActiveSource(userId: UUID): Source {
