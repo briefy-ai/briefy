@@ -7,6 +7,7 @@ import com.briefy.api.domain.knowledgegraph.source.Metadata
 import com.briefy.api.domain.knowledgegraph.source.NarrationState
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
+import com.briefy.api.domain.knowledgegraph.source.SourceType
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.briefy.api.infrastructure.tts.AudioStorageService
 import org.junit.jupiter.api.BeforeEach
@@ -166,6 +167,15 @@ class SourceNarrationControllerTest {
             .andExpect(jsonPath("$.contentHash").value("abc123"))
     }
 
+    @Test
+    fun `POST narrate for youtube source does not require elevenlabs`() {
+        val source = saveActiveYoutubeSource()
+
+        mockMvc.perform(post("/api/sources/${source.id}/narrate"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.narrationState").value("pending"))
+    }
+
     private fun enableElevenLabs() {
         mockMvc.perform(
             put("/api/settings/extraction/providers/elevenlabs")
@@ -198,6 +208,34 @@ class SourceNarrationControllerTest {
         if (source.narrationState != NarrationState.NOT_GENERATED) {
             throw IllegalStateException("Expected source narration to start as NOT_GENERATED")
         }
+        return sourceRepository.save(source)
+    }
+
+    private fun saveActiveYoutubeSource(): Source {
+        val source = Source.create(
+            id = UUID.randomUUID(),
+            rawUrl = "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            userId = testUserId,
+            sourceType = SourceType.VIDEO
+        )
+        source.startExtraction()
+        val content = Content.from("Video transcript content")
+        source.completeExtraction(
+            content,
+            Metadata.from(
+                title = "YouTube video",
+                author = "Channel",
+                publishedDate = null,
+                platform = "youtube",
+                wordCount = content.wordCount,
+                aiFormatted = false,
+                extractionProvider = "youtube",
+                videoId = "dQw4w9WgXcQ",
+                videoEmbedUrl = "https://www.youtube.com/embed/dQw4w9WgXcQ",
+                videoDurationSeconds = 60,
+                transcriptSource = "captions"
+            )
+        )
         return sourceRepository.save(source)
     }
 }
