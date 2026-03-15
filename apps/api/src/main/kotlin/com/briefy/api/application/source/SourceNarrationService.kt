@@ -170,11 +170,14 @@ class SourceNarrationService(
         }
 
         val cachedAudio = transactionTemplate.execute {
-            sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
-                loaded.contentHash,
-                ttsProperties.voiceId,
-                ttsProperties.modelId
-            )
+            NarrationContentHashing.lookupHashes(loaded.contentText)
+                .firstNotNullOfOrNull { hash ->
+                    sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+                        hash,
+                        ttsProperties.voiceId,
+                        ttsProperties.modelId
+                    )
+                }
         }
         if (cachedAudio != null) {
             completeFromCache(loaded, cachedAudio)

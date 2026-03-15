@@ -29,6 +29,7 @@ export function PublicNarrationPlayer({
   const currentUrlRef = useRef(audioUrl)
   const refreshAttemptsRef = useRef(0)
   const hasStartedPlaybackRef = useRef(false)
+  const playbackSessionRef = useRef(0)
   const [state, setState] = useState<PlayerState>({
     isPlaying: false,
     isLoading: false,
@@ -88,6 +89,7 @@ export function PublicNarrationPlayer({
 
   useEffect(() => {
     const audio = audioRef.current
+    playbackSessionRef.current += 1
     currentUrlRef.current = audioUrl
     refreshAttemptsRef.current = 0
     hasStartedPlaybackRef.current = false
@@ -185,11 +187,18 @@ export function PublicNarrationPlayer({
     const audio = audioRef.current
     if (!audio) return
     const currentTime = audio.currentTime
+    const playbackSession = playbackSessionRef.current
 
     try {
       const refreshed = await getShareLinkAudio(token)
+      if (playbackSession !== playbackSessionRef.current) {
+        return
+      }
       await playFromUrl(refreshed.audioUrl, currentTime)
     } catch {
+      if (playbackSession !== playbackSessionRef.current) {
+        return
+      }
       setState((prev) => ({
         ...prev,
         isLoading: false,
@@ -232,8 +241,11 @@ export function PublicNarrationPlayer({
       return
     }
     hasStartedPlaybackRef.current = true
-    void playFromUrl(currentUrlRef.current)
-  }, [playFromUrl, resume])
+    void playFromUrl(
+      currentUrlRef.current,
+      state.currentTime > 0 ? state.currentTime : undefined
+    )
+  }, [playFromUrl, resume, state.currentTime])
 
   useMediaSession({
     title,

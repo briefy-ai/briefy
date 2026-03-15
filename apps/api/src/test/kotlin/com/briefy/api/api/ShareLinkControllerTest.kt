@@ -1,6 +1,5 @@
 package com.briefy.api.api
 
-import com.briefy.api.application.source.NarrationContentHashing
 import com.briefy.api.domain.knowledgegraph.source.AudioContent
 import com.briefy.api.domain.knowledgegraph.source.Content
 import com.briefy.api.domain.knowledgegraph.source.Metadata
@@ -75,10 +74,10 @@ class ShareLinkControllerTest {
     }
 
     @Test
-    fun `GET public share falls back to shared audio cache`() {
+    fun `GET public share falls back to legacy shared audio cache hash`() {
         val source = saveActiveSource()
         val token = saveShareLink(source)
-        val contentHash = NarrationContentHashing.hash(source.content!!.text)
+        val contentHash = legacyHash(source.content!!.text)
         sharedAudioCacheRepository.save(
             SharedAudioCache(
                 id = UUID.randomUUID(),
@@ -190,5 +189,11 @@ class ShareLinkControllerTest {
             )
         )
         return sourceRepository.save(source)
+    }
+
+    private fun legacyHash(contentText: String): String {
+        return java.security.MessageDigest.getInstance("SHA-256")
+            .digest(contentText.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte) }
     }
 }
