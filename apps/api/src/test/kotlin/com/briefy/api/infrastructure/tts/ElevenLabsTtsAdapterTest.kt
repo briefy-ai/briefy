@@ -91,4 +91,42 @@ class ElevenLabsTtsAdapterTest {
             server.shutdown()
         }
     }
+
+    @Test
+    fun `synthesize preserves unknown provider code from ElevenLabs client errors`() {
+        val server = MockWebServer()
+        server.start()
+        try {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(422)
+                    .setHeader("Content-Type", "application/json")
+                    .setBody(
+                        """
+                        {"detail":{"type":"invalid_request_error","code":"voice_not_found","message":"The voice does not exist."}}
+                        """.trimIndent()
+                    )
+            )
+
+            val adapter = ElevenLabsTtsAdapter(
+                restClientBuilder = RestClient.builder(),
+                properties = TtsProperties(
+                    baseUrl = server.url("/").toString().removeSuffix("/"),
+                    voiceId = "voice-123",
+                    modelId = "model-1"
+                ),
+                objectMapper = jacksonObjectMapper()
+            )
+
+            val ex = assertThrows<ElevenLabsTtsException> {
+                adapter.synthesize("hello narration", "secret-key")
+            }
+
+            assertEquals("voice_not_found", ex.code)
+            assertFalse(ex.retryable)
+            assertEquals("The voice does not exist.", ex.userMessage)
+        } finally {
+            server.shutdown()
+        }
+    }
 }

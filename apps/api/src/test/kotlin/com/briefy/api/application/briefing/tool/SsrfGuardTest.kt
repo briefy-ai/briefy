@@ -4,17 +4,20 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
 
 class SsrfGuardTest {
+    private val publicResolver: (String) -> Array<java.net.InetAddress> = { host ->
+        arrayOf(java.net.InetAddress.getByAddress(host, byteArrayOf(93, 184.toByte(), 216.toByte(), 34)))
+    }
 
     @Test
     fun `allows valid https URL`() {
-        val result = SsrfGuard.validate("https://example.com/page")
+        val result = SsrfGuard.validate("https://example.com/page", publicResolver)
         assertTrue(result is ToolResult.Success)
         assertEquals("example.com", (result as ToolResult.Success).data.uri.host)
     }
 
     @Test
     fun `allows valid http URL`() {
-        val result = SsrfGuard.validate("http://example.com/page")
+        val result = SsrfGuard.validate("http://example.com/page", publicResolver)
         assertTrue(result is ToolResult.Success)
     }
 
@@ -103,7 +106,7 @@ class SsrfGuardTest {
 
     @Test
     fun `returns resolved address for valid URL`() {
-        val result = SsrfGuard.validate("https://example.com/page")
+        val result = SsrfGuard.validate("https://example.com/page", publicResolver)
         assertTrue(result is ToolResult.Success)
         val validated = (result as ToolResult.Success).data
         assertNotNull(validated.resolvedAddress)

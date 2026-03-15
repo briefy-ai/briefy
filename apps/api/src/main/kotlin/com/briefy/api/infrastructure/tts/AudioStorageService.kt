@@ -43,7 +43,7 @@ class AudioStorageService(
     private val presigner: S3Presigner = S3Presigner.builder()
         .region(region)
         .credentialsProvider(credentialsProvider)
-        .endpointOverride(URI.create(properties.publicEndpoint ?: properties.endpoint))
+        .endpointOverride(URI.create(properties.endpoint))
         .serviceConfiguration(
             S3Configuration.builder()
                 .pathStyleAccessEnabled(true)

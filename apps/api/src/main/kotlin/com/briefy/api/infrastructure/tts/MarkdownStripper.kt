@@ -42,7 +42,7 @@ class MarkdownStripper {
             }
 
             val markerLength = trimmed.takeWhile { it == fenceMarker }.length
-            if (markerLength >= fenceLength) {
+            if (markerLength >= fenceLength && trimmed.drop(markerLength).isBlank()) {
                 fenceMarker = null
                 fenceLength = 0
             }

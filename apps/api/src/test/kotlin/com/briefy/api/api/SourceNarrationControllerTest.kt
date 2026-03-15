@@ -126,6 +126,20 @@ class SourceNarrationControllerTest {
     }
 
     @Test
+    fun `GET source does not tell user to retry for non retryable request failures`() {
+        val source = saveActiveSource().apply {
+            failNarration("elevenlabs_request_failed")
+        }
+        sourceRepository.save(source)
+
+        mockMvc.perform(get("/api/sources/${source.id}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.narrationFailureReason").value("elevenlabs_request_failed"))
+            .andExpect(jsonPath("$.narrationFailureMessage").value("Briefy could not generate audio for this source."))
+            .andExpect(jsonPath("$.narrationFailureRetryable").value(false))
+    }
+
+    @Test
     fun `GET audio refreshes presigned url`() {
         val source = saveActiveSource().apply {
             completeNarration(

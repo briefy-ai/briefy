@@ -181,8 +181,9 @@ private object NarrationFailureCatalog {
             "elevenlabs_not_configured" -> "ElevenLabs is not configured in Settings."
             "content_too_long" -> "This source is too long to narrate with the current limits."
             "empty_plaintext_content" -> "This source does not contain narratable text."
-            "audio_storage_failed", "audio_url_refresh_failed", "tts_generation_failed", "elevenlabs_server_error", "elevenlabs_request_retryable", "elevenlabs_request_failed" ->
+            "audio_storage_failed", "audio_url_refresh_failed", "tts_generation_failed", "elevenlabs_server_error", "elevenlabs_request_retryable" ->
                 "Briefy could not generate audio for this source. Try again."
+            "elevenlabs_request_failed" -> "Briefy could not generate audio for this source."
             else -> "Briefy could not generate audio for this source."
         }
     }

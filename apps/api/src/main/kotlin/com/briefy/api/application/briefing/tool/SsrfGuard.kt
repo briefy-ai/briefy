@@ -9,7 +9,10 @@ object SsrfGuard {
 
     private val BLOCKED_SCHEMES = setOf("file", "ftp", "gopher", "data", "javascript")
 
-    fun validate(rawUrl: String): ToolResult<ValidatedUrl> {
+    fun validate(
+        rawUrl: String,
+        dnsResolver: (String) -> Array<InetAddress> = InetAddress::getAllByName
+    ): ToolResult<ValidatedUrl> {
         val uri = try {
             URI.create(rawUrl)
         } catch (_: Exception) {
@@ -33,15 +36,18 @@ object SsrfGuard {
             return ToolResult.Error(ToolErrorCode.SSRF_BLOCKED, "Blocked private/reserved host: $host")
         }
 
-        val resolvedAddress = resolveAndValidate(host)
+        val resolvedAddress = resolveAndValidate(host, dnsResolver)
             ?: return ToolResult.Error(ToolErrorCode.SSRF_BLOCKED, "Blocked private/reserved host: $host")
 
         return ToolResult.Success(ValidatedUrl(uri, resolvedAddress))
     }
 
-    private fun resolveAndValidate(host: String): InetAddress? {
+    private fun resolveAndValidate(
+        host: String,
+        dnsResolver: (String) -> Array<InetAddress>
+    ): InetAddress? {
         val addresses = try {
-            InetAddress.getAllByName(host)
+            dnsResolver(host)
         } catch (_: Exception) {
             // Fail closed: DNS failure = blocked
             return null
