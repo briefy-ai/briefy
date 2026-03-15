@@ -117,7 +117,7 @@ class SourceRepositoryCustomImpl(
 
         when (sort) {
             SourceSortStrategy.NEWEST -> query.append(
-                " AND (s.updatedAt < :cursorInstant OR (s.updatedAt = :cursorInstant AND s.id < :cursorId))"
+                " AND (s.createdAt < :cursorInstant OR (s.createdAt = :cursorInstant AND s.id < :cursorId))"
             )
 
             SourceSortStrategy.OLDEST -> query.append(
@@ -184,7 +184,7 @@ class SourceRepositoryCustomImpl(
 
     private fun orderByClause(sort: SourceSortStrategy): String {
         return when (sort) {
-            SourceSortStrategy.NEWEST -> "s.updatedAt DESC, s.id DESC"
+            SourceSortStrategy.NEWEST -> "s.createdAt DESC, s.id DESC"
             SourceSortStrategy.OLDEST -> "s.createdAt ASC, s.id ASC"
             SourceSortStrategy.LONGEST_READ -> """
                 CASE WHEN s.metadata.estimatedReadingTime IS NULL THEN 1 ELSE 0 END ASC,
