@@ -174,11 +174,83 @@ class SourceTest {
         assertNull(metadata.estimatedReadingTime)
     }
 
+    @Test
+    fun `requestNarration marks source pending`() {
+        val source = createActiveSource()
+
+        source.requestNarration()
+
+        assertEquals(NarrationState.PENDING, source.narrationState)
+        assertNull(source.narrationFailureReason)
+    }
+
+    @Test
+    fun `completeNarration stores audio and marks source succeeded`() {
+        val source = createActiveSource()
+        val generatedAt = Instant.now()
+
+        source.completeNarration(
+            AudioContent(
+                audioUrl = "https://example.com/audio.mp3",
+                durationSeconds = 15,
+                format = "mp3",
+                contentHash = "abc123",
+                voiceId = "voice-1",
+                modelId = "model-1",
+                generatedAt = generatedAt
+            )
+        )
+
+        assertEquals(NarrationState.SUCCEEDED, source.narrationState)
+        assertEquals("https://example.com/audio.mp3", source.audioContent?.audioUrl)
+        assertEquals(generatedAt, source.audioContent?.generatedAt)
+    }
+
+    @Test
+    fun `acceptManualContent clears existing narration`() {
+        val source = createActiveSource()
+        source.completeNarration(
+            AudioContent(
+                audioUrl = "https://example.com/audio.mp3",
+                durationSeconds = 15,
+                format = "mp3",
+                contentHash = "abc123",
+                voiceId = "voice-1",
+                modelId = "model-1",
+                generatedAt = Instant.now()
+            )
+        )
+
+        source.acceptManualContent(
+            Content.from("Updated manual content"),
+            Metadata.from(
+                title = "Updated",
+                author = null,
+                publishedDate = null,
+                platform = "web",
+                wordCount = 3,
+                aiFormatted = false,
+                extractionProvider = Metadata.EXTRACTION_PROVIDER_MANUAL
+            )
+        )
+
+        assertEquals(NarrationState.NOT_GENERATED, source.narrationState)
+        assertNull(source.audioContent)
+        assertNull(source.narrationFailureReason)
+    }
+
     private fun createSource(): Source {
         return Source.create(
             id = UUID.randomUUID(),
             rawUrl = "https://example.com",
             userId = UUID.randomUUID()
         )
+    }
+
+    private fun createActiveSource(): Source {
+        return createSource().apply {
+            startExtraction()
+            completeExtraction(Content.from("text"), Metadata())
+        }
     }
 }

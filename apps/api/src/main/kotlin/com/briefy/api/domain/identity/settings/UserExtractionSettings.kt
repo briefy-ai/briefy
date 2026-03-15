@@ -28,6 +28,12 @@ class UserExtractionSettings(
     @Column(name = "x_api_bearer_token_encrypted", length = 1024)
     var xApiBearerTokenEncrypted: String? = null,
 
+    @Column(name = "elevenlabs_enabled", nullable = false)
+    var elevenlabsEnabled: Boolean = false,
+
+    @Column(name = "elevenlabs_api_key_encrypted", columnDefinition = "TEXT")
+    var elevenlabsApiKeyEncrypted: String? = null,
+
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant = Instant.now(),
 

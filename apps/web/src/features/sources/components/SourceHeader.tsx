@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { extractDomain, staggerDelay } from '@/lib/format'
+import { NarrateButton } from '@/features/audio/components/NarrateButton'
 import type { Source } from '@/lib/api/types'
 
 const STATUS_CONFIG: Record<
@@ -24,6 +25,7 @@ const STATUS_CONFIG: Record<
 
 interface SourceHeaderProps {
   source: Source
+  onSourceUpdate: (source: Source) => void
   onGenerateBriefing: () => void
   onDelete: () => void
   onRestore: () => void
@@ -35,6 +37,7 @@ interface SourceHeaderProps {
 
 export function SourceHeader({
   source,
+  onSourceUpdate,
   onGenerateBriefing,
   onDelete,
   onRestore,
@@ -83,6 +86,7 @@ export function SourceHeader({
           </a>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {canGenerateBriefing && <NarrateButton source={source} onSourceUpdate={onSourceUpdate} />}
           <Button
             type="button"
             size="sm"

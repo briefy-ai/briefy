@@ -33,9 +33,10 @@ export function useSourceData(sourceId: string) {
       : metadata.aiFormatted === false
     : false
   const isTopicExtractionPending = source?.topicExtractionState === 'pending'
+  const isNarrationPending = source?.narrationState === 'pending'
 
   usePolling({
-    enabled: Boolean(source && source.status === 'active' && (isFormattingPending || isTopicExtractionPending)),
+    enabled: Boolean(source && source.status === 'active' && (isFormattingPending || isTopicExtractionPending || isNarrationPending)),
     intervalMs: 2000,
     fetch: () => getSource(sourceId),
     onSuccess: (data) => setSource(data),

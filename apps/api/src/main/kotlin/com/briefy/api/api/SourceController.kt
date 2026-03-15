@@ -19,7 +19,8 @@ import java.util.UUID
 @RequestMapping("/api/sources")
 class SourceController(
     private val sourceService: SourceService,
-    private val topicService: TopicService
+    private val topicService: TopicService,
+    private val sourceNarrationService: SourceNarrationService
 ) {
     private val logger = LoggerFactory.getLogger(SourceController::class.java)
 
@@ -89,6 +90,51 @@ class SourceController(
         val source = sourceService.getSource(id)
         logger.info("[controller] Get source request completed sourceId={} status={}", source.id, source.status)
         return ResponseEntity.ok(source)
+    }
+
+    @PostMapping("/{id}/narrate")
+    fun narrateSource(@PathVariable id: UUID): ResponseEntity<SourceResponse> {
+        logger.info("[controller] Narrate source request received sourceId={}", id)
+        val source = sourceNarrationService.requestNarration(id)
+        logger.info(
+            "[controller] Narrate source request completed sourceId={} narrationState={}",
+            source.id,
+            source.narrationState
+        )
+        return ResponseEntity.ok(source)
+    }
+
+    @PostMapping("/{id}/narrate/retry")
+    fun retryNarration(@PathVariable id: UUID): ResponseEntity<SourceResponse> {
+        logger.info("[controller] Retry narration request received sourceId={}", id)
+        val source = sourceNarrationService.retryNarration(id)
+        logger.info(
+            "[controller] Retry narration request completed sourceId={} narrationState={}",
+            source.id,
+            source.narrationState
+        )
+        return ResponseEntity.ok(source)
+    }
+
+    @GetMapping("/{id}/narrate/estimate")
+    fun estimateNarration(@PathVariable id: UUID): ResponseEntity<NarrationEstimateResponse> {
+        logger.info("[controller] Narration estimate request received sourceId={}", id)
+        val estimate = sourceNarrationService.estimateNarration(id)
+        logger.info(
+            "[controller] Narration estimate request completed sourceId={} characterCount={} modelId={}",
+            id,
+            estimate.characterCount,
+            estimate.modelId
+        )
+        return ResponseEntity.ok(estimate)
+    }
+
+    @GetMapping("/{id}/audio")
+    fun refreshAudio(@PathVariable id: UUID): ResponseEntity<AudioContentDto> {
+        logger.info("[controller] Refresh source audio request received sourceId={}", id)
+        val audio = sourceNarrationService.refreshAudio(id)
+        logger.info("[controller] Refresh source audio request completed sourceId={} format={}", id, audio.format)
+        return ResponseEntity.ok(audio)
     }
 
     @PostMapping("/{id}/content")
