@@ -93,13 +93,6 @@ export function PublicNarrationPlayer({
     currentUrlRef.current = audioUrl
     refreshAttemptsRef.current = 0
     hasStartedPlaybackRef.current = false
-    setState({
-      isPlaying: false,
-      isLoading: false,
-      currentTime: 0,
-      duration: durationSeconds,
-      error: null,
-    })
     if (!audio) return
     audio.pause()
     audio.src = ''

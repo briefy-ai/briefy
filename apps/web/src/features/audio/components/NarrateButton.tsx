@@ -33,6 +33,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   const isCurrentSource = currentSourceId === source.id
   const narrationState = source.narrationState
   const title = source.metadata?.title ?? source.url.normalized
+  const isYouTubeSource = source.url.platform === 'youtube'
 
   const executeNarrate = async () => {
     setTriggering(true)
@@ -61,6 +62,15 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   }
 
   const handleNarrateOrRetry = async (action: 'narrate' | 'retry') => {
+    if (isYouTubeSource) {
+      if (action === 'retry') {
+        void executeRetry()
+      } else {
+        void executeNarrate()
+      }
+      return
+    }
+
     setTriggering(true)
     setRequestError(null)
     try {
@@ -132,7 +142,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
     return (
       <Button type="button" variant="ghost" size="sm" disabled>
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-        <span className="hidden sm:inline">Generating audio...</span>
+        <span className="hidden sm:inline">{isYouTubeSource ? 'Preparing audio...' : 'Generating audio...'}</span>
       </Button>
     )
   }

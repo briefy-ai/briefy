@@ -651,6 +651,7 @@ class SourceService(
             )
 
             source.completeExtraction(content, metadata)
+            result.originalAudio?.audioContent?.let(source::completeNarration)
             source.markTopicExtractionPending()
             sourceRepository.save(source)
             saveSharedSnapshot(source, Instant.now())

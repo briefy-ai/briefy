@@ -13,5 +13,6 @@ data class ExtractionResult(
     val videoEmbedUrl: String? = null,
     val videoDurationSeconds: Int? = null,
     val transcriptSource: String? = null,
-    val transcriptLanguage: String? = null
+    val transcriptLanguage: String? = null,
+    val originalAudio: ExtractedAudioAsset? = null
 )

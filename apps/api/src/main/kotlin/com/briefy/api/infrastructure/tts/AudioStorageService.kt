@@ -54,6 +54,12 @@ class AudioStorageService(
     @Volatile
     private var bucketVerified = false
 
+    val endpoint: String
+        get() = properties.endpoint
+
+    val bucket: String
+        get() = properties.bucket
+
     fun uploadMp3(contentHash: String, voiceId: String, modelId: String, audioBytes: ByteArray) {
         ensureBucketExistsIfNeeded()
         s3Client.putObject(
@@ -78,6 +84,10 @@ class AudioStorageService(
                 .getObjectRequest(getObjectRequest)
                 .build()
         ).url().toString()
+    }
+
+    fun objectKeyFor(contentHash: String, voiceId: String, modelId: String? = null): String {
+        return objectKey(contentHash, voiceId, modelId)
     }
 
     private fun ensureBucketExistsIfNeeded() {
