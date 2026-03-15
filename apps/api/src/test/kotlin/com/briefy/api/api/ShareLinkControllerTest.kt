@@ -142,6 +142,39 @@ class ShareLinkControllerTest {
     }
 
     @Test
+    fun `GET public share falls back to inworld cache using spanish voice`() {
+        val source = saveActiveSource(
+            contentText = "Hola, esta es una narracion compartida para una fuente en espanol.",
+            transcriptLanguage = "es"
+        )
+        enableInworld(source.userId)
+        val token = saveShareLink(source)
+        val contentHash = legacyHash(source.content!!.text)
+        sharedAudioCacheRepository.save(
+            SharedAudioCache(
+                id = UUID.randomUUID(),
+                contentHash = contentHash,
+                audioUrl = "https://old.example.com/cached-es.mp3",
+                durationSeconds = 21,
+                format = "mp3",
+                characterCount = source.content!!.text.length,
+                providerType = TtsProviderType.INWORLD,
+                voiceId = "Miguel",
+                modelId = "inworld-tts-1.5-mini",
+                createdAt = Instant.parse("2026-03-15T10:00:00Z")
+            )
+        )
+
+        `when`(audioStorageService.generatePresignedGetUrl(contentHash, TtsProviderType.INWORLD, "Miguel", "inworld-tts-1.5-mini"))
+            .thenReturn("https://fresh.example.com/cached-es.mp3")
+
+        mockMvc.perform(get("/api/public/share/$token"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.source.audio.audioUrl").value("https://fresh.example.com/cached-es.mp3"))
+            .andExpect(jsonPath("$.source.audio.durationSeconds").value(21))
+    }
+
+    @Test
     fun `GET public share returns source narration for archived source with existing audio`() {
         val source = saveActiveSource().apply {
             completeNarration(
@@ -194,9 +227,24 @@ class ShareLinkControllerTest {
         )
     }
 
-    private fun saveActiveSource(): Source {
+    private fun enableInworld(userId: UUID) {
+        userExtractionSettingsRepository.save(
+            UserExtractionSettings(
+                id = UUID.randomUUID(),
+                userId = userId,
+                inworldEnabled = true,
+                inworldApiKeyEncrypted = apiKeyEncryptionService.encrypt("test-key"),
+                inworldModelId = "inworld-tts-1.5-mini",
+                ttsPreferredProvider = TtsProviderType.INWORLD
+            )
+        )
+    }
+
+    private fun saveActiveSource(
+        contentText: String = "Shared source narration content ${UUID.randomUUID()}",
+        transcriptLanguage: String? = null
+    ): Source {
         val userId = UUID.randomUUID()
-        val contentText = "Shared source narration content ${UUID.randomUUID()}"
         val source = Source.create(
             id = UUID.randomUUID(),
             rawUrl = "https://example.com/source/${UUID.randomUUID()}",
@@ -213,7 +261,8 @@ class ShareLinkControllerTest {
                 platform = "web",
                 wordCount = content.wordCount,
                 aiFormatted = true,
-                extractionProvider = "jsoup"
+                extractionProvider = "jsoup",
+                transcriptLanguage = transcriptLanguage
             )
         )
         return sourceRepository.save(source)

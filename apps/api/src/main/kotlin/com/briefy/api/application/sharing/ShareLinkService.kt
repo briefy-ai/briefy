@@ -12,7 +12,9 @@ import com.briefy.api.domain.sharing.ShareLinkEntityType
 import com.briefy.api.domain.sharing.ShareLinkRepository
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.briefy.api.infrastructure.tts.AudioStorageService
+import com.briefy.api.infrastructure.tts.NarrationLanguageResolver
 import com.briefy.api.infrastructure.tts.TtsProviderType
+import com.briefy.api.infrastructure.tts.TtsVoiceResolver
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -34,7 +36,9 @@ class ShareLinkService(
     private val currentUserProvider: CurrentUserProvider,
     private val sharedAudioCacheRepository: SharedAudioCacheRepository,
     private val audioStorageService: AudioStorageService,
-    private val ttsSettingsService: TtsSettingsService
+    private val ttsSettingsService: TtsSettingsService,
+    private val narrationLanguageResolver: NarrationLanguageResolver,
+    private val ttsVoiceResolver: TtsVoiceResolver
 ) {
     private val logger = LoggerFactory.getLogger(ShareLinkService::class.java)
 
@@ -222,12 +226,14 @@ class ShareLinkService(
 
         val contentText = source.content?.text?.takeIf { it.isNotBlank() } ?: return null
         val preferredProvider = ttsSettingsService.resolvePreferredProvider(source.userId) ?: return null
+        val languageCode = narrationLanguageResolver.resolve(source.metadata?.transcriptLanguage, contentText)
+        val voiceId = ttsVoiceResolver.resolveVoiceId(preferredProvider.providerType, languageCode)
         val cachedAudio = NarrationContentHashing.lookupHashes(contentText)
             .firstNotNullOfOrNull { hash ->
                 sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(
                     hash,
                     preferredProvider.providerType,
-                    preferredProvider.voiceId,
+                    voiceId,
                     preferredProvider.modelId
                 )
             } ?: return null

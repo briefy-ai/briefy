@@ -15,8 +15,7 @@ import java.util.UUID
 data class ResolvedTtsProviderConfig(
     val providerType: TtsProviderType,
     val apiKey: String,
-    val modelId: String,
-    val voiceId: String
+    val modelId: String
 )
 
 @Service
@@ -136,8 +135,7 @@ class TtsSettingsService(
         return ResolvedTtsProviderConfig(
             providerType = providerType,
             apiKey = apiKeyEncryptionService.decrypt(encryptedApiKey),
-            modelId = selectedModelId(settings, providerType),
-            voiceId = voiceId(providerType)
+            modelId = selectedModelId(settings, providerType)
         )
     }
 
@@ -175,14 +173,6 @@ class TtsSettingsService(
             TtsProviderType.INWORLD -> settings.inworldApiKeyEncrypted
         }?.takeIf { it.isNotBlank() }
     }
-
-    private fun voiceId(providerType: TtsProviderType): String {
-        return when (providerType) {
-            TtsProviderType.ELEVENLABS -> elevenLabsProperties.voiceId
-            TtsProviderType.INWORLD -> inworldProperties.voiceId
-        }
-    }
-
     companion object {
         const val CHARS_PER_MINUTE = 1_000
     }

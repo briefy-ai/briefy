@@ -16,12 +16,14 @@ import com.briefy.api.infrastructure.tts.InworldTtsException
 import com.briefy.api.infrastructure.tts.InworldTtsProperties
 import com.briefy.api.infrastructure.tts.MarkdownStripper
 import com.briefy.api.infrastructure.tts.Mp3AudioAssembler
+import com.briefy.api.infrastructure.tts.NarrationLanguageResolver
 import com.briefy.api.infrastructure.tts.NarrationProperties
 import com.briefy.api.infrastructure.tts.TtsModelCatalog
 import com.briefy.api.infrastructure.tts.TtsProviderRegistry
 import com.briefy.api.infrastructure.tts.TtsProviderType
 import com.briefy.api.infrastructure.tts.TtsSynthesisRequest
 import com.briefy.api.infrastructure.tts.TtsTextChunker
+import com.briefy.api.infrastructure.tts.TtsVoiceResolver
 import com.briefy.api.infrastructure.tts.ElevenLabsTtsException
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
@@ -40,6 +42,8 @@ class SourceNarrationService(
     private val ttsProviderRegistry: TtsProviderRegistry,
     private val ttsModelCatalog: TtsModelCatalog,
     private val audioStorageService: AudioStorageService,
+    private val narrationLanguageResolver: NarrationLanguageResolver,
+    private val ttsVoiceResolver: TtsVoiceResolver,
     private val markdownStripper: MarkdownStripper,
     private val narrationProperties: NarrationProperties,
     private val inworldProperties: InworldTtsProperties,
@@ -174,6 +178,7 @@ class SourceNarrationService(
             NarrationInput(
                 sourceId = source.id,
                 userId = source.userId,
+                transcriptLanguage = source.metadata?.transcriptLanguage,
                 contentText = contentText,
                 contentHash = NarrationContentHashing.hash(contentText)
             )
@@ -197,13 +202,16 @@ class SourceNarrationService(
             return
         }
 
+        val languageCode = narrationLanguageResolver.resolve(loaded.transcriptLanguage, loaded.contentText)
+        val voiceId = ttsVoiceResolver.resolveVoiceId(providerConfig.providerType, languageCode)
+
         val cachedAudio = transactionTemplate.execute {
             NarrationContentHashing.lookupHashes(loaded.contentText)
                 .firstNotNullOfOrNull { hash ->
                     sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(
                         hash,
                         providerConfig.providerType,
-                        providerConfig.voiceId,
+                        voiceId,
                         providerConfig.modelId
                     )
                 }
@@ -214,7 +222,7 @@ class SourceNarrationService(
         }
 
         val audioBytes = try {
-            synthesizeAudio(providerConfig, plainText)
+            synthesizeAudio(providerConfig, voiceId, plainText)
         } catch (ex: ElevenLabsTtsException) {
             markNarrationFailedIfCurrent(loaded, ex.code)
             logger.warn("[narration] tts_failed sourceId={} userId={} reason={}", loaded.sourceId, loaded.userId, ex.code, ex)
@@ -233,7 +241,7 @@ class SourceNarrationService(
             audioStorageService.uploadMp3(
                 loaded.contentHash,
                 providerConfig.providerType,
-                providerConfig.voiceId,
+                voiceId,
                 providerConfig.modelId,
                 audioBytes
             )
@@ -254,7 +262,7 @@ class SourceNarrationService(
             audioStorageService.generatePresignedGetUrl(
                 loaded.contentHash,
                 providerConfig.providerType,
-                providerConfig.voiceId,
+                voiceId,
                 providerConfig.modelId
             )
         } catch (ex: Exception) {
@@ -279,7 +287,7 @@ class SourceNarrationService(
                 format = AUDIO_FORMAT,
                 characterCount = plainText.length,
                 providerType = providerConfig.providerType,
-                voiceId = providerConfig.voiceId,
+                voiceId = voiceId,
                 modelId = providerConfig.modelId,
                 createdAt = generatedAt
             )
@@ -431,7 +439,7 @@ class SourceNarrationService(
         }
     }
 
-    private fun synthesizeAudio(providerConfig: ResolvedTtsProviderConfig, plainText: String): ByteArray {
+    private fun synthesizeAudio(providerConfig: ResolvedTtsProviderConfig, voiceId: String, plainText: String): ByteArray {
         val provider = ttsProviderRegistry.get(providerConfig.providerType)
         val chunks = if (providerConfig.providerType == TtsProviderType.INWORLD) {
             TtsTextChunker.split(plainText, inworldProperties.maxCharactersPerRequest)
@@ -444,7 +452,7 @@ class SourceNarrationService(
                 TtsSynthesisRequest(
                     text = chunk,
                     apiKey = providerConfig.apiKey,
-                    voiceId = providerConfig.voiceId,
+                    voiceId = voiceId,
                     modelId = providerConfig.modelId
                 )
             )
@@ -470,6 +478,7 @@ class SourceNarrationService(
     private data class NarrationInput(
         val sourceId: UUID,
         val userId: UUID,
+        val transcriptLanguage: String?,
         val contentText: String,
         val contentHash: String
     )

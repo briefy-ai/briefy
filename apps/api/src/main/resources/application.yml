@@ -118,7 +118,8 @@ tts:
     default-model-id: ${ELEVENLABS_MODEL_ID:eleven_flash_v2_5}
   inworld:
     base-url: ${INWORLD_BASE_URL:https://api.inworld.ai}
-    voice-id: ${INWORLD_VOICE_ID:Ashley}
+    english-voice-id: ${INWORLD_ENGLISH_VOICE_ID:Craig}
+    spanish-voice-id: ${INWORLD_SPANISH_VOICE_ID:Miguel}
     default-model-id: ${INWORLD_MODEL_ID:inworld-tts-1.5-mini}
     max-characters-per-request: ${INWORLD_MAX_CHARACTERS_PER_REQUEST:2000}
 

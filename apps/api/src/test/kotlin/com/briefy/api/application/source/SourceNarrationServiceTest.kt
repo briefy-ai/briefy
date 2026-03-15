@@ -17,12 +17,15 @@ import com.briefy.api.infrastructure.tts.AudioStorageService
 import com.briefy.api.infrastructure.tts.ElevenLabsTtsException
 import com.briefy.api.infrastructure.tts.InworldTtsProperties
 import com.briefy.api.infrastructure.tts.MarkdownStripper
+import com.briefy.api.infrastructure.tts.NarrationLanguageResolver
 import com.briefy.api.infrastructure.tts.NarrationProperties
 import com.briefy.api.infrastructure.tts.TtsModelCatalog
 import com.briefy.api.infrastructure.tts.TtsProvider
 import com.briefy.api.infrastructure.tts.TtsProviderRegistry
 import com.briefy.api.infrastructure.tts.TtsProviderType
 import com.briefy.api.infrastructure.tts.TtsSynthesisRequest
+import com.briefy.api.infrastructure.tts.TtsVoiceResolver
+import com.briefy.api.infrastructure.tts.ElevenLabsTtsProperties
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -64,8 +67,18 @@ class SourceNarrationServiceTest {
     private val elevenLabsConfig = ResolvedTtsProviderConfig(
         providerType = TtsProviderType.ELEVENLABS,
         apiKey = "el-key",
-        modelId = "eleven_flash_v2_5",
-        voiceId = "iiidtqDt9FBdT1vfBluA"
+        modelId = "eleven_flash_v2_5"
+    )
+    private val inworldConfig = ResolvedTtsProviderConfig(
+        providerType = TtsProviderType.INWORLD,
+        apiKey = "in-key",
+        modelId = "inworld-tts-1.5-mini"
+    )
+    private val markdownStripper = MarkdownStripper()
+    private val narrationLanguageResolver = NarrationLanguageResolver(markdownStripper)
+    private val ttsVoiceResolver = TtsVoiceResolver(
+        elevenLabsProperties = ElevenLabsTtsProperties(),
+        inworldProperties = InworldTtsProperties()
     )
 
     private val service = SourceNarrationService(
@@ -75,7 +88,9 @@ class SourceNarrationServiceTest {
         ttsProviderRegistry = ttsProviderRegistry,
         ttsModelCatalog = ttsModelCatalog,
         audioStorageService = audioStorageService,
-        markdownStripper = MarkdownStripper(),
+        narrationLanguageResolver = narrationLanguageResolver,
+        ttsVoiceResolver = ttsVoiceResolver,
+        markdownStripper = markdownStripper,
         narrationProperties = NarrationProperties(),
         inworldProperties = InworldTtsProperties(),
         currentUserProvider = currentUserProvider,
@@ -223,6 +238,46 @@ class SourceNarrationServiceTest {
         assertEquals(NarrationState.FAILED, source.narrationState)
         assertEquals("paid_plan_required", source.narrationFailureReason)
         assertNull(source.audioContent)
+    }
+
+    @Test
+    fun `processNarration uses spanish inworld voice for spanish content`() {
+        val userId = UUID.randomUUID()
+        val source = createPendingSource(userId).apply {
+            content = Content.from("Hola, esta es una narracion en espanol para una fuente breve.")
+            metadata = Metadata.from(
+                title = "Fuente",
+                author = "Autor",
+                publishedDate = null,
+                platform = "web",
+                wordCount = content!!.wordCount,
+                aiFormatted = true,
+                extractionProvider = "jsoup",
+                transcriptLanguage = "es"
+            )
+        }
+        val hash = contentHash(source.content!!.text)
+        whenever(ttsSettingsService.resolvePreferredProvider(userId)).thenReturn(inworldConfig)
+        whenever(ttsProviderRegistry.get(TtsProviderType.INWORLD)).thenReturn(ttsProvider)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(hash, TtsProviderType.INWORLD, "Miguel", "inworld-tts-1.5-mini"))
+            .thenReturn(null)
+        whenever(ttsProvider.synthesize(any())).thenReturn(sampleMp3Bytes())
+        whenever(audioStorageService.generatePresignedGetUrl(hash, TtsProviderType.INWORLD, "Miguel", "inworld-tts-1.5-mini"))
+            .thenReturn("https://fresh.example.com/generated-es.mp3")
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+        whenever(sharedAudioCacheRepository.save(any())).thenAnswer { it.arguments[0] as SharedAudioCache }
+        whenever(idGenerator.newId()).thenReturn(UUID.randomUUID())
+
+        service.processNarration(source.id, userId)
+
+        verify(ttsProvider).synthesize(
+            argThat<TtsSynthesisRequest> {
+                voiceId == "Miguel" &&
+                    modelId == "inworld-tts-1.5-mini" &&
+                    apiKey == "in-key"
+            }
+        )
     }
 
     @Test
