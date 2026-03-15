@@ -25,4 +25,30 @@ class MarkdownStripperTest {
 
         assertEquals("Heading This is bold and linked. item one item two", result)
     }
+
+    @Test
+    fun `strip removes tilde fenced code blocks`() {
+        val result = stripper.strip(
+            """
+            Intro
+
+            ~~~python
+            print("hidden")
+            ~~~
+
+            Outro
+            """.trimIndent()
+        )
+
+        assertEquals("Intro Outro", result)
+    }
+
+    @Test
+    fun `strip keeps markdown link text when url contains parentheses`() {
+        val result = stripper.strip(
+            "See [the docs](https://example.com/path_(with_parentheses)) for details."
+        )
+
+        assertEquals("See the docs for details.", result)
+    }
 }

@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ChatPanelProvider, useChatPanel } from '@/features/chat/ChatPanelProvider'
-import { AudioPlayerProvider, useAudioPlayer } from '@/features/audio/AudioPlayerProvider'
+import { AudioPlayerProvider, useHasAudioPlayer } from '@/features/audio/AudioPlayerProvider'
 import { useAuth } from '@/lib/auth/useAuth'
 
 export const Route = createRootRoute({
@@ -41,7 +41,7 @@ function RootLayout() {
 function RootLayoutContent() {
   const { user, isLoading, logout } = useAuth()
   const { openPanelWithDefaultContext, togglePanel } = useChatPanel()
-  const { currentSourceId: hasAudioPlayer } = useAudioPlayer()
+  const hasAudioPlayer = useHasAudioPlayer()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isSettingsPath = pathname.startsWith('/settings')
   const isChatEligible = !isLoading && Boolean(user) && !isSettingsPath
@@ -150,25 +150,45 @@ function RootLayoutContent() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-6 py-8">
+      <main
+        className="mx-auto max-w-5xl px-6 py-8"
+        style={{
+          paddingBottom: hasAudioPlayer
+            ? 'calc(env(safe-area-inset-bottom, 0px) + 5rem)'
+            : undefined,
+        }}
+      >
         <Outlet />
       </main>
       {isChatEligible && (
         <>
           <SourceSearchDialog />
-          <Button
-            type="button"
-            size="icon"
-            className={`fixed right-5 z-40 size-12 rounded-full shadow-lg shadow-primary/20 transition-[bottom] ${hasAudioPlayer ? 'bottom-20' : 'bottom-5'}`}
-            onClick={openPanelWithDefaultContext}
-            aria-label="Open chat"
-          >
-            <Sparkles className="size-5" />
-          </Button>
+          <ChatLauncherButton onClick={openPanelWithDefaultContext} />
         </>
       )}
       <TanStackRouterDevtools />
     </div>
+  )
+}
+
+function ChatLauncherButton({ onClick }: { onClick: () => void }) {
+  const hasAudioPlayer = useHasAudioPlayer()
+
+  return (
+    <Button
+      type="button"
+      size="icon"
+      className="fixed right-5 z-40 size-12 rounded-full shadow-lg shadow-primary/20 transition-[bottom]"
+      style={{
+        bottom: hasAudioPlayer
+          ? 'calc(env(safe-area-inset-bottom, 0px) + 5rem)'
+          : '1.25rem',
+      }}
+      onClick={onClick}
+      aria-label="Open chat"
+    >
+      <Sparkles className="size-5" />
+    </Button>
   )
 }
 

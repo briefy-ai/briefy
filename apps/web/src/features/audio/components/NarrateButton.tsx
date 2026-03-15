@@ -73,7 +73,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
         return
       }
     } catch (e) {
-      // Estimate failed (e.g. elevenlabs not configured) — let the narrate call surface the real error
+      // Estimate failed — surface the settings/configuration error here and stop.
       setRequestError(extractErrorMessage(e, 'Narration failed'))
       setTriggering(false)
       return

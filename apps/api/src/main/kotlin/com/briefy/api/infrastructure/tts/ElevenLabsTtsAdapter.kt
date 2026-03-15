@@ -75,13 +75,21 @@ class ElevenLabsTtsAdapter(
                 retryable = true,
                 cause = ex
             )
-            else -> ElevenLabsTtsException(
-                code = providerCode ?: "elevenlabs_request_failed",
-                userMessage = detail["message"] ?: "ElevenLabs could not generate audio for this source.",
-                retryable = ex.statusCode.value() in listOf(408, 409, 425, 429),
-                cause = ex
-            )
+            else -> mapUnknownClientError(ex, detail)
         }
+    }
+
+    private fun mapUnknownClientError(
+        ex: HttpClientErrorException,
+        detail: Map<String, String>
+    ): ElevenLabsTtsException {
+        val retryable = ex.statusCode.value() in listOf(408, 409, 425, 429)
+        return ElevenLabsTtsException(
+            code = if (retryable) "elevenlabs_request_retryable" else "elevenlabs_request_failed",
+            userMessage = detail["message"] ?: "ElevenLabs could not generate audio for this source.",
+            retryable = retryable,
+            cause = ex
+        )
     }
 
     private fun parseErrorDetail(responseBody: String?): Map<String, String> {

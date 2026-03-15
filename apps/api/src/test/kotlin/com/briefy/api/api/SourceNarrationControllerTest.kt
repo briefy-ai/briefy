@@ -134,12 +134,14 @@ class SourceNarrationControllerTest {
                     durationSeconds = 12,
                     format = "mp3",
                     contentHash = "abc123",
+                    voiceId = "iiidtqDt9FBdT1vfBluA",
+                    modelId = "eleven_flash_v2_5",
                     generatedAt = Instant.parse("2026-03-15T10:00:00Z")
                 )
             )
         }
         sourceRepository.save(source)
-        `when`(audioStorageService.generatePresignedGetUrl("abc123", "iiidtqDt9FBdT1vfBluA"))
+        `when`(audioStorageService.generatePresignedGetUrl("abc123", "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
             .thenReturn("https://new.example.com/audio.mp3")
 
         mockMvc.perform(get("/api/sources/${source.id}/audio"))

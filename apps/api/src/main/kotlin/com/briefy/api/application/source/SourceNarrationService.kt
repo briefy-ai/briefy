@@ -110,14 +110,18 @@ class SourceNarrationService(
             )
         }
 
-        val refreshedUrl = audioStorageService.generatePresignedGetUrl(existingAudio.contentHash, ttsProperties.voiceId)
+        val voiceId = existingAudio.voiceId ?: ttsProperties.voiceId
+        val modelId = existingAudio.modelId
+        val refreshedUrl = audioStorageService.generatePresignedGetUrl(existingAudio.contentHash, voiceId, modelId)
         val refreshedAudio = existingAudio.copy(audioUrl = refreshedUrl)
         source.completeNarration(refreshedAudio)
         sourceRepository.save(source)
 
-        sharedAudioCacheRepository.findByContentHashAndVoiceId(existingAudio.contentHash, ttsProperties.voiceId)?.let { cache ->
-            cache.audioUrl = refreshedUrl
-            sharedAudioCacheRepository.save(cache)
+        if (modelId != null) {
+            sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(existingAudio.contentHash, voiceId, modelId)?.let { cache ->
+                cache.audioUrl = refreshedUrl
+                sharedAudioCacheRepository.save(cache)
+            }
         }
 
         return refreshedAudio.toDto()
@@ -168,7 +172,11 @@ class SourceNarrationService(
         }
 
         val cachedAudio = transactionTemplate.execute {
-            sharedAudioCacheRepository.findByContentHashAndVoiceId(loaded.contentHash, ttsProperties.voiceId)
+            sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+                loaded.contentHash,
+                ttsProperties.voiceId,
+                ttsProperties.modelId
+            )
         }
         if (cachedAudio != null) {
             completeFromCache(loaded, cachedAudio)
@@ -196,7 +204,7 @@ class SourceNarrationService(
         }
 
         try {
-            audioStorageService.uploadMp3(loaded.contentHash, ttsProperties.voiceId, audioBytes)
+            audioStorageService.uploadMp3(loaded.contentHash, ttsProperties.voiceId, ttsProperties.modelId, audioBytes)
         } catch (ex: Exception) {
             markNarrationFailedIfCurrent(loaded, REASON_STORAGE_FAILED)
             logger.warn(
@@ -211,7 +219,7 @@ class SourceNarrationService(
 
         val generatedAt = Instant.now()
         val audioUrl = try {
-            audioStorageService.generatePresignedGetUrl(loaded.contentHash, ttsProperties.voiceId)
+            audioStorageService.generatePresignedGetUrl(loaded.contentHash, ttsProperties.voiceId, ttsProperties.modelId)
         } catch (ex: Exception) {
             markNarrationFailedIfCurrent(loaded, REASON_AUDIO_REFRESH_FAILED)
             logger.warn(
@@ -234,6 +242,7 @@ class SourceNarrationService(
                 format = AUDIO_FORMAT,
                 characterCount = plainText.length,
                 voiceId = ttsProperties.voiceId,
+                modelId = ttsProperties.modelId,
                 createdAt = generatedAt
             )
         )
@@ -245,6 +254,8 @@ class SourceNarrationService(
                 durationSeconds = sharedAudio.durationSeconds,
                 format = sharedAudio.format,
                 contentHash = sharedAudio.contentHash,
+                voiceId = sharedAudio.voiceId,
+                modelId = sharedAudio.modelId,
                 generatedAt = sharedAudio.createdAt
             )
         )
@@ -260,7 +271,7 @@ class SourceNarrationService(
 
     private fun completeFromCache(loaded: NarrationInput, cachedAudio: SharedAudioCache) {
         val refreshedUrl = try {
-            audioStorageService.generatePresignedGetUrl(cachedAudio.contentHash, cachedAudio.voiceId)
+            audioStorageService.generatePresignedGetUrl(cachedAudio.contentHash, cachedAudio.voiceId, cachedAudio.modelId)
         } catch (ex: Exception) {
             markNarrationFailedIfCurrent(loaded, REASON_AUDIO_REFRESH_FAILED)
             logger.warn(
@@ -274,7 +285,12 @@ class SourceNarrationService(
         }
 
         transactionTemplate.execute<Unit?> {
-            sharedAudioCacheRepository.findByContentHashAndVoiceId(cachedAudio.contentHash, cachedAudio.voiceId)?.let { cache ->
+            val modelId = cachedAudio.modelId ?: return@execute null
+            sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+                cachedAudio.contentHash,
+                cachedAudio.voiceId,
+                modelId
+            )?.let { cache ->
                 cache.audioUrl = refreshedUrl
                 sharedAudioCacheRepository.save(cache)
             }
@@ -288,6 +304,8 @@ class SourceNarrationService(
                 durationSeconds = cachedAudio.durationSeconds,
                 format = cachedAudio.format,
                 contentHash = cachedAudio.contentHash,
+                voiceId = cachedAudio.voiceId,
+                modelId = cachedAudio.modelId,
                 generatedAt = cachedAudio.createdAt
             )
         )
@@ -338,7 +356,11 @@ class SourceNarrationService(
     private fun upsertSharedAudioCache(candidate: SharedAudioCache): SharedAudioCache {
         return try {
             transactionTemplate.execute {
-                sharedAudioCacheRepository.findByContentHashAndVoiceId(candidate.contentHash, candidate.voiceId)
+                sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+                    candidate.contentHash,
+                    candidate.voiceId,
+                    candidate.modelId ?: ttsProperties.modelId
+                )
                     ?.also { existing ->
                         existing.audioUrl = candidate.audioUrl
                         sharedAudioCacheRepository.save(existing)
@@ -347,7 +369,11 @@ class SourceNarrationService(
             } ?: candidate
         } catch (_: DataIntegrityViolationException) {
             transactionTemplate.execute {
-                sharedAudioCacheRepository.findByContentHashAndVoiceId(candidate.contentHash, candidate.voiceId)?.also { existing ->
+                sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+                    candidate.contentHash,
+                    candidate.voiceId,
+                    candidate.modelId ?: ttsProperties.modelId
+                )?.also { existing ->
                     existing.audioUrl = candidate.audioUrl
                     sharedAudioCacheRepository.save(existing)
                 }

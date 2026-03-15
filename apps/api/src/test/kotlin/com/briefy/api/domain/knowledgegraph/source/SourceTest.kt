@@ -195,6 +195,8 @@ class SourceTest {
                 durationSeconds = 15,
                 format = "mp3",
                 contentHash = "abc123",
+                voiceId = "voice-1",
+                modelId = "model-1",
                 generatedAt = generatedAt
             )
         )
@@ -213,6 +215,8 @@ class SourceTest {
                 durationSeconds = 15,
                 format = "mp3",
                 contentHash = "abc123",
+                voiceId = "voice-1",
+                modelId = "model-1",
                 generatedAt = Instant.now()
             )
         )

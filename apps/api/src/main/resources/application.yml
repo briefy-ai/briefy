@@ -104,6 +104,7 @@ transcription:
 audio:
   storage:
     endpoint: ${AUDIO_STORAGE_ENDPOINT:http://localhost:9000}
+    public-endpoint: ${AUDIO_STORAGE_PUBLIC_ENDPOINT:}
     access-key-id: ${AUDIO_STORAGE_ACCESS_KEY:minioadmin}
     secret-access-key: ${AUDIO_STORAGE_SECRET_KEY:minioadmin}
     bucket: ${AUDIO_STORAGE_BUCKET:briefy-audio}

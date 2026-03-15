@@ -181,7 +181,7 @@ private object NarrationFailureCatalog {
             "elevenlabs_not_configured" -> "ElevenLabs is not configured in Settings."
             "content_too_long" -> "This source is too long to narrate with the current limits."
             "empty_plaintext_content" -> "This source does not contain narratable text."
-            "audio_storage_failed", "audio_url_refresh_failed", "tts_generation_failed", "elevenlabs_server_error", "elevenlabs_request_failed" ->
+            "audio_storage_failed", "audio_url_refresh_failed", "tts_generation_failed", "elevenlabs_server_error", "elevenlabs_request_retryable", "elevenlabs_request_failed" ->
                 "Briefy could not generate audio for this source. Try again."
             else -> "Briefy could not generate audio for this source."
         }
@@ -190,8 +190,9 @@ private object NarrationFailureCatalog {
     fun retryableFor(code: String?): Boolean? {
         return when (code) {
             null -> null
-            "paid_plan_required", "invalid_api_key", "quota_exceeded", "elevenlabs_not_configured", "content_too_long", "empty_plaintext_content" -> false
-            else -> true
+            "paid_plan_required", "invalid_api_key", "quota_exceeded", "elevenlabs_not_configured", "content_too_long", "empty_plaintext_content", "elevenlabs_request_failed" -> false
+            "too_many_concurrent_requests", "system_busy", "voice_not_ready", "audio_storage_failed", "audio_url_refresh_failed", "tts_generation_failed", "elevenlabs_server_error", "elevenlabs_request_retryable" -> true
+            else -> false
         }
     }
 }

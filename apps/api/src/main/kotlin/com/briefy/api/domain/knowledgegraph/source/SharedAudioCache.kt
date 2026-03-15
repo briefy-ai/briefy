@@ -13,8 +13,8 @@ import java.util.UUID
     name = "shared_audio_cache",
     uniqueConstraints = [
         UniqueConstraint(
-            name = "uq_shared_audio_hash_voice",
-            columnNames = ["content_hash", "voice_id"]
+            name = "uq_shared_audio_hash_voice_model",
+            columnNames = ["content_hash", "voice_id", "model_id"]
         )
     ]
 )
@@ -39,6 +39,9 @@ class SharedAudioCache(
 
     @Column(name = "voice_id", nullable = false, length = 100)
     val voiceId: String,
+
+    @Column(name = "model_id", length = 100)
+    val modelId: String? = null,
 
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant = Instant.now()

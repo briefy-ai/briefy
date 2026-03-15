@@ -18,6 +18,12 @@ data class AudioContent(
     @Column(name = "audio_content_hash", length = 64)
     val contentHash: String,
 
+    @Column(name = "audio_voice_id", length = 100)
+    val voiceId: String? = null,
+
+    @Column(name = "audio_model_id", length = 100)
+    val modelId: String? = null,
+
     @Column(name = "audio_generated_at")
     val generatedAt: Instant
 )

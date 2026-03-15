@@ -13,6 +13,8 @@ export interface AudioPlayerState {
 
 export function useAudioPlayerController() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const currentSourceIdRef = useRef<string | null>(null)
+  const refreshAttemptsRef = useRef(0)
   const [state, setState] = useState<AudioPlayerState>({
     currentSourceId: null,
     currentSourceTitle: null,
@@ -46,6 +48,7 @@ export function useAudioPlayerController() {
       setState((prev) => ({ ...prev, isLoading: true }))
     }
     const onCanPlay = () => {
+      refreshAttemptsRef.current = 0
       setState((prev) => ({ ...prev, isLoading: false }))
     }
 
@@ -75,6 +78,8 @@ export function useAudioPlayerController() {
       const audio = audioRef.current
       if (!audio) return
 
+      currentSourceIdRef.current = sourceId
+      refreshAttemptsRef.current = 0
       audio.src = audioUrl
       audio.load()
       void audio.play()
@@ -107,6 +112,8 @@ export function useAudioPlayerController() {
   const stop = useCallback(() => {
     const audio = audioRef.current
     if (!audio) return
+    currentSourceIdRef.current = null
+    refreshAttemptsRef.current = 0
     audio.pause()
     audio.src = ''
     setState({
@@ -136,7 +143,7 @@ export function useAudioPlayerController() {
       try {
         const data = await getSourceAudio(sourceId)
         const audio = audioRef.current
-        if (!audio || state.currentSourceId !== sourceId) return
+        if (!audio || currentSourceIdRef.current !== sourceId) return
         const currentTime = audio.currentTime
         audio.src = data.audioUrl
         audio.currentTime = currentTime
@@ -146,25 +153,32 @@ export function useAudioPlayerController() {
         stop()
       }
     },
-    [state.currentSourceId, stop]
+    [stop]
   )
 
-  // Handle 403 errors (expired pre-signed URLs) by refreshing
+  // Try one presigned URL refresh before stopping on persistent media errors.
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
 
     const onError = () => {
-      if (state.currentSourceId) {
-        void refreshAudioUrl(state.currentSourceId)
+      const currentSourceId = currentSourceIdRef.current
+      if (!currentSourceId) {
+        return
       }
+      if (refreshAttemptsRef.current >= 1) {
+        stop()
+        return
+      }
+      refreshAttemptsRef.current += 1
+      void refreshAudioUrl(currentSourceId)
     }
 
     audio.addEventListener('error', onError)
     return () => {
       audio.removeEventListener('error', onError)
     }
-  }, [state.currentSourceId, refreshAudioUrl])
+  }, [refreshAudioUrl, state.currentSourceId, stop])
 
   useMediaSession({
     title: state.currentSourceTitle,

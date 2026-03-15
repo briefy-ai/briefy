@@ -141,7 +141,7 @@ class Source(
         }
         audioContent = null
         narrationState = NarrationState.FAILED
-        narrationFailureReason = reason?.trim()?.take(255)?.ifBlank { null }
+        narrationFailureReason = reason?.trim()?.ifBlank { null }
         updatedAt = Instant.now()
     }
 

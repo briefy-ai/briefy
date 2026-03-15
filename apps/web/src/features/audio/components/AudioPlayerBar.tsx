@@ -90,8 +90,8 @@ export function AudioPlayerBar() {
           <span className="hidden text-[10px] tabular-nums text-muted-foreground sm:inline">
             {formatTime(currentTime)}
           </span>
-          <div className="relative flex-1">
-            <div className="h-1 overflow-hidden rounded-full bg-muted">
+          <div className="relative flex h-8 flex-1 items-center">
+            <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full rounded-full bg-primary transition-[width] duration-200"
                 style={{ width: `${progress}%` }}

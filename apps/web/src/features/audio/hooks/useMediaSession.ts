@@ -20,7 +20,11 @@ export function useMediaSession({
   onStop,
 }: UseMediaSessionOptions) {
   useEffect(() => {
-    if (!('mediaSession' in navigator) || !title) return
+    if (!('mediaSession' in navigator)) return
+    if (!title) {
+      navigator.mediaSession.metadata = null
+      return
+    }
 
     navigator.mediaSession.metadata = new MediaMetadata({
       title,
@@ -33,7 +37,11 @@ export function useMediaSession({
   }, [title])
 
   useEffect(() => {
-    if (!('mediaSession' in navigator) || !title) return
+    if (!('mediaSession' in navigator)) return
+    if (!title) {
+      navigator.mediaSession.playbackState = 'none'
+      return
+    }
 
     navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused'
   }, [isPlaying, title])

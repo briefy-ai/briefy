@@ -19,32 +19,35 @@ interface AudioPlayerContextValue {
   skipBackward: (seconds?: number) => void
 }
 
+const AudioPlayerVisibilityContext = createContext(false)
 const AudioPlayerContext = createContext<AudioPlayerContextValue | null>(null)
 
 export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const controller = useAudioPlayerController()
 
   return (
-    <AudioPlayerContext.Provider
-      value={{
-        currentSourceId: controller.currentSourceId,
-        currentSourceTitle: controller.currentSourceTitle,
-        isPlaying: controller.isPlaying,
-        isLoading: controller.isLoading,
-        currentTime: controller.currentTime,
-        duration: controller.duration,
-        playSource: controller.playSource,
-        pause: controller.pause,
-        resume: controller.resume,
-        seek: controller.seek,
-        stop: controller.stop,
-        skipForward: controller.skipForward,
-        skipBackward: controller.skipBackward,
-      }}
-    >
-      {children}
-      <AudioPlayerBar />
-    </AudioPlayerContext.Provider>
+    <AudioPlayerVisibilityContext.Provider value={controller.currentSourceId !== null}>
+      <AudioPlayerContext.Provider
+        value={{
+          currentSourceId: controller.currentSourceId,
+          currentSourceTitle: controller.currentSourceTitle,
+          isPlaying: controller.isPlaying,
+          isLoading: controller.isLoading,
+          currentTime: controller.currentTime,
+          duration: controller.duration,
+          playSource: controller.playSource,
+          pause: controller.pause,
+          resume: controller.resume,
+          seek: controller.seek,
+          stop: controller.stop,
+          skipForward: controller.skipForward,
+          skipBackward: controller.skipBackward,
+        }}
+      >
+        {children}
+        <AudioPlayerBar />
+      </AudioPlayerContext.Provider>
+    </AudioPlayerVisibilityContext.Provider>
   )
 }
 
@@ -54,4 +57,8 @@ export function useAudioPlayer() {
     throw new Error('useAudioPlayer must be used within AudioPlayerProvider')
   }
   return context
+}
+
+export function useHasAudioPlayer() {
+  return useContext(AudioPlayerVisibilityContext)
 }

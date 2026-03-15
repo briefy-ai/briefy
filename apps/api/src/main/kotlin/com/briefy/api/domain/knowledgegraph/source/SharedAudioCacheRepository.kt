@@ -6,5 +6,9 @@ import java.util.UUID
 
 @Repository
 interface SharedAudioCacheRepository : JpaRepository<SharedAudioCache, UUID> {
-    fun findByContentHashAndVoiceId(contentHash: String, voiceId: String): SharedAudioCache?
+    fun findByContentHashAndVoiceIdAndModelId(
+        contentHash: String,
+        voiceId: String,
+        modelId: String
+    ): SharedAudioCache?
 }

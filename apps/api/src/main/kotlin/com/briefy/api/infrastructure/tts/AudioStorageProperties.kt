@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 @ConfigurationProperties(prefix = "audio.storage")
 data class AudioStorageProperties(
     val endpoint: String = "http://localhost:9000",
+    val publicEndpoint: String? = null,
     val accessKeyId: String = "minioadmin",
     val secretAccessKey: String = "minioadmin",
     val bucket: String = "briefy-audio",
