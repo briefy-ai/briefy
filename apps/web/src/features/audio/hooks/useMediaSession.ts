@@ -11,9 +11,8 @@ interface UseMediaSessionOptions {
   onStop: () => void
 }
 
-const BRIEFY_ICON_ARTWORK: MediaImage[] = [
-  { src: '/pwa/icon-192.png', sizes: '192x192', type: 'image/png' },
-  { src: '/pwa/icon-512.png', sizes: '512x512', type: 'image/png' },
+const BRIEFY_AUDIO_ARTWORK: MediaImage[] = [
+  { src: '/pwa/audio-cover-default.png', sizes: '1024x1024', type: 'image/png' },
 ]
 
 export function useMediaSession({
@@ -34,8 +33,8 @@ export function useMediaSession({
     }
 
     const artwork: MediaImage[] = artworkUrl
-      ? [{ src: artworkUrl, sizes: '512x512', type: 'image/png' }]
-      : BRIEFY_ICON_ARTWORK
+      ? [{ src: artworkUrl, sizes: '512x512' }]
+      : BRIEFY_AUDIO_ARTWORK
 
     navigator.mediaSession.metadata = new MediaMetadata({
       title,

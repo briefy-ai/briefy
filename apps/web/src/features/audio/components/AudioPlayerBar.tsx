@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { Headphones, Loader2, Pause, Play, RotateCcw, RotateCw, X } from 'lucide-react'
+import { Loader2, Pause, Play, RotateCcw, RotateCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAudioPlayer } from '../AudioPlayerProvider'
 
@@ -43,19 +43,11 @@ export function AudioPlayerBar() {
           params={{ sourceId: currentSourceId }}
           className="hidden shrink-0 sm:block"
         >
-          <div className="size-9 overflow-hidden rounded bg-muted">
-            {currentArtworkUrl ? (
-              <img
-                src={currentArtworkUrl}
-                alt=""
-                className="size-full object-cover"
-              />
-            ) : (
-              <div className="flex size-full items-center justify-center text-muted-foreground">
-                <Headphones className="size-4" />
-              </div>
-            )}
-          </div>
+          <img
+            src={currentArtworkUrl || '/pwa/audio-cover-default.png'}
+            alt=""
+            className="size-9 rounded bg-muted object-cover"
+          />
         </Link>
 
         {/* Source title */}
