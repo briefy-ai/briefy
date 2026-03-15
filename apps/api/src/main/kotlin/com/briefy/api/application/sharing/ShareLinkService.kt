@@ -1,5 +1,6 @@
 package com.briefy.api.application.sharing
 
+import com.briefy.api.application.source.OriginalVideoAudioService
 import com.briefy.api.application.source.NarrationContentHashing
 import com.briefy.api.domain.knowledgegraph.source.AudioContent
 import com.briefy.api.domain.knowledgegraph.source.SharedAudioCacheRepository
@@ -36,7 +37,8 @@ class ShareLinkService(
     private val sharedAudioCacheRepository: SharedAudioCacheRepository,
     private val audioStorageService: AudioStorageService,
     private val ttsVoiceResolver: TtsVoiceResolver,
-    private val elevenLabsProperties: ElevenLabsTtsProperties
+    private val elevenLabsProperties: ElevenLabsTtsProperties,
+    private val originalVideoAudioService: OriginalVideoAudioService
 ) {
     private val logger = LoggerFactory.getLogger(ShareLinkService::class.java)
 
@@ -220,6 +222,21 @@ class ShareLinkService(
     private fun resolveSharedNarration(source: Source): SharedSourceAudioData? {
         source.audioContent?.let { audioContent ->
             return buildSharedSourceAudio(audioContent)
+        }
+
+        val videoId = source.metadata?.videoId?.takeIf { source.url.platform.equals("youtube", ignoreCase = true) && !it.isNullOrBlank() }
+        if (!videoId.isNullOrBlank()) {
+            return try {
+                buildSharedSourceAudio(originalVideoAudioService.findCachedAudio(videoId) ?: return null)
+            } catch (ex: Exception) {
+                logger.warn(
+                    "[service] Share source audio cache presign failed sourceId={} videoId={}",
+                    source.id,
+                    videoId,
+                    ex
+                )
+                return null
+            }
         }
 
         val contentText = source.content?.text?.takeIf { it.isNotBlank() } ?: return null

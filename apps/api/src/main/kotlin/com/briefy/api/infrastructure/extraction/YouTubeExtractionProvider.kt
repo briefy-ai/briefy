@@ -1,5 +1,8 @@
 package com.briefy.api.infrastructure.extraction
 
+import com.briefy.api.application.source.OriginalVideoAudioService
+import com.briefy.api.application.source.SourceAudioDownloadException
+import com.briefy.api.domain.knowledgegraph.source.AudioContent
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
@@ -13,6 +16,7 @@ import java.time.ZoneOffset
 @Component
 class YouTubeExtractionProvider(
     private val mediaWhisperTranscriptionService: MediaWhisperTranscriptionService,
+    private val originalVideoAudioService: OriginalVideoAudioService,
     @param:Value("\${extraction.youtube.yt-dlp-path:yt-dlp}")
     private val ytDlpPath: String,
     @param:Value("\${extraction.youtube.max-duration-seconds:7200}")
@@ -36,6 +40,7 @@ class YouTubeExtractionProvider(
             val transcriptText: String
             val transcriptSource: String
             val transcriptLanguage: String?
+            var originalAudio: AudioContent? = null
 
             if (subtitle != null && subtitle.text.isNotBlank()) {
                 transcriptText = subtitle.text
@@ -43,6 +48,11 @@ class YouTubeExtractionProvider(
                 transcriptLanguage = subtitle.language
             } else {
                 val audioFile = downloadAudio(ref.canonicalUrl, tempDir)
+                originalAudio = runCatching {
+                    storeOriginalAudio(ref.videoId, metadata.duration, audioFile)
+                }.onFailure {
+                    logger.warn("[extractor:youtube] original_audio_store_failed url={} videoId={}", url, ref.videoId, it)
+                }.getOrNull()
                 transcriptText = transcribeAudio(audioFile, tempDir)
                 transcriptSource = "whisper"
                 transcriptLanguage = null
@@ -58,7 +68,8 @@ class YouTubeExtractionProvider(
                 videoEmbedUrl = ref.embedUrl,
                 videoDurationSeconds = metadata.duration,
                 transcriptSource = transcriptSource,
-                transcriptLanguage = transcriptLanguage
+                transcriptLanguage = transcriptLanguage,
+                originalAudio = originalAudio?.let(::ExtractedAudioAsset)
             )
         } catch (e: ExtractionProviderException) {
             throw e
@@ -188,6 +199,34 @@ class YouTubeExtractionProvider(
 
     private fun transcribeAudio(audioFile: File, tempDir: File): String {
         return mediaWhisperTranscriptionService.transcribe(audioFile, tempDir)
+    }
+
+    fun fetchOriginalAudio(url: String, videoDurationSeconds: Int? = null): AudioContent {
+        val ref = YouTubeUrlParser.parse(url)
+        originalVideoAudioService.findCachedAudio(ref.videoId)?.let { return it }
+
+        val durationSeconds = videoDurationSeconds ?: fetchVideoMetadata(ref.canonicalUrl).duration
+        val tempDir = Files.createTempDirectory("briefy-youtube-audio-${ref.videoId}-").toFile()
+        try {
+            val audioFile = try {
+                downloadAudio(ref.canonicalUrl, tempDir)
+            } catch (ex: InterruptedException) {
+                throw SourceAudioDownloadException("Failed to download original YouTube audio", ex)
+            } catch (ex: Exception) {
+                throw SourceAudioDownloadException("Failed to download original YouTube audio", ex)
+            }
+            return storeOriginalAudio(ref.videoId, durationSeconds, audioFile)
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    private fun storeOriginalAudio(videoId: String, durationSeconds: Int, audioFile: File): AudioContent {
+        return originalVideoAudioService.store(
+            videoId = videoId,
+            durationSeconds = durationSeconds,
+            audioBytes = audioFile.readBytes()
+        )
     }
 
     private fun runCommand(command: List<String>): String {

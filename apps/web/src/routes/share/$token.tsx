@@ -136,6 +136,7 @@ function SharedSourcePage() {
 
       {source.audio && (
         <PublicNarrationPlayer
+          key={`${token}:${source.audio.audioUrl}`}
           token={token}
           title={source.title ?? source.url}
           audioUrl={source.audio.audioUrl}

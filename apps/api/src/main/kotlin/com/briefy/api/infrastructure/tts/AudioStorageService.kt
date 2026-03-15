@@ -55,6 +55,12 @@ class AudioStorageService(
     @Volatile
     private var bucketVerified = false
 
+    val endpoint: String
+        get() = properties.endpoint
+
+    val bucket: String
+        get() = properties.bucket
+
     fun uploadMp3(
         contentHash: String,
         providerType: TtsProviderType,
@@ -106,6 +112,15 @@ class AudioStorageService(
 
         val legacyKey = legacyObjectKey(contentHash, voiceId, modelId)
         return if (objectExists(legacyKey)) legacyKey else primaryKey
+    }
+
+    fun objectKeyFor(
+        contentHash: String,
+        providerType: TtsProviderType,
+        voiceId: String,
+        modelId: String? = null
+    ): String {
+        return objectKey(contentHash, providerType, voiceId, modelId)
     }
 
     private fun ensureBucketExistsIfNeeded() {

@@ -1,5 +1,6 @@
 package com.briefy.api.api
 
+import com.briefy.api.application.source.NarrationContentHashing
 import com.briefy.api.domain.knowledgegraph.source.AudioContent
 import com.briefy.api.domain.knowledgegraph.source.Content
 import com.briefy.api.domain.knowledgegraph.source.Metadata
@@ -7,6 +8,7 @@ import com.briefy.api.domain.knowledgegraph.source.SharedAudioCache
 import com.briefy.api.domain.knowledgegraph.source.SharedAudioCacheRepository
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
+import com.briefy.api.domain.knowledgegraph.source.SourceType
 import com.briefy.api.domain.sharing.ShareLink
 import com.briefy.api.domain.sharing.ShareLinkEntityType
 import com.briefy.api.domain.sharing.ShareLinkRepository
@@ -73,6 +75,35 @@ class ShareLinkControllerTest {
             .andExpect(jsonPath("$.source.audio.audioUrl").value("https://fresh.example.com/source.mp3"))
             .andExpect(jsonPath("$.source.audio.durationSeconds").value(42))
             .andExpect(jsonPath("$.source.audio.format").value("mp3"))
+    }
+
+    @Test
+    fun `GET public share returns youtube original audio from shared cache`() {
+        val source = saveActiveYoutubeSource()
+        val token = saveShareLink(source)
+        val contentHash = NarrationContentHashing.hash("youtube-original:dQw4w9WgXcQ")
+        sharedAudioCacheRepository.save(
+            SharedAudioCache(
+                id = UUID.randomUUID(),
+                contentHash = contentHash,
+                audioUrl = "https://old.example.com/youtube.mp3",
+                durationSeconds = 61,
+                format = "mp3",
+                characterCount = 0,
+                providerType = TtsProviderType.ELEVENLABS,
+                voiceId = "__youtube_original__",
+                modelId = "source_audio_v1",
+                createdAt = Instant.parse("2026-03-15T10:00:00Z")
+            )
+        )
+
+        `when`(audioStorageService.generatePresignedGetUrl(contentHash, TtsProviderType.ELEVENLABS, "__youtube_original__", "source_audio_v1"))
+            .thenReturn("https://fresh.example.com/youtube.mp3")
+
+        mockMvc.perform(get("/api/public/share/$token"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.source.audio.audioUrl").value("https://fresh.example.com/youtube.mp3"))
+            .andExpect(jsonPath("$.source.audio.durationSeconds").value(61))
     }
 
     @Test
@@ -254,6 +285,35 @@ class ShareLinkControllerTest {
                 aiFormatted = true,
                 extractionProvider = "jsoup",
                 transcriptLanguage = transcriptLanguage
+            )
+        )
+        return sourceRepository.save(source)
+    }
+
+    private fun saveActiveYoutubeSource(): Source {
+        val userId = UUID.randomUUID()
+        val source = Source.create(
+            id = UUID.randomUUID(),
+            rawUrl = "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            userId = userId,
+            sourceType = SourceType.VIDEO
+        )
+        source.startExtraction()
+        val content = Content.from("YouTube transcript")
+        source.completeExtraction(
+            content,
+            Metadata.from(
+                title = "Shared YouTube Source",
+                author = "Channel",
+                publishedDate = null,
+                platform = "youtube",
+                wordCount = content.wordCount,
+                aiFormatted = false,
+                extractionProvider = "youtube",
+                videoId = "dQw4w9WgXcQ",
+                videoEmbedUrl = "https://www.youtube.com/embed/dQw4w9WgXcQ",
+                videoDurationSeconds = 61,
+                transcriptSource = "captions"
             )
         )
         return sourceRepository.save(source)

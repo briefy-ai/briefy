@@ -8,8 +8,10 @@ import com.briefy.api.domain.knowledgegraph.source.SharedAudioCache
 import com.briefy.api.domain.knowledgegraph.source.SharedAudioCacheRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
+import com.briefy.api.domain.knowledgegraph.source.SourceType
 import com.briefy.api.domain.knowledgegraph.source.event.SourceNarrationRequestedEvent
 import com.briefy.api.infrastructure.id.IdGenerator
+import com.briefy.api.infrastructure.extraction.YouTubeExtractionProvider
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.briefy.api.infrastructure.tts.AudioStorageService
 import com.briefy.api.infrastructure.tts.InworldTtsException
@@ -44,6 +46,8 @@ class SourceNarrationService(
     private val audioStorageService: AudioStorageService,
     private val narrationLanguageResolver: NarrationLanguageResolver,
     private val ttsVoiceResolver: TtsVoiceResolver,
+    private val originalVideoAudioService: OriginalVideoAudioService,
+    private val youTubeExtractionProvider: YouTubeExtractionProvider,
     private val markdownStripper: MarkdownStripper,
     private val narrationProperties: NarrationProperties,
     private val inworldProperties: InworldTtsProperties,
@@ -67,8 +71,12 @@ class SourceNarrationService(
             throw InvalidSourceStateException("Narration previously failed. Use retry instead.")
         }
 
-        validateNarrationRequest(source.status, source.content?.text)
-        requirePreferredProvider(userId)
+        if (isYoutubeSource(source)) {
+            validateYoutubeNarrationRequest(source.status, source.metadata?.videoId)
+        } else {
+            validateNarrationRequest(source.status, source.content?.text)
+            requirePreferredProvider(userId)
+        }
 
         source.requestNarration()
         sourceRepository.save(source)
@@ -94,8 +102,12 @@ class SourceNarrationService(
             )
         }
 
-        validateNarrationRequest(source.status, source.content?.text)
-        requirePreferredProvider(userId)
+        if (isYoutubeSource(source)) {
+            validateYoutubeNarrationRequest(source.status, source.metadata?.videoId)
+        } else {
+            validateNarrationRequest(source.status, source.content?.text)
+            requirePreferredProvider(userId)
+        }
 
         source.requestNarration()
         sourceRepository.save(source)
@@ -151,6 +163,16 @@ class SourceNarrationService(
         val source = sourceRepository.findByIdAndUserId(id, userId)
             ?: throw SourceNotFoundException(id)
 
+        if (isYoutubeSource(source)) {
+            validateYoutubeNarrationRequest(source.status, source.metadata?.videoId)
+            return NarrationEstimateResponse(
+                characterCount = 0,
+                provider = YOUTUBE_ORIGINAL_AUDIO_PROVIDER,
+                modelId = OriginalVideoAudioService.ORIGINAL_VIDEO_AUDIO_MODEL_ID,
+                estimatedCostUsd = java.math.BigDecimal.ZERO.setScale(3)
+            )
+        }
+
         validateNarrationRequest(source.status, source.content?.text)
         val providerConfig = requirePreferredProvider(userId)
         val characterCount = markdownStripper.strip(source.content!!.text).length
@@ -172,18 +194,36 @@ class SourceNarrationService(
                 return@execute null
             }
 
-            val contentText = source.content?.text?.takeIf { it.isNotBlank() }
-                ?: return@execute null
+            if (isYoutubeSource(source)) {
+                val videoId = source.metadata?.videoId?.takeIf { it.isNotBlank() }
+                    ?: return@execute null
+                YouTubeNarrationInput(
+                    sourceId = source.id,
+                    userId = source.userId,
+                    normalizedUrl = source.url.normalized,
+                    videoId = videoId,
+                    videoDurationSeconds = source.metadata?.videoDurationSeconds
+                )
+            } else {
+                val contentText = source.content?.text?.takeIf { it.isNotBlank() }
+                    ?: return@execute null
 
-            NarrationInput(
-                sourceId = source.id,
-                userId = source.userId,
-                transcriptLanguage = source.metadata?.transcriptLanguage,
-                contentText = contentText,
-                contentHash = NarrationContentHashing.hash(contentText)
-            )
+                TextNarrationInput(
+                    sourceId = source.id,
+                    userId = source.userId,
+                    transcriptLanguage = source.metadata?.transcriptLanguage,
+                    contentText = contentText,
+                    contentHash = NarrationContentHashing.hash(contentText)
+                )
+            }
         } ?: return
 
+        if (loaded is YouTubeNarrationInput) {
+            processYoutubeNarration(loaded)
+            return
+        }
+
+        loaded as TextNarrationInput
         val plainText = markdownStripper.strip(loaded.contentText)
         if (plainText.isBlank()) {
             markNarrationFailedIfCurrent(loaded, REASON_EMPTY_CONTENT)
@@ -317,7 +357,7 @@ class SourceNarrationService(
         )
     }
 
-    private fun completeFromCache(loaded: NarrationInput, cachedAudio: SharedAudioCache) {
+    private fun completeFromCache(loaded: TextNarrationInput, cachedAudio: SharedAudioCache) {
         val refreshedUrl = try {
             audioStorageService.generatePresignedGetUrl(
                 cachedAudio.contentHash,
@@ -375,7 +415,7 @@ class SourceNarrationService(
         )
     }
 
-    private fun completeNarrationIfCurrent(loaded: NarrationInput, audioContent: AudioContent) {
+    private fun completeNarrationIfCurrent(loaded: TextNarrationInput, audioContent: AudioContent) {
         transactionTemplate.execute<Unit?> {
             val source = sourceRepository.findByIdAndUserId(loaded.sourceId, loaded.userId)
                 ?: return@execute null
@@ -392,7 +432,24 @@ class SourceNarrationService(
         }
     }
 
-    private fun markNarrationFailedIfCurrent(loaded: NarrationInput, reason: String) {
+    private fun completeYoutubeNarrationIfCurrent(loaded: YouTubeNarrationInput, audioContent: AudioContent) {
+        transactionTemplate.execute<Unit?> {
+            val source = sourceRepository.findByIdAndUserId(loaded.sourceId, loaded.userId)
+                ?: return@execute null
+            if (source.status != SourceStatus.ACTIVE || source.narrationState != NarrationState.PENDING) {
+                return@execute null
+            }
+            if (!isYoutubeSource(source) || source.metadata?.videoId != loaded.videoId) {
+                return@execute null
+            }
+
+            source.completeNarration(audioContent)
+            sourceRepository.save(source)
+            null
+        }
+    }
+
+    private fun markNarrationFailedIfCurrent(loaded: TextNarrationInput, reason: String) {
         transactionTemplate.execute<Unit?> {
             val source = sourceRepository.findByIdAndUserId(loaded.sourceId, loaded.userId)
                 ?: return@execute null
@@ -407,6 +464,129 @@ class SourceNarrationService(
             sourceRepository.save(source)
             null
         }
+    }
+
+    private fun markYoutubeNarrationFailedIfCurrent(loaded: YouTubeNarrationInput, reason: String) {
+        transactionTemplate.execute<Unit?> {
+            val source = sourceRepository.findByIdAndUserId(loaded.sourceId, loaded.userId)
+                ?: return@execute null
+            if (source.status != SourceStatus.ACTIVE || source.narrationState != NarrationState.PENDING) {
+                return@execute null
+            }
+            if (!isYoutubeSource(source) || source.metadata?.videoId != loaded.videoId) {
+                return@execute null
+            }
+
+            source.failNarration(reason)
+            sourceRepository.save(source)
+            null
+        }
+    }
+
+    private fun processYoutubeNarration(loaded: YouTubeNarrationInput) {
+        val cachedAudio = try {
+            originalVideoAudioService.findCachedAudio(loaded.videoId)
+        } catch (ex: SourceAudioPresignException) {
+            markYoutubeNarrationFailedIfCurrent(loaded, REASON_SOURCE_AUDIO_URL_REFRESH_FAILED)
+            logger.warn(
+                "[narration] youtube_audio_failed sourceId={} userId={} videoId={} phase=cache_refresh reason={} storageEndpoint={} bucket={} objectKey={}",
+                loaded.sourceId,
+                loaded.userId,
+                loaded.videoId,
+                REASON_SOURCE_AUDIO_URL_REFRESH_FAILED,
+                ex.storageEndpoint,
+                ex.bucket,
+                ex.objectKey,
+                ex
+            )
+            return
+        } catch (ex: Exception) {
+            markYoutubeNarrationFailedIfCurrent(loaded, REASON_AUDIO_REFRESH_FAILED)
+            logger.warn(
+                "[narration] youtube_cache_refresh_failed sourceId={} userId={} videoId={} phase=cache_lookup reason={}",
+                loaded.sourceId,
+                loaded.userId,
+                loaded.videoId,
+                REASON_AUDIO_REFRESH_FAILED,
+                ex
+            )
+            return
+        }
+
+        if (cachedAudio != null) {
+            completeYoutubeNarrationIfCurrent(loaded, cachedAudio)
+            logger.info(
+                "[narration] completed sourceId={} userId={} contentHash={} cached=true durationSeconds={}",
+                loaded.sourceId,
+                loaded.userId,
+                cachedAudio.contentHash,
+                cachedAudio.durationSeconds
+            )
+            return
+        }
+
+        val originalAudio = try {
+            youTubeExtractionProvider.fetchOriginalAudio(loaded.normalizedUrl, loaded.videoDurationSeconds)
+        } catch (ex: SourceAudioStorageException) {
+            markYoutubeNarrationFailedIfCurrent(loaded, REASON_SOURCE_AUDIO_STORAGE_FAILED)
+            logger.warn(
+                "[narration] youtube_audio_failed sourceId={} userId={} videoId={} phase=upload_audio reason={} storageEndpoint={} bucket={} objectKey={}",
+                loaded.sourceId,
+                loaded.userId,
+                loaded.videoId,
+                REASON_SOURCE_AUDIO_STORAGE_FAILED,
+                ex.storageEndpoint,
+                ex.bucket,
+                ex.objectKey,
+                ex
+            )
+            return
+        } catch (ex: SourceAudioPresignException) {
+            markYoutubeNarrationFailedIfCurrent(loaded, REASON_SOURCE_AUDIO_URL_REFRESH_FAILED)
+            logger.warn(
+                "[narration] youtube_audio_failed sourceId={} userId={} videoId={} phase=presign_audio reason={} storageEndpoint={} bucket={} objectKey={}",
+                loaded.sourceId,
+                loaded.userId,
+                loaded.videoId,
+                REASON_SOURCE_AUDIO_URL_REFRESH_FAILED,
+                ex.storageEndpoint,
+                ex.bucket,
+                ex.objectKey,
+                ex
+            )
+            return
+        } catch (ex: SourceAudioDownloadException) {
+            markYoutubeNarrationFailedIfCurrent(loaded, REASON_SOURCE_AUDIO_DOWNLOAD_FAILED)
+            logger.warn(
+                "[narration] youtube_audio_failed sourceId={} userId={} videoId={} phase=download_audio reason={}",
+                loaded.sourceId,
+                loaded.userId,
+                loaded.videoId,
+                REASON_SOURCE_AUDIO_DOWNLOAD_FAILED,
+                ex
+            )
+            return
+        } catch (ex: Exception) {
+            markYoutubeNarrationFailedIfCurrent(loaded, REASON_SOURCE_AUDIO_DOWNLOAD_FAILED)
+            logger.warn(
+                "[narration] youtube_audio_failed sourceId={} userId={} videoId={} phase=prepare_audio reason={}",
+                loaded.sourceId,
+                loaded.userId,
+                loaded.videoId,
+                REASON_SOURCE_AUDIO_DOWNLOAD_FAILED,
+                ex
+            )
+            return
+        }
+
+        completeYoutubeNarrationIfCurrent(loaded, originalAudio)
+        logger.info(
+            "[narration] completed sourceId={} userId={} contentHash={} cached=false durationSeconds={}",
+            loaded.sourceId,
+            loaded.userId,
+            originalAudio.contentHash,
+            originalAudio.durationSeconds
+        )
     }
 
     private fun upsertSharedAudioCache(candidate: SharedAudioCache): SharedAudioCache {
@@ -475,7 +655,20 @@ class SourceNarrationService(
             ?: throw IllegalArgumentException("Preferred TTS provider is not enabled or configured in Settings")
     }
 
-    private data class NarrationInput(
+    private fun validateYoutubeNarrationRequest(status: SourceStatus, videoId: String?) {
+        if (status != SourceStatus.ACTIVE) {
+            throw InvalidSourceStateException("Can only narrate active sources. Current status: $status")
+        }
+        if (videoId.isNullOrBlank()) {
+            throw InvalidSourceStateException("Cannot play audio for a video source without a YouTube video id")
+        }
+    }
+
+    private fun isYoutubeSource(source: com.briefy.api.domain.knowledgegraph.source.Source): Boolean {
+        return source.sourceType == SourceType.VIDEO && source.url.platform.equals("youtube", ignoreCase = true)
+    }
+
+    private data class TextNarrationInput(
         val sourceId: UUID,
         val userId: UUID,
         val transcriptLanguage: String?,
@@ -483,13 +676,25 @@ class SourceNarrationService(
         val contentHash: String
     )
 
+    private data class YouTubeNarrationInput(
+        val sourceId: UUID,
+        val userId: UUID,
+        val normalizedUrl: String,
+        val videoId: String,
+        val videoDurationSeconds: Int?
+    )
+
     companion object {
         private const val AUDIO_FORMAT = "mp3"
+        private const val YOUTUBE_ORIGINAL_AUDIO_PROVIDER = "youtube_original_audio"
         private const val REASON_EMPTY_CONTENT = "empty_plaintext_content"
         private const val REASON_CONTENT_TOO_LONG = "content_too_long"
         private const val REASON_PROVIDER_NOT_CONFIGURED = "tts_provider_not_configured"
         private const val REASON_TTS_FAILED = "tts_generation_failed"
         private const val REASON_STORAGE_FAILED = "audio_storage_failed"
         private const val REASON_AUDIO_REFRESH_FAILED = "audio_url_refresh_failed"
+        private const val REASON_SOURCE_AUDIO_DOWNLOAD_FAILED = "source_audio_download_failed"
+        private const val REASON_SOURCE_AUDIO_STORAGE_FAILED = "source_audio_storage_failed"
+        private const val REASON_SOURCE_AUDIO_URL_REFRESH_FAILED = "source_audio_url_refresh_failed"
     }
 }

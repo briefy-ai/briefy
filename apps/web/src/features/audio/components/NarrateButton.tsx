@@ -15,6 +15,8 @@ interface NarrateButtonProps {
   onSourceUpdate: (source: Source) => void
 }
 
+type NarrationEstimateProvider = 'elevenlabs' | 'inworld' | 'youtube_original_audio'
+
 export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   const {
     currentSourceId,
@@ -29,7 +31,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   const [costDialogOpen, setCostDialogOpen] = useState(false)
   const [estimate, setEstimate] = useState<{
     characterCount: number
-    provider: 'elevenlabs' | 'inworld'
+    provider: NarrationEstimateProvider
     modelId: string
     estimatedCostUsd: number
   } | null>(null)
@@ -38,6 +40,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   const isCurrentSource = currentSourceId === source.id
   const narrationState = source.narrationState
   const title = source.metadata?.title ?? source.url.normalized
+  const isYouTubeSource = source.url.platform === 'youtube'
 
   const executeNarrate = async () => {
     setTriggering(true)
@@ -66,6 +69,15 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   }
 
   const handleNarrateOrRetry = async (action: 'narrate' | 'retry') => {
+    if (isYouTubeSource) {
+      if (action === 'retry') {
+        void executeRetry()
+      } else {
+        void executeNarrate()
+      }
+      return
+    }
+
     setTriggering(true)
     setRequestError(null)
     try {
@@ -137,7 +149,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
     return (
       <Button type="button" variant="ghost" size="sm" disabled>
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-        <span className="hidden sm:inline">Generating audio...</span>
+        <span className="hidden sm:inline">{isYouTubeSource ? 'Preparing audio...' : 'Generating audio...'}</span>
       </Button>
     )
   }
@@ -176,6 +188,19 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
     }
 
     // Non-retryable — configuration issue, point user to settings
+    if (isYouTubeSource) {
+      return (
+        <MessageTooltip message={message ?? 'Original audio is unavailable for this video.'}>
+          <span className="inline-flex">
+            <Button type="button" variant="ghost" size="sm" disabled aria-label="Audio unavailable">
+              <Headphones className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Audio unavailable</span>
+            </Button>
+          </span>
+        </MessageTooltip>
+      )
+    }
+
     return (
       <MessageTooltip message={message ?? 'Check your TTS configuration in Settings.'}>
         <Button type="button" variant="ghost" size="sm" asChild>

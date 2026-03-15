@@ -9,13 +9,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { formatCostDisplay } from '../narrationCost'
-import type { TtsProviderType } from '@/lib/api/types'
+
+type NarrationEstimateProvider = 'elevenlabs' | 'inworld' | 'youtube_original_audio'
 
 interface NarrationCostDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   characterCount: number
-  provider: TtsProviderType
+  provider: NarrationEstimateProvider
   modelId?: string
   estimatedCostUsd: number
   onConfirm: () => void
@@ -30,6 +31,13 @@ export function NarrationCostDialog({
   estimatedCostUsd,
   onConfirm,
 }: NarrationCostDialogProps) {
+  const providerLabel =
+    provider === 'inworld'
+      ? 'Inworld'
+      : provider === 'youtube_original_audio'
+        ? 'original YouTube audio'
+        : 'ElevenLabs'
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -39,7 +47,7 @@ export function NarrationCostDialog({
             <div className="space-y-2">
               <p>
                 This source is {characterCount.toLocaleString()} characters.
-                Generating audio with <strong className="text-foreground">{provider === 'inworld' ? 'Inworld' : 'ElevenLabs'}</strong>{' '}
+                Generating audio with <strong className="text-foreground">{providerLabel}</strong>{' '}
                 will cost approximately <strong className="text-foreground">{formatCostDisplay(estimatedCostUsd)}</strong>.
               </p>
               <p className="text-xs text-muted-foreground">

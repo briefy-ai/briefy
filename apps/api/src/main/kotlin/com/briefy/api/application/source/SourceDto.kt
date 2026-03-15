@@ -187,6 +187,8 @@ private object NarrationFailureCatalog {
             "inworld_rate_limited" -> "Inworld is temporarily unable to generate audio. Try again shortly."
             "content_too_long" -> "This source is too long to narrate with the current limits."
             "empty_plaintext_content" -> "This source does not contain narratable text."
+            "source_audio_download_failed", "source_audio_storage_failed", "source_audio_url_refresh_failed" ->
+                "Briefy could not prepare the original video audio. Try again."
             "audio_storage_failed", "audio_url_refresh_failed", "tts_generation_failed", "elevenlabs_server_error", "elevenlabs_request_retryable", "inworld_server_error", "inworld_request_retryable" ->
                 "Briefy could not generate audio for this source. Try again."
             "elevenlabs_request_failed", "inworld_request_failed" -> "Briefy could not generate audio for this source."
@@ -199,6 +201,7 @@ private object NarrationFailureCatalog {
             null -> null
             "paid_plan_required", "invalid_api_key", "quota_exceeded", "tts_provider_not_configured", "elevenlabs_not_configured", "content_too_long", "empty_plaintext_content", "elevenlabs_request_failed", "inworld_invalid_api_key", "inworld_request_failed" -> false
             "too_many_concurrent_requests", "system_busy", "voice_not_ready", "audio_storage_failed", "audio_url_refresh_failed", "tts_generation_failed", "elevenlabs_server_error", "elevenlabs_request_retryable", "inworld_server_error", "inworld_request_retryable", "inworld_rate_limited" -> true
+            "source_audio_download_failed", "source_audio_storage_failed", "source_audio_url_refresh_failed" -> true
             else -> false
         }
     }
