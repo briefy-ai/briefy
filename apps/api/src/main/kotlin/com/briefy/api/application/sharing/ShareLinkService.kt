@@ -4,7 +4,6 @@ import com.briefy.api.application.source.NarrationContentHashing
 import com.briefy.api.domain.knowledgegraph.source.AudioContent
 import com.briefy.api.domain.knowledgegraph.source.SharedAudioCacheRepository
 import com.briefy.api.domain.knowledgegraph.source.Source
-import com.briefy.api.domain.knowledgegraph.source.SourceStatus
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceType
 import com.briefy.api.domain.sharing.ShareLink
@@ -216,10 +215,6 @@ class ShareLinkService(
     }
 
     private fun resolveSharedNarration(source: Source): SharedSourceAudioData? {
-        if (source.status != SourceStatus.ACTIVE) {
-            return null
-        }
-
         source.audioContent?.let { audioContent ->
             return buildSharedSourceAudio(audioContent)
         }

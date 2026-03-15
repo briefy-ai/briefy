@@ -128,6 +128,34 @@ class ShareLinkControllerTest {
             .andExpect(jsonPath("$.audioUrl").value("https://fresh.example.com/source.mp3"))
     }
 
+    @Test
+    fun `GET public share returns source narration for archived source with existing audio`() {
+        val source = saveActiveSource().apply {
+            completeNarration(
+                AudioContent(
+                    audioUrl = "https://old.example.com/archived.mp3",
+                    durationSeconds = 24,
+                    format = "mp3",
+                    contentHash = "archived-hash",
+                    voiceId = "iiidtqDt9FBdT1vfBluA",
+                    modelId = "eleven_flash_v2_5",
+                    generatedAt = Instant.parse("2026-03-15T10:00:00Z")
+                )
+            )
+            archive()
+        }
+        sourceRepository.save(source)
+        val token = saveShareLink(source)
+
+        `when`(audioStorageService.generatePresignedGetUrl("archived-hash", "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+            .thenReturn("https://fresh.example.com/archived.mp3")
+
+        mockMvc.perform(get("/api/public/share/$token"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.source.audio.audioUrl").value("https://fresh.example.com/archived.mp3"))
+            .andExpect(jsonPath("$.source.audio.durationSeconds").value(24))
+    }
+
     private fun saveShareLink(source: Source): String {
         val shareLink = ShareLink(
             token = UUID.randomUUID().toString().replace("-", ""),
@@ -141,13 +169,14 @@ class ShareLinkControllerTest {
 
     private fun saveActiveSource(): Source {
         val userId = UUID.randomUUID()
+        val contentText = "Shared source narration content ${UUID.randomUUID()}"
         val source = Source.create(
             id = UUID.randomUUID(),
             rawUrl = "https://example.com/source/${UUID.randomUUID()}",
             userId = userId
         )
         source.startExtraction()
-        val content = Content.from("Shared source narration content")
+        val content = Content.from(contentText)
         source.completeExtraction(
             content,
             Metadata.from(

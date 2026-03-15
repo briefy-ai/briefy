@@ -264,9 +264,7 @@ class SourceNarrationServiceTest {
     }
 
     private fun contentHash(content: String): String {
-        return java.security.MessageDigest.getInstance("SHA-256")
-            .digest(content.toByteArray(Charsets.UTF_8))
-            .joinToString("") { byte -> "%02x".format(byte) }
+        return NarrationContentHashing.hash(content)
     }
 
     private fun sampleMp3Bytes(): ByteArray = byteArrayOf(
