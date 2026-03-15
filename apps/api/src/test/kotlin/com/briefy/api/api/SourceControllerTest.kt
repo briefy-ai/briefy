@@ -40,7 +40,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
+import java.nio.charset.StandardCharsets
 import java.time.Instant
+import java.util.Base64
 import java.util.UUID
 
 @SpringBootTest
@@ -387,6 +389,17 @@ class SourceControllerTest {
     @Test
     fun `GET list returns bad request for invalid cursor`() {
         mockMvc.perform(get("/api/sources").param("cursor", "invalid-cursor"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.message").value("Invalid cursor"))
+    }
+
+    @Test
+    fun `GET list rejects pre deploy newest cursor prefix`() {
+        val oldCursor = Base64.getUrlEncoder().withoutPadding().encodeToString(
+            "u|2025-01-02T00:00:00Z|${UUID.randomUUID()}".toByteArray(StandardCharsets.UTF_8)
+        )
+
+        mockMvc.perform(get("/api/sources").param("sort", "newest").param("cursor", oldCursor))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.message").value("Invalid cursor"))
     }

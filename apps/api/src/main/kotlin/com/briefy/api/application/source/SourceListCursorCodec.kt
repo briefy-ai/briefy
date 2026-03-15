@@ -18,7 +18,7 @@ object SourceListCursorCodec {
 
     fun encode(cursor: SourceListCursor): String {
         val raw = when (cursor.sortStrategy) {
-            SourceSortStrategy.NEWEST -> "u|${requireNotNull(cursor.instantValue)}|${cursor.id}"
+            SourceSortStrategy.NEWEST -> "n|${requireNotNull(cursor.instantValue)}|${cursor.id}"
             SourceSortStrategy.OLDEST -> "c|${requireNotNull(cursor.instantValue)}|${cursor.id}"
             SourceSortStrategy.LONGEST_READ -> "r|${cursor.readingTime?.toString().orEmpty()}|${cursor.id}"
             SourceSortStrategy.SHORTEST_READ -> "rs|${cursor.readingTime?.toString().orEmpty()}|${cursor.id}"
@@ -38,7 +38,7 @@ object SourceListCursorCodec {
         }
 
         val sortStrategy = when (parts[0]) {
-            "u" -> SourceSortStrategy.NEWEST
+            "n" -> SourceSortStrategy.NEWEST
             "c" -> SourceSortStrategy.OLDEST
             "r" -> SourceSortStrategy.LONGEST_READ
             "rs" -> SourceSortStrategy.SHORTEST_READ
