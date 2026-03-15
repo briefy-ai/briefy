@@ -121,8 +121,9 @@ class SourceController(
         logger.info("[controller] Narration estimate request received sourceId={}", id)
         val estimate = sourceNarrationService.estimateNarration(id)
         logger.info(
-            "[controller] Narration estimate request completed sourceId={} characterCount={} modelId={}",
+            "[controller] Narration estimate request completed sourceId={} provider={} characterCount={} modelId={}",
             id,
+            estimate.provider,
             estimate.characterCount,
             estimate.modelId
         )

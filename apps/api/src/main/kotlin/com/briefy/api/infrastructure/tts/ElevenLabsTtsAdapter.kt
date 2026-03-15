@@ -10,15 +10,17 @@ import org.springframework.web.client.HttpServerErrorException
 @Component
 class ElevenLabsTtsAdapter(
     restClientBuilder: RestClient.Builder,
-    private val properties: TtsProperties,
+    private val properties: ElevenLabsTtsProperties,
     private val objectMapper: ObjectMapper
-) {
+) : TtsProvider {
+    override val type = TtsProviderType.ELEVENLABS
+
     private val restClient = restClientBuilder
         .baseUrl(properties.baseUrl)
         .build()
 
-    fun synthesize(text: String, apiKey: String): ByteArray {
-        require(text.isNotBlank()) { "Narration text must not be blank" }
+    override fun synthesize(request: TtsSynthesisRequest): ByteArray {
+        require(request.text.isNotBlank()) { "Narration text must not be blank" }
 
         try {
             return restClient.post()
@@ -26,15 +28,15 @@ class ElevenLabsTtsAdapter(
                     builder
                         .path("/v1/text-to-speech/{voiceId}")
                         .queryParam("output_format", OUTPUT_FORMAT)
-                        .build(properties.voiceId)
+                        .build(request.voiceId)
                 }
-                .header("xi-api-key", apiKey)
+                .header("xi-api-key", request.apiKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_OCTET_STREAM)
                 .body(
                     mapOf(
-                        "text" to text,
-                        "model_id" to properties.modelId
+                        "text" to request.text,
+                        "model_id" to request.modelId
                     )
                 )
                 .retrieve()

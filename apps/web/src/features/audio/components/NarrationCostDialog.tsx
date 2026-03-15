@@ -8,13 +8,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { estimateCostCents, formatCostDisplay } from '../narrationCost'
+import { formatCostDisplay } from '../narrationCost'
+import type { TtsProviderType } from '@/lib/api/types'
 
 interface NarrationCostDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   characterCount: number
+  provider: TtsProviderType
   modelId?: string
+  estimatedCostUsd: number
   onConfirm: () => void
 }
 
@@ -22,11 +25,11 @@ export function NarrationCostDialog({
   open,
   onOpenChange,
   characterCount,
+  provider,
   modelId,
+  estimatedCostUsd,
   onConfirm,
 }: NarrationCostDialogProps) {
-  const costCents = estimateCostCents(characterCount, modelId)
-
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -36,11 +39,11 @@ export function NarrationCostDialog({
             <div className="space-y-2">
               <p>
                 This source is {characterCount.toLocaleString()} characters.
-                Generating audio will cost approximately <strong className="text-foreground">{formatCostDisplay(costCents)}</strong> on
-                your ElevenLabs account.
+                Generating audio with <strong className="text-foreground">{provider === 'inworld' ? 'Inworld' : 'ElevenLabs'}</strong>{' '}
+                will cost approximately <strong className="text-foreground">{formatCostDisplay(estimatedCostUsd)}</strong>.
               </p>
               <p className="text-xs text-muted-foreground">
-                Based on {modelId ?? 'default'} model pricing. Actual cost depends on your ElevenLabs plan.
+                Based on {modelId ?? 'default'} model pricing. Actual provider billing may vary by plan.
               </p>
             </div>
           </AlertDialogDescription>

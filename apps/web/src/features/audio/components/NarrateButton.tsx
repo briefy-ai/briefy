@@ -27,7 +27,12 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   const [triggering, setTriggering] = useState(false)
   const [requestError, setRequestError] = useState<string | null>(null)
   const [costDialogOpen, setCostDialogOpen] = useState(false)
-  const [estimate, setEstimate] = useState<{ characterCount: number; modelId: string } | null>(null)
+  const [estimate, setEstimate] = useState<{
+    characterCount: number
+    provider: 'elevenlabs' | 'inworld'
+    modelId: string
+    estimatedCostUsd: number
+  } | null>(null)
   const [pendingAction, setPendingAction] = useState<'narrate' | 'retry' | null>(null)
 
   const isCurrentSource = currentSourceId === source.id
@@ -161,7 +166,9 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
             open={costDialogOpen}
             onOpenChange={setCostDialogOpen}
             characterCount={estimate?.characterCount ?? 0}
+            provider={estimate?.provider ?? 'elevenlabs'}
             modelId={estimate?.modelId}
+            estimatedCostUsd={estimate?.estimatedCostUsd ?? 0}
             onConfirm={handleCostConfirm}
           />
         </>
@@ -170,11 +177,11 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
 
     // Non-retryable — configuration issue, point user to settings
     return (
-      <MessageTooltip message={message ?? 'Check your ElevenLabs configuration in Settings.'}>
+      <MessageTooltip message={message ?? 'Check your TTS configuration in Settings.'}>
         <Button type="button" variant="ghost" size="sm" asChild>
-          <Link to="/settings" aria-label="Update ElevenLabs settings">
+          <Link to="/settings" aria-label="Update TTS settings">
             <Settings className="size-4" aria-hidden="true" />
-            <span className="hidden sm:inline">Update ElevenLabs</span>
+            <span className="hidden sm:inline">Update TTS</span>
           </Link>
         </Button>
       </MessageTooltip>
@@ -218,7 +225,9 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
         open={costDialogOpen}
         onOpenChange={setCostDialogOpen}
         characterCount={estimate?.characterCount ?? 0}
+        provider={estimate?.provider ?? 'elevenlabs'}
         modelId={estimate?.modelId}
+        estimatedCostUsd={estimate?.estimatedCostUsd ?? 0}
         onConfirm={handleCostConfirm}
       />
     </>

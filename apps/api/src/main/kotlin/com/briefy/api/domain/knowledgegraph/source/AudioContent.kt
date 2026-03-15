@@ -1,7 +1,10 @@
 package com.briefy.api.domain.knowledgegraph.source
 
+import com.briefy.api.infrastructure.tts.TtsProviderType
 import jakarta.persistence.Column
 import jakarta.persistence.Embeddable
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
 import java.time.Instant
 
 @Embeddable
@@ -17,6 +20,10 @@ data class AudioContent(
 
     @Column(name = "audio_content_hash", length = 64)
     val contentHash: String,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "audio_provider_type", length = 30)
+    val providerType: TtsProviderType? = null,
 
     @Column(name = "audio_voice_id", length = 100)
     val voiceId: String? = null,

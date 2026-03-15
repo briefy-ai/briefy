@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
-import { BrainCircuit, Check, Copy, Eye, EyeOff, KeyRound, MessageCircle, Settings } from 'lucide-react'
+import { BrainCircuit, Check, Copy, Eye, EyeOff, Headphones, KeyRound, MessageCircle, Settings } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,14 +8,19 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Toggle } from '@/components/ui/toggle'
+import { formatCostDisplay } from '@/features/audio/narrationCost'
 import { getAiSettings, updateAiUseCase } from '@/lib/api/aiSettings'
 import {
+  deleteTtsProviderKey,
   deleteProviderKey,
   generateTelegramLinkCode,
   getExtractionSettings,
   getTelegramLinkStatus,
+  getTtsSettings,
   unlinkTelegram,
+  updatePreferredTtsProvider,
   updateProvider,
+  updateTtsProvider,
 } from '@/lib/api/settings'
 import { requireAuth } from '@/lib/auth/requireAuth'
 import type {
@@ -25,6 +30,8 @@ import type {
   AiUseCaseSettingDto,
   ProviderSettingDto,
   TelegramLinkStatusResponse,
+  TtsProviderSettingDto,
+  TtsProviderType,
 } from '@/lib/api/types'
 
 export const Route = createFileRoute('/settings/')({
@@ -36,6 +43,7 @@ export const Route = createFileRoute('/settings/')({
 
 function SettingsPage() {
   const [providers, setProviders] = useState<ProviderSettingDto[]>([])
+  const [ttsProviders, setTtsProviders] = useState<TtsProviderSettingDto[]>([])
   const [aiProviders, setAiProviders] = useState<AiProviderDto[]>([])
   const [aiUseCases, setAiUseCases] = useState<AiUseCaseSettingDto[]>([])
   const [loading, setLoading] = useState(true)
@@ -52,11 +60,20 @@ function SettingsPage() {
   const [xApiEnabled, setXApiEnabled] = useState(false)
   const [xApiToken, setXApiToken] = useState('')
   const [showXApiToken, setShowXApiToken] = useState(false)
+  const [preferredTtsProvider, setPreferredTtsProvider] = useState<TtsProviderType>('elevenlabs')
   const [elevenlabsEnabled, setElevenlabsEnabled] = useState(false)
   const [elevenlabsApiKey, setElevenlabsApiKey] = useState('')
+  const [elevenlabsModelId, setElevenlabsModelId] = useState('eleven_flash_v2_5')
   const [showElevenlabsKey, setShowElevenlabsKey] = useState(false)
   const [elevenlabsSaving, setElevenlabsSaving] = useState(false)
   const [elevenlabsRemovingKey, setElevenlabsRemovingKey] = useState(false)
+  const [inworldEnabled, setInworldEnabled] = useState(false)
+  const [inworldApiKey, setInworldApiKey] = useState('')
+  const [inworldModelId, setInworldModelId] = useState('inworld-tts-1.5-mini')
+  const [showInworldKey, setShowInworldKey] = useState(false)
+  const [inworldSaving, setInworldSaving] = useState(false)
+  const [inworldRemovingKey, setInworldRemovingKey] = useState(false)
+  const [preferredTtsSaving, setPreferredTtsSaving] = useState(false)
   const [topicProvider, setTopicProvider] = useState<AiProviderId>('zhipuai')
   const [topicModel, setTopicModel] = useState<string>('')
   const [formatterProvider, setFormatterProvider] = useState<AiProviderId>('zhipuai')
@@ -74,22 +91,22 @@ function SettingsPage() {
       setLoading(true)
       setError(null)
       try {
-        const [extractionData, aiData, telegramData] = await Promise.all([
+        const [extractionData, ttsData, aiData, telegramData] = await Promise.all([
           getExtractionSettings(),
+          getTtsSettings(),
           getAiSettings(),
           getTelegramLinkStatus(),
         ])
         if (!mounted) return
         setProviders(extractionData.providers)
+        applyTtsState(ttsData)
         setAiProviders(aiData.providers)
         setAiUseCases(aiData.useCases)
         setTelegramStatus(telegramData)
         const firecrawl = extractionData.providers.find((provider) => provider.type === 'firecrawl')
         const xApi = extractionData.providers.find((provider) => provider.type === 'x_api')
-        const elevenlabs = extractionData.providers.find((provider) => provider.type === 'elevenlabs')
         setFirecrawlEnabled(firecrawl?.enabled ?? false)
         setXApiEnabled(xApi?.enabled ?? false)
-        setElevenlabsEnabled(elevenlabs?.enabled ?? false)
         applyAiUseCaseState(aiData.useCases)
       } catch (e) {
         if (!mounted) return
@@ -121,8 +138,12 @@ function SettingsPage() {
     [providers]
   )
   const elevenlabsProvider = useMemo(
-    () => providers.find((provider) => provider.type === 'elevenlabs'),
-    [providers]
+    () => ttsProviders.find((provider) => provider.type === 'elevenlabs'),
+    [ttsProviders]
+  )
+  const inworldProvider = useMemo(
+    () => ttsProviders.find((provider) => provider.type === 'inworld'),
+    [ttsProviders]
   )
   const topicUseCase = useMemo(
     () => aiUseCases.find((useCase) => useCase.id === 'topic_extraction'),
@@ -215,40 +236,89 @@ function SettingsPage() {
     }
   }
 
-  const saveElevenlabsSettings = async () => {
-    setElevenlabsSaving(true)
+  const applyTtsState = (data: { preferredProvider: TtsProviderType; providers: TtsProviderSettingDto[] }) => {
+    setTtsProviders(data.providers)
+    setPreferredTtsProvider(data.preferredProvider)
+    const elevenlabs = data.providers.find((provider) => provider.type === 'elevenlabs')
+    const inworld = data.providers.find((provider) => provider.type === 'inworld')
+    setElevenlabsEnabled(elevenlabs?.enabled ?? false)
+    setElevenlabsModelId(elevenlabs?.selectedModelId ?? 'eleven_flash_v2_5')
+    setInworldEnabled(inworld?.enabled ?? false)
+    setInworldModelId(inworld?.selectedModelId ?? 'inworld-tts-1.5-mini')
+  }
+
+  const savePreferredTtsSettings = async () => {
+    setPreferredTtsSaving(true)
     setError(null)
     setSuccessMessage(null)
     try {
-      const data = await updateProvider('elevenlabs', {
-        enabled: elevenlabsEnabled,
-        apiKey: elevenlabsApiKey.trim() ? elevenlabsApiKey.trim() : undefined,
-      })
-      setProviders(data.providers)
-      setElevenlabsApiKey('')
-      setSuccessMessage('ElevenLabs settings updated.')
+      const data = await updatePreferredTtsProvider({ preferredProvider: preferredTtsProvider })
+      applyTtsState(data)
+      setSuccessMessage('Preferred TTS provider updated.')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to update ElevenLabs settings')
+      setError(e instanceof Error ? e.message : 'Failed to update preferred TTS provider')
     } finally {
-      setElevenlabsSaving(false)
+      setPreferredTtsSaving(false)
     }
   }
 
-  const removeElevenlabsKey = async () => {
-    setElevenlabsRemovingKey(true)
+  const saveTtsProviderSettings = async (type: TtsProviderType) => {
+    if (type === 'elevenlabs') {
+      setElevenlabsSaving(true)
+    } else {
+      setInworldSaving(true)
+    }
     setError(null)
     setSuccessMessage(null)
     try {
-      const data = await deleteProviderKey('elevenlabs')
-      setProviders(data.providers)
-      const elevenlabs = data.providers.find((provider) => provider.type === 'elevenlabs')
-      setElevenlabsEnabled(elevenlabs?.enabled ?? false)
-      setElevenlabsApiKey('')
-      setSuccessMessage('ElevenLabs key removed.')
+      const data = await updateTtsProvider(type, {
+        enabled: type === 'elevenlabs' ? elevenlabsEnabled : inworldEnabled,
+        apiKey: (type === 'elevenlabs' ? elevenlabsApiKey : inworldApiKey).trim() || undefined,
+        modelId: type === 'elevenlabs' ? elevenlabsModelId : inworldModelId,
+      })
+      applyTtsState(data)
+      if (type === 'elevenlabs') {
+        setElevenlabsApiKey('')
+      } else {
+        setInworldApiKey('')
+      }
+      setSuccessMessage(`${type === 'elevenlabs' ? 'ElevenLabs' : 'Inworld'} settings updated.`)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to remove ElevenLabs key')
+      setError(e instanceof Error ? e.message : `Failed to update ${type === 'elevenlabs' ? 'ElevenLabs' : 'Inworld'} settings`)
     } finally {
-      setElevenlabsRemovingKey(false)
+      if (type === 'elevenlabs') {
+        setElevenlabsSaving(false)
+      } else {
+        setInworldSaving(false)
+      }
+    }
+  }
+
+  const removeTtsProviderKey = async (type: TtsProviderType) => {
+    if (type === 'elevenlabs') {
+      setElevenlabsRemovingKey(true)
+    } else {
+      setInworldRemovingKey(true)
+    }
+    setError(null)
+    setSuccessMessage(null)
+    try {
+      const data = await deleteTtsProviderKey(type)
+      applyTtsState(data)
+      if (type === 'elevenlabs') {
+        setElevenlabsApiKey('')
+      } else {
+        setInworldApiKey('')
+      }
+      setSuccessMessage(`${type === 'elevenlabs' ? 'ElevenLabs' : 'Inworld'} key removed.`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Failed to remove ${type === 'elevenlabs' ? 'ElevenLabs' : 'Inworld'} key`)
+    } finally {
+      if (type === 'elevenlabs') {
+        setElevenlabsRemovingKey(false)
+      } else {
+        setInworldRemovingKey(false)
+      }
     }
   }
 
@@ -391,6 +461,13 @@ function SettingsPage() {
             >
               <KeyRound className="size-4" />
               Content Extraction
+            </a>
+            <a
+              href="#tts"
+              className="mt-1 flex items-center gap-2 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Headphones className="size-4" />
+              TTS
             </a>
             <a
               href="#ai-models"
@@ -586,73 +663,209 @@ function SettingsPage() {
               </Button>
             </CardFooter>
           </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                ElevenLabs
-                {elevenlabsProvider?.configured && <Badge variant="secondary">Configured</Badge>}
-              </CardTitle>
-              <CardDescription>
-                Text-to-speech for listening to your sources. Provide your own API key.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-muted-foreground">
-                A paid ElevenLabs subscription is required. Free-tier API keys do not support the voice model used for narration.
-              </div>
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div>
-                  <p className="text-sm font-medium">Enable ElevenLabs</p>
-                  <p className="text-xs text-muted-foreground">Use your own API key for source narration.</p>
-                </div>
-                <Toggle
-                  pressed={elevenlabsEnabled}
-                  onPressedChange={setElevenlabsEnabled}
-                  variant="outline"
-                  aria-label="Toggle ElevenLabs provider"
-                  className="min-w-16"
-                >
-                  {elevenlabsEnabled ? 'On' : 'Off'}
-                </Toggle>
-              </div>
+          </div>
 
-              <div className="space-y-2">
-                <label htmlFor="elevenlabs-api-key" className="text-sm font-medium">
-                  API key
-                </label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="elevenlabs-api-key"
-                    type={showElevenlabsKey ? 'text' : 'password'}
-                    placeholder={elevenlabsProvider?.configured ? 'Configured (enter to replace)' : 'sk_...'}
-                    value={elevenlabsApiKey}
-                    onChange={(event) => setElevenlabsApiKey(event.target.value)}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setShowElevenlabsKey((current) => !current)}
-                  >
-                    {showElevenlabsKey ? <EyeOff /> : <Eye />}
-                  </Button>
+          <div id="tts" className="space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold tracking-tight">TTS</h2>
+              <p className="text-sm text-muted-foreground">
+                Configure narration providers, choose a default provider, and compare approximate cost by model.
+              </p>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between gap-3">
+                  <span>Preferred Provider</span>
+                  <Badge variant="outline">10 min preview uses 10,000 chars</Badge>
+                </CardTitle>
+                <CardDescription>
+                  Narration uses only the selected preferred provider. Briefy will not auto-fallback to another provider.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Provider</label>
+                  <Select value={preferredTtsProvider} onValueChange={(value) => setPreferredTtsProvider(value as TtsProviderType)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ttsProviders.map((provider) => (
+                        <SelectItem key={provider.type} value={provider.type}>
+                          {provider.label}{provider.configured ? '' : ' (not configured)'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-            </CardContent>
-            <CardFooter className="gap-2">
-              <Button type="button" onClick={() => void saveElevenlabsSettings()} disabled={elevenlabsSaving || loading}>
-                {elevenlabsSaving ? 'Saving...' : 'Save'}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void removeElevenlabsKey()}
-                disabled={elevenlabsRemovingKey || !elevenlabsProvider?.configured}
-              >
-                {elevenlabsRemovingKey ? 'Removing...' : 'Remove key'}
-              </Button>
-            </CardFooter>
-          </Card>
+                <Button type="button" onClick={() => void savePreferredTtsSettings()} disabled={preferredTtsSaving || loading}>
+                  {preferredTtsSaving ? 'Saving...' : 'Save preferred'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  ElevenLabs
+                  {elevenlabsProvider?.configured && <Badge variant="secondary">Configured</Badge>}
+                  {elevenlabsProvider && <Badge variant="outline">{formatCostDisplay(elevenlabsProvider.models.find((model) => model.id === elevenlabsModelId)?.estimatedCostPerMinuteUsd ?? 0)}/min</Badge>}
+                </CardTitle>
+                <CardDescription>{elevenlabsProvider?.description}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-muted-foreground">
+                  Approximate costs are based on provider/model list pricing. Your actual ElevenLabs plan may bill differently.
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Enable ElevenLabs</p>
+                    <p className="text-xs text-muted-foreground">Use your own API key for source narration.</p>
+                  </div>
+                  <Toggle
+                    pressed={elevenlabsEnabled}
+                    onPressedChange={setElevenlabsEnabled}
+                    variant="outline"
+                    aria-label="Toggle ElevenLabs provider"
+                    className="min-w-16"
+                  >
+                    {elevenlabsEnabled ? 'On' : 'Off'}
+                  </Toggle>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Model</label>
+                  <Select value={elevenlabsModelId} onValueChange={setElevenlabsModelId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(elevenlabsProvider?.models ?? []).map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
+                          {model.label} • {formatCostDisplay(model.estimatedCostPerMinuteUsd)}/min • {formatCostDisplay(model.estimatedCostTenMinutesUsd)}/10 min
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="elevenlabs-api-key" className="text-sm font-medium">
+                    API key
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="elevenlabs-api-key"
+                      type={showElevenlabsKey ? 'text' : 'password'}
+                      placeholder={elevenlabsProvider?.configured ? 'Configured (enter to replace)' : 'sk_...'}
+                      value={elevenlabsApiKey}
+                      onChange={(event) => setElevenlabsApiKey(event.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setShowElevenlabsKey((current) => !current)}
+                    >
+                      {showElevenlabsKey ? <EyeOff /> : <Eye />}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="gap-2">
+                <Button type="button" onClick={() => void saveTtsProviderSettings('elevenlabs')} disabled={elevenlabsSaving || loading}>
+                  {elevenlabsSaving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void removeTtsProviderKey('elevenlabs')}
+                  disabled={elevenlabsRemovingKey || !elevenlabsProvider?.configured}
+                >
+                  {elevenlabsRemovingKey ? 'Removing...' : 'Remove key'}
+                </Button>
+              </CardFooter>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  Inworld
+                  {inworldProvider?.configured && <Badge variant="secondary">Configured</Badge>}
+                  {inworldProvider && <Badge variant="outline">{formatCostDisplay(inworldProvider.models.find((model) => model.id === inworldModelId)?.estimatedCostPerMinuteUsd ?? 0)}/min</Badge>}
+                </CardTitle>
+                <CardDescription>{inworldProvider?.description}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border px-3 py-2 text-xs text-muted-foreground">
+                  Inworld uses a server-managed default voice and lower-cost character pricing. Longer sources are synthesized in chunks behind the scenes.
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Enable Inworld</p>
+                    <p className="text-xs text-muted-foreground">Use your own API key for lower-cost narration.</p>
+                  </div>
+                  <Toggle
+                    pressed={inworldEnabled}
+                    onPressedChange={setInworldEnabled}
+                    variant="outline"
+                    aria-label="Toggle Inworld provider"
+                    className="min-w-16"
+                  >
+                    {inworldEnabled ? 'On' : 'Off'}
+                  </Toggle>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Model</label>
+                  <Select value={inworldModelId} onValueChange={setInworldModelId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(inworldProvider?.models ?? []).map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
+                          {model.label} • {formatCostDisplay(model.estimatedCostPerMinuteUsd)}/min • {formatCostDisplay(model.estimatedCostTenMinutesUsd)}/10 min
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="inworld-api-key" className="text-sm font-medium">
+                    API key
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="inworld-api-key"
+                      type={showInworldKey ? 'text' : 'password'}
+                      placeholder={inworldProvider?.configured ? 'Configured (enter to replace)' : 'basic_...'}
+                      value={inworldApiKey}
+                      onChange={(event) => setInworldApiKey(event.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setShowInworldKey((current) => !current)}
+                    >
+                      {showInworldKey ? <EyeOff /> : <Eye />}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="gap-2">
+                <Button type="button" onClick={() => void saveTtsProviderSettings('inworld')} disabled={inworldSaving || loading}>
+                  {inworldSaving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void removeTtsProviderKey('inworld')}
+                  disabled={inworldRemovingKey || !inworldProvider?.configured}
+                >
+                  {inworldRemovingKey ? 'Removing...' : 'Remove key'}
+                </Button>
+              </CardFooter>
+            </Card>
           </div>
 
           <div id="ai-models" className="space-y-4">

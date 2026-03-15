@@ -54,22 +54,33 @@ class AudioStorageService(
     @Volatile
     private var bucketVerified = false
 
-    fun uploadMp3(contentHash: String, voiceId: String, modelId: String, audioBytes: ByteArray) {
+    fun uploadMp3(
+        contentHash: String,
+        providerType: TtsProviderType,
+        voiceId: String,
+        modelId: String,
+        audioBytes: ByteArray
+    ) {
         ensureBucketExistsIfNeeded()
         s3Client.putObject(
             PutObjectRequest.builder()
                 .bucket(properties.bucket)
-                .key(objectKey(contentHash, voiceId, modelId))
+                .key(objectKey(contentHash, providerType, voiceId, modelId))
                 .contentType("audio/mpeg")
                 .build(),
             RequestBody.fromBytes(audioBytes)
         )
     }
 
-    fun generatePresignedGetUrl(contentHash: String, voiceId: String, modelId: String? = null): String {
+    fun generatePresignedGetUrl(
+        contentHash: String,
+        providerType: TtsProviderType,
+        voiceId: String,
+        modelId: String? = null
+    ): String {
         val getObjectRequest = GetObjectRequest.builder()
             .bucket(properties.bucket)
-            .key(objectKey(contentHash, voiceId, modelId))
+            .key(objectKey(contentHash, providerType, voiceId, modelId))
             .build()
 
         return presigner.presignGetObject(
@@ -129,11 +140,11 @@ class AudioStorageService(
         return builder.build()
     }
 
-    private fun objectKey(contentHash: String, voiceId: String, modelId: String?): String {
+    private fun objectKey(contentHash: String, providerType: TtsProviderType, voiceId: String, modelId: String?): String {
         return if (modelId.isNullOrBlank()) {
-            "audio/$contentHash/$voiceId.mp3"
+            "audio/${providerType.apiValue}/$contentHash/$voiceId.mp3"
         } else {
-            "audio/$contentHash/$voiceId/$modelId.mp3"
+            "audio/${providerType.apiValue}/$contentHash/$voiceId/$modelId.mp3"
         }
     }
 }

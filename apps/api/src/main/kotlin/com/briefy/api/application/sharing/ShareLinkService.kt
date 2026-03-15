@@ -1,5 +1,6 @@
 package com.briefy.api.application.sharing
 
+import com.briefy.api.application.settings.TtsSettingsService
 import com.briefy.api.application.source.NarrationContentHashing
 import com.briefy.api.domain.knowledgegraph.source.AudioContent
 import com.briefy.api.domain.knowledgegraph.source.SharedAudioCacheRepository
@@ -11,7 +12,7 @@ import com.briefy.api.domain.sharing.ShareLinkEntityType
 import com.briefy.api.domain.sharing.ShareLinkRepository
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.briefy.api.infrastructure.tts.AudioStorageService
-import com.briefy.api.infrastructure.tts.TtsProperties
+import com.briefy.api.infrastructure.tts.TtsProviderType
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -33,7 +34,7 @@ class ShareLinkService(
     private val currentUserProvider: CurrentUserProvider,
     private val sharedAudioCacheRepository: SharedAudioCacheRepository,
     private val audioStorageService: AudioStorageService,
-    private val ttsProperties: TtsProperties
+    private val ttsSettingsService: TtsSettingsService
 ) {
     private val logger = LoggerFactory.getLogger(ShareLinkService::class.java)
 
@@ -220,12 +221,14 @@ class ShareLinkService(
         }
 
         val contentText = source.content?.text?.takeIf { it.isNotBlank() } ?: return null
+        val preferredProvider = ttsSettingsService.resolvePreferredProvider(source.userId) ?: return null
         val cachedAudio = NarrationContentHashing.lookupHashes(contentText)
             .firstNotNullOfOrNull { hash ->
-                sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(
+                sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(
                     hash,
-                    ttsProperties.voiceId,
-                    ttsProperties.modelId
+                    preferredProvider.providerType,
+                    preferredProvider.voiceId,
+                    preferredProvider.modelId
                 )
             } ?: return null
 
@@ -233,6 +236,7 @@ class ShareLinkService(
             SharedSourceAudioData(
                 audioUrl = audioStorageService.generatePresignedGetUrl(
                     cachedAudio.contentHash,
+                    cachedAudio.providerType,
                     cachedAudio.voiceId,
                     cachedAudio.modelId
                 ),
@@ -252,10 +256,12 @@ class ShareLinkService(
 
     private fun buildSharedSourceAudio(audioContent: AudioContent): SharedSourceAudioData? {
         return try {
-            val voiceId = audioContent.voiceId ?: ttsProperties.voiceId
+            val providerType = audioContent.providerType ?: TtsProviderType.ELEVENLABS
+            val voiceId = audioContent.voiceId ?: return null
             SharedSourceAudioData(
                 audioUrl = audioStorageService.generatePresignedGetUrl(
                     audioContent.contentHash,
+                    providerType,
                     voiceId,
                     audioContent.modelId
                 ),

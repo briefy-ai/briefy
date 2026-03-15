@@ -28,15 +28,22 @@ class ElevenLabsTtsAdapterTest {
 
             val adapter = ElevenLabsTtsAdapter(
                 restClientBuilder = RestClient.builder(),
-                properties = TtsProperties(
+                properties = ElevenLabsTtsProperties(
                     baseUrl = server.url("/").toString().removeSuffix("/"),
                     voiceId = "voice-123",
-                    modelId = "model-1"
+                    defaultModelId = "model-1"
                 ),
                 objectMapper = jacksonObjectMapper()
             )
 
-            val result = adapter.synthesize("hello narration", "secret-key")
+            val result = adapter.synthesize(
+                TtsSynthesisRequest(
+                    text = "hello narration",
+                    apiKey = "secret-key",
+                    voiceId = "voice-123",
+                    modelId = "model-1"
+                )
+            )
 
             val request = requireNotNull(server.takeRequest(5, TimeUnit.SECONDS)) { "No request received" }
             val body = request.body.readUtf8()
@@ -69,16 +76,23 @@ class ElevenLabsTtsAdapterTest {
 
             val adapter = ElevenLabsTtsAdapter(
                 restClientBuilder = RestClient.builder(),
-                properties = TtsProperties(
+                properties = ElevenLabsTtsProperties(
                     baseUrl = server.url("/").toString().removeSuffix("/"),
                     voiceId = "voice-123",
-                    modelId = "model-1"
+                    defaultModelId = "model-1"
                 ),
                 objectMapper = jacksonObjectMapper()
             )
 
             val ex = assertThrows<ElevenLabsTtsException> {
-                adapter.synthesize("hello narration", "secret-key")
+                adapter.synthesize(
+                    TtsSynthesisRequest(
+                        text = "hello narration",
+                        apiKey = "secret-key",
+                        voiceId = "voice-123",
+                        modelId = "model-1"
+                    )
+                )
             }
 
             assertEquals("paid_plan_required", ex.code)
@@ -110,16 +124,23 @@ class ElevenLabsTtsAdapterTest {
 
             val adapter = ElevenLabsTtsAdapter(
                 restClientBuilder = RestClient.builder(),
-                properties = TtsProperties(
+                properties = ElevenLabsTtsProperties(
                     baseUrl = server.url("/").toString().removeSuffix("/"),
                     voiceId = "voice-123",
-                    modelId = "model-1"
+                    defaultModelId = "model-1"
                 ),
                 objectMapper = jacksonObjectMapper()
             )
 
             val ex = assertThrows<ElevenLabsTtsException> {
-                adapter.synthesize("hello narration", "secret-key")
+                adapter.synthesize(
+                    TtsSynthesisRequest(
+                        text = "hello narration",
+                        apiKey = "secret-key",
+                        voiceId = "voice-123",
+                        modelId = "model-1"
+                    )
+                )
             }
 
             assertEquals("voice_not_found", ex.code)
@@ -148,16 +169,23 @@ class ElevenLabsTtsAdapterTest {
 
             val adapter = ElevenLabsTtsAdapter(
                 restClientBuilder = RestClient.builder(),
-                properties = TtsProperties(
+                properties = ElevenLabsTtsProperties(
                     baseUrl = server.url("/").toString().removeSuffix("/"),
                     voiceId = "voice-123",
-                    modelId = "model-1"
+                    defaultModelId = "model-1"
                 ),
                 objectMapper = jacksonObjectMapper()
             )
 
             val ex = assertThrows<ElevenLabsTtsException> {
-                adapter.synthesize("hello narration", "secret-key")
+                adapter.synthesize(
+                    TtsSynthesisRequest(
+                        text = "hello narration",
+                        apiKey = "secret-key",
+                        voiceId = "voice-123",
+                        modelId = "model-1"
+                    )
+                )
             }
 
             assertEquals("elevenlabs_request_retryable", ex.code)

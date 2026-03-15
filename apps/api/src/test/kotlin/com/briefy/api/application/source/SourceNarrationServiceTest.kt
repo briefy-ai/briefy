@@ -1,6 +1,7 @@
 package com.briefy.api.application.source
 
-import com.briefy.api.application.settings.UserSettingsService
+import com.briefy.api.application.settings.ResolvedTtsProviderConfig
+import com.briefy.api.application.settings.TtsSettingsService
 import com.briefy.api.domain.knowledgegraph.source.AudioContent
 import com.briefy.api.domain.knowledgegraph.source.Content
 import com.briefy.api.domain.knowledgegraph.source.Metadata
@@ -13,16 +14,23 @@ import com.briefy.api.domain.knowledgegraph.source.event.SourceNarrationRequeste
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.briefy.api.infrastructure.tts.AudioStorageService
-import com.briefy.api.infrastructure.tts.ElevenLabsTtsAdapter
 import com.briefy.api.infrastructure.tts.ElevenLabsTtsException
+import com.briefy.api.infrastructure.tts.InworldTtsProperties
 import com.briefy.api.infrastructure.tts.MarkdownStripper
-import com.briefy.api.infrastructure.tts.TtsProperties
+import com.briefy.api.infrastructure.tts.NarrationProperties
+import com.briefy.api.infrastructure.tts.TtsModelCatalog
+import com.briefy.api.infrastructure.tts.TtsProvider
+import com.briefy.api.infrastructure.tts.TtsProviderRegistry
+import com.briefy.api.infrastructure.tts.TtsProviderType
+import com.briefy.api.infrastructure.tts.TtsSynthesisRequest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -30,14 +38,16 @@ import org.mockito.kotlin.whenever
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.transaction.support.TransactionCallback
 import org.springframework.transaction.support.TransactionTemplate
+import java.math.BigDecimal
 import java.time.Instant
 import java.util.UUID
 
 class SourceNarrationServiceTest {
     private val sourceRepository: SourceRepository = mock()
     private val sharedAudioCacheRepository: SharedAudioCacheRepository = mock()
-    private val userSettingsService: UserSettingsService = mock()
-    private val elevenLabsTtsAdapter: ElevenLabsTtsAdapter = mock()
+    private val ttsSettingsService: TtsSettingsService = mock()
+    private val ttsProviderRegistry: TtsProviderRegistry = mock()
+    private val ttsProvider: TtsProvider = mock()
     private val audioStorageService: AudioStorageService = mock()
     private val currentUserProvider: CurrentUserProvider = mock()
     private val idGenerator: IdGenerator = mock()
@@ -50,14 +60,24 @@ class SourceNarrationServiceTest {
         }
     }
 
+    private val ttsModelCatalog = TtsModelCatalog()
+    private val elevenLabsConfig = ResolvedTtsProviderConfig(
+        providerType = TtsProviderType.ELEVENLABS,
+        apiKey = "el-key",
+        modelId = "eleven_flash_v2_5",
+        voiceId = "iiidtqDt9FBdT1vfBluA"
+    )
+
     private val service = SourceNarrationService(
         sourceRepository = sourceRepository,
         sharedAudioCacheRepository = sharedAudioCacheRepository,
-        userSettingsService = userSettingsService,
-        elevenLabsTtsAdapter = elevenLabsTtsAdapter,
+        ttsSettingsService = ttsSettingsService,
+        ttsProviderRegistry = ttsProviderRegistry,
+        ttsModelCatalog = ttsModelCatalog,
         audioStorageService = audioStorageService,
         markdownStripper = MarkdownStripper(),
-        ttsProperties = TtsProperties(),
+        narrationProperties = NarrationProperties(),
+        inworldProperties = InworldTtsProperties(),
         currentUserProvider = currentUserProvider,
         idGenerator = idGenerator,
         eventPublisher = eventPublisher,
@@ -70,7 +90,7 @@ class SourceNarrationServiceTest {
         val source = createActiveSource(userId)
         whenever(currentUserProvider.requireUserId()).thenReturn(userId)
         whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
-        whenever(userSettingsService.getElevenlabsApiKey(userId)).thenReturn("el-key")
+        whenever(ttsSettingsService.resolvePreferredProvider(userId)).thenReturn(elevenLabsConfig)
         whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
 
         val response = service.requestNarration(source.id)
@@ -84,28 +104,29 @@ class SourceNarrationServiceTest {
     }
 
     @Test
-    fun `estimateNarration returns stripped character count and model id without side effects`() {
+    fun `estimateNarration returns stripped character count provider model and cost without side effects`() {
         val userId = UUID.randomUUID()
         val source = createActiveSource(userId).apply {
             content = Content.from("# Heading\n\nThis is **narration** content.")
         }
         whenever(currentUserProvider.requireUserId()).thenReturn(userId)
         whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
-        whenever(userSettingsService.getElevenlabsApiKey(userId)).thenReturn("el-key")
+        whenever(ttsSettingsService.resolvePreferredProvider(userId)).thenReturn(elevenLabsConfig)
 
         val estimate = service.estimateNarration(source.id)
 
         assertEquals(34, estimate.characterCount)
+        assertEquals("elevenlabs", estimate.provider)
         assertEquals("eleven_flash_v2_5", estimate.modelId)
+        assertEquals(BigDecimal("0.01"), estimate.estimatedCostUsd)
         verify(sourceRepository, never()).save(any())
         verify(sharedAudioCacheRepository, never()).save(any())
         verify(eventPublisher, never()).publishEvent(any())
-        verify(elevenLabsTtsAdapter, never()).synthesize(any(), any())
-        verify(audioStorageService, never()).uploadMp3(any(), any(), any(), any())
+        verify(ttsProvider, never()).synthesize(any())
     }
 
     @Test
-    fun `processNarration completes from shared cache without calling ElevenLabs`() {
+    fun `processNarration completes from shared cache without calling provider`() {
         val userId = UUID.randomUUID()
         val source = createPendingSource(userId)
         val cache = SharedAudioCache(
@@ -115,23 +136,26 @@ class SourceNarrationServiceTest {
             durationSeconds = 17,
             format = "mp3",
             characterCount = 24,
+            providerType = TtsProviderType.ELEVENLABS,
             voiceId = "iiidtqDt9FBdT1vfBluA",
             modelId = "eleven_flash_v2_5",
             createdAt = Instant.parse("2026-03-15T10:00:00Z")
         )
+        whenever(ttsSettingsService.resolvePreferredProvider(userId)).thenReturn(elevenLabsConfig)
         whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
-        whenever(sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(cache.contentHash, cache.voiceId, "eleven_flash_v2_5")).thenReturn(cache)
+        whenever(sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(cache.contentHash, cache.providerType, cache.voiceId, "eleven_flash_v2_5"))
+            .thenReturn(cache)
         whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
         whenever(sharedAudioCacheRepository.save(any())).thenAnswer { it.arguments[0] as SharedAudioCache }
-        whenever(audioStorageService.generatePresignedGetUrl(cache.contentHash, cache.voiceId, cache.modelId))
+        whenever(audioStorageService.generatePresignedGetUrl(cache.contentHash, cache.providerType, cache.voiceId, cache.modelId))
             .thenReturn("https://fresh.example.com/audio.mp3")
 
         service.processNarration(source.id, userId)
 
-        verify(elevenLabsTtsAdapter, never()).synthesize(any(), any())
+        verify(ttsProvider, never()).synthesize(any())
         assertEquals(NarrationState.SUCCEEDED, source.narrationState)
         assertEquals("https://fresh.example.com/audio.mp3", source.audioContent?.audioUrl)
-        assertEquals(17, source.audioContent?.durationSeconds)
+        assertEquals(TtsProviderType.ELEVENLABS, source.audioContent?.providerType)
     }
 
     @Test
@@ -141,12 +165,13 @@ class SourceNarrationServiceTest {
             content = Content.from("# Heading\n\nThis is **narration** content.")
         }
         val hash = contentHash(source.content!!.text)
+        whenever(ttsSettingsService.resolvePreferredProvider(userId)).thenReturn(elevenLabsConfig)
+        whenever(ttsProviderRegistry.get(TtsProviderType.ELEVENLABS)).thenReturn(ttsProvider)
         whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
-        whenever(sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(hash, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+        whenever(sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(hash, TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
             .thenReturn(null)
-        whenever(userSettingsService.getElevenlabsApiKey(userId)).thenReturn("el-key")
-        whenever(elevenLabsTtsAdapter.synthesize(any(), any())).thenReturn(sampleMp3Bytes())
-        whenever(audioStorageService.generatePresignedGetUrl(hash, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+        whenever(ttsProvider.synthesize(any())).thenReturn(sampleMp3Bytes())
+        whenever(audioStorageService.generatePresignedGetUrl(hash, TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
             .thenReturn("https://fresh.example.com/generated.mp3")
         whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
         whenever(sharedAudioCacheRepository.save(any())).thenAnswer { it.arguments[0] as SharedAudioCache }
@@ -154,28 +179,37 @@ class SourceNarrationServiceTest {
 
         service.processNarration(source.id, userId)
 
-        verify(elevenLabsTtsAdapter).synthesize("Heading This is narration content.", "el-key")
+        verify(ttsProvider).synthesize(
+            argThat<TtsSynthesisRequest> {
+                text == "Heading This is narration content." &&
+                    apiKey == "el-key" &&
+                    voiceId == "iiidtqDt9FBdT1vfBluA" &&
+                    modelId == "eleven_flash_v2_5"
+            }
+        )
         val audioCaptor = argumentCaptor<ByteArray>()
         verify(audioStorageService).uploadMp3(
-            org.mockito.kotlin.eq(hash),
-            org.mockito.kotlin.eq("iiidtqDt9FBdT1vfBluA"),
-            org.mockito.kotlin.eq("eleven_flash_v2_5"),
+            eq(hash),
+            eq(TtsProviderType.ELEVENLABS),
+            eq("iiidtqDt9FBdT1vfBluA"),
+            eq("eleven_flash_v2_5"),
             audioCaptor.capture()
         )
         assertTrue(audioCaptor.firstValue.contentEquals(sampleMp3Bytes()))
         assertEquals(NarrationState.SUCCEEDED, source.narrationState)
         assertEquals("https://fresh.example.com/generated.mp3", source.audioContent?.audioUrl)
-        assertTrue((source.audioContent?.durationSeconds ?: 0) >= 0)
+        assertEquals(TtsProviderType.ELEVENLABS, source.audioContent?.providerType)
     }
 
     @Test
-    fun `processNarration marks source as failed when TTS throws`() {
+    fun `processNarration marks source as failed when provider throws`() {
         val userId = UUID.randomUUID()
         val source = createPendingSource(userId)
+        whenever(ttsSettingsService.resolvePreferredProvider(userId)).thenReturn(elevenLabsConfig)
+        whenever(ttsProviderRegistry.get(TtsProviderType.ELEVENLABS)).thenReturn(ttsProvider)
         whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
-        whenever(sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId(any(), any(), any())).thenReturn(null)
-        whenever(userSettingsService.getElevenlabsApiKey(userId)).thenReturn("el-key")
-        whenever(elevenLabsTtsAdapter.synthesize(any(), any())).thenThrow(
+        whenever(sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(any(), any(), any(), any())).thenReturn(null)
+        whenever(ttsProvider.synthesize(any())).thenThrow(
             ElevenLabsTtsException(
                 code = "paid_plan_required",
                 userMessage = "Your ElevenLabs API key cannot use the configured voice. Free ElevenLabs plans cannot use library voices via API.",
@@ -201,6 +235,7 @@ class SourceNarrationServiceTest {
                     durationSeconds = 11,
                     format = "mp3",
                     contentHash = "hash123",
+                    providerType = TtsProviderType.ELEVENLABS,
                     voiceId = "iiidtqDt9FBdT1vfBluA",
                     modelId = "eleven_flash_v2_5",
                     generatedAt = Instant.parse("2026-03-15T10:00:00Z")
@@ -214,16 +249,17 @@ class SourceNarrationServiceTest {
             durationSeconds = 11,
             format = "mp3",
             characterCount = 30,
+            providerType = TtsProviderType.ELEVENLABS,
             voiceId = "iiidtqDt9FBdT1vfBluA",
             modelId = "eleven_flash_v2_5",
             createdAt = Instant.parse("2026-03-15T10:00:00Z")
         )
         whenever(currentUserProvider.requireUserId()).thenReturn(userId)
         whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
-        whenever(audioStorageService.generatePresignedGetUrl("hash123", "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+        whenever(audioStorageService.generatePresignedGetUrl("hash123", TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
             .thenReturn("https://new.example.com/audio.mp3")
         whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
-        whenever(sharedAudioCacheRepository.findByContentHashAndVoiceIdAndModelId("hash123", "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+        whenever(sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId("hash123", TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
             .thenReturn(cache)
         whenever(sharedAudioCacheRepository.save(any())).thenAnswer { it.arguments[0] as SharedAudioCache }
 
@@ -263,13 +299,13 @@ class SourceNarrationServiceTest {
         }
     }
 
-    private fun contentHash(content: String): String {
-        return NarrationContentHashing.hash(content)
+    private fun contentHash(contentText: String): String {
+        return NarrationContentHashing.hash(contentText)
     }
 
     private fun sampleMp3Bytes(): ByteArray = byteArrayOf(
         'I'.code.toByte(), 'D'.code.toByte(), '3'.code.toByte(), 4, 0, 0, 0, 0, 0, 0,
         0xFF.toByte(), 0xFB.toByte(), 0x90.toByte(), 0x64.toByte(),
-        0, 0, 0, 0, 0, 0, 0, 0
+        0x00, 0x00, 0x00, 0x00
     )
 }

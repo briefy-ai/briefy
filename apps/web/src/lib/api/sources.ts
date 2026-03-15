@@ -153,7 +153,9 @@ export async function getSourceAudio(id: string): Promise<AudioUrlResponse> {
 
 export interface NarrationEstimateResponse {
   characterCount: number
+  provider: 'elevenlabs' | 'inworld'
   modelId: string
+  estimatedCostUsd: number
 }
 
 export async function getNarrationEstimate(id: string): Promise<NarrationEstimateResponse> {
