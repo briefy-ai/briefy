@@ -18,13 +18,14 @@ export function SourceSearchDialog() {
   const [results, setResults] = useState<SourceSearchResultDto[]>([])
   const [loading, setLoading] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const searchTokenRef = useRef(0)
   const navigate = useNavigate()
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      const hasModifier = e.metaKey || e.ctrlKey
       if (
-        e.metaKey &&
-        !e.ctrlKey &&
+        hasModifier &&
         !e.altKey &&
         !e.shiftKey &&
         e.key.toLowerCase() === 'o'
@@ -35,11 +36,15 @@ export function SourceSearchDialog() {
       }
     }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      clearTimeout(debounceRef.current)
+    }
   }, [])
 
   const doSearch = useCallback((q: string) => {
     clearTimeout(debounceRef.current)
+    const searchToken = ++searchTokenRef.current
     if (!q.trim()) {
       setResults([])
       setLoading(false)
@@ -49,19 +54,26 @@ export function SourceSearchDialog() {
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await searchSources(q.trim())
+        if (searchToken !== searchTokenRef.current) return
         setResults(res.items)
       } catch {
+        if (searchToken !== searchTokenRef.current) return
         setResults([])
       } finally {
-        setLoading(false)
+        if (searchToken === searchTokenRef.current) {
+          setLoading(false)
+        }
       }
     }, 200)
   }, [])
 
   function handleSelect(sourceId: string) {
+    ++searchTokenRef.current
+    clearTimeout(debounceRef.current)
     setOpen(false)
     setQuery('')
     setResults([])
+    setLoading(false)
     void navigate({ to: '/sources/$sourceId', params: { sourceId } })
   }
 
@@ -71,8 +83,11 @@ export function SourceSearchDialog() {
       onOpenChange={(v) => {
         setOpen(v)
         if (!v) {
+          ++searchTokenRef.current
+          clearTimeout(debounceRef.current)
           setQuery('')
           setResults([])
+          setLoading(false)
         }
       }}
       shouldFilter={false}

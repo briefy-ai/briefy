@@ -81,6 +81,10 @@ function SourcesPage() {
     filterState.topicIds.length === 0 &&
     filterState.sourceType === null &&
     filterState.sort === 'newest'
+  const activeTopicIds =
+    filter === 'active' && filterState.topicIds.length > 0 ? filterState.topicIds : undefined
+  const activeSourceType = filter === 'active' ? filterState.sourceType ?? undefined : undefined
+  const activeSort = filter === 'active' ? filterState.sort : undefined
 
   const fetchSources = useCallback(async () => {
     const currentFetchToken = ++fetchTokenRef.current
@@ -94,9 +98,9 @@ function SourcesPage() {
       const page = await listSources({
         status: filter,
         limit: SOURCE_PAGE_SIZE,
-        topicIds: filterState.topicIds.length > 0 ? filterState.topicIds : undefined,
-        sourceType: filterState.sourceType ?? undefined,
-        sort: filterState.sort,
+        topicIds: activeTopicIds,
+        sourceType: activeSourceType,
+        sort: activeSort,
       })
       if (currentFetchToken !== fetchTokenRef.current) return
       setSources(page.items)
@@ -110,7 +114,7 @@ function SourcesPage() {
         setLoading(false)
       }
     }
-  }, [filter, filterState])
+  }, [activeSort, activeSourceType, activeTopicIds, filter])
 
   const fetchMoreSources = useCallback(async () => {
     if (isFetchingMoreRef.current || !hasMore || !nextCursor) return
@@ -122,9 +126,9 @@ function SourcesPage() {
         status: filter,
         limit: SOURCE_PAGE_SIZE,
         cursor: nextCursor,
-        topicIds: filterState.topicIds.length > 0 ? filterState.topicIds : undefined,
-        sourceType: filterState.sourceType ?? undefined,
-        sort: filterState.sort,
+        topicIds: activeTopicIds,
+        sourceType: activeSourceType,
+        sort: activeSort,
       })
       if (currentFetchToken !== fetchTokenRef.current) return
       setSources((prev) => {
@@ -148,7 +152,7 @@ function SourcesPage() {
       }
       isFetchingMoreRef.current = false
     }
-  }, [filter, filterState, hasMore, nextCursor])
+  }, [activeSort, activeSourceType, activeTopicIds, filter, hasMore, nextCursor])
 
   useEffect(() => {
     fetchSources()
