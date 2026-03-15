@@ -11,6 +11,7 @@ import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.event.SourceNarrationRequestedEvent
 import com.briefy.api.infrastructure.id.IdGenerator
+import com.briefy.api.infrastructure.extraction.YouTubeExtractionProvider
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.briefy.api.infrastructure.tts.AudioStorageService
 import com.briefy.api.infrastructure.tts.ElevenLabsTtsAdapter
@@ -39,6 +40,8 @@ class SourceNarrationServiceTest {
     private val userSettingsService: UserSettingsService = mock()
     private val elevenLabsTtsAdapter: ElevenLabsTtsAdapter = mock()
     private val audioStorageService: AudioStorageService = mock()
+    private val originalVideoAudioService: OriginalVideoAudioService = mock()
+    private val youTubeExtractionProvider: YouTubeExtractionProvider = mock()
     private val currentUserProvider: CurrentUserProvider = mock()
     private val idGenerator: IdGenerator = mock()
     private val eventPublisher: ApplicationEventPublisher = mock()
@@ -56,6 +59,8 @@ class SourceNarrationServiceTest {
         userSettingsService = userSettingsService,
         elevenLabsTtsAdapter = elevenLabsTtsAdapter,
         audioStorageService = audioStorageService,
+        originalVideoAudioService = originalVideoAudioService,
+        youTubeExtractionProvider = youTubeExtractionProvider,
         markdownStripper = MarkdownStripper(),
         ttsProperties = TtsProperties(),
         currentUserProvider = currentUserProvider,
@@ -234,6 +239,71 @@ class SourceNarrationServiceTest {
         assertEquals("https://new.example.com/audio.mp3", cache.audioUrl)
     }
 
+    @Test
+    fun `requestNarration for youtube source does not require elevenlabs`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveYoutubeSource(userId)
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+
+        val response = service.requestNarration(source.id)
+
+        assertEquals(NarrationState.PENDING, source.narrationState)
+        assertEquals("pending", response.narrationState)
+        verify(userSettingsService, never()).getElevenlabsApiKey(any())
+    }
+
+    @Test
+    fun `processNarration for youtube source completes from original audio cache`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveYoutubeSource(userId).apply {
+            requestNarration()
+        }
+        val cachedAudio = AudioContent(
+            audioUrl = "https://fresh.example.com/youtube.mp3",
+            durationSeconds = 61,
+            format = "mp3",
+            contentHash = "video-hash",
+            voiceId = OriginalVideoAudioService.ORIGINAL_VIDEO_AUDIO_VOICE_ID,
+            modelId = OriginalVideoAudioService.ORIGINAL_VIDEO_AUDIO_MODEL_ID,
+            generatedAt = Instant.parse("2026-03-15T10:00:00Z")
+        )
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(originalVideoAudioService.findCachedAudio("dQw4w9WgXcQ")).thenReturn(cachedAudio)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+
+        service.processNarration(source.id, userId)
+
+        verify(youTubeExtractionProvider, never()).fetchOriginalAudio(any(), any())
+        assertEquals(NarrationState.SUCCEEDED, source.narrationState)
+        assertEquals("https://fresh.example.com/youtube.mp3", source.audioContent?.audioUrl)
+    }
+
+    @Test
+    fun `processNarration for youtube source marks storage failure distinctly`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveYoutubeSource(userId).apply {
+            requestNarration()
+        }
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(originalVideoAudioService.findCachedAudio("dQw4w9WgXcQ")).thenReturn(null)
+        whenever(youTubeExtractionProvider.fetchOriginalAudio(source.url.normalized, 61)).thenThrow(
+            SourceAudioStorageException(
+                storageEndpoint = "http://localhost:9000",
+                bucket = "briefy-audio",
+                objectKey = "audio/hash/__youtube_original__/source_audio_v1.mp3",
+                cause = IllegalStateException("connection refused")
+            )
+        )
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+
+        service.processNarration(source.id, userId)
+
+        assertEquals(NarrationState.FAILED, source.narrationState)
+        assertEquals("source_audio_storage_failed", source.narrationFailureReason)
+    }
+
     private fun createActiveSource(userId: UUID): Source {
         val source = Source.create(
             id = UUID.randomUUID(),
@@ -261,6 +331,34 @@ class SourceNarrationServiceTest {
         return createActiveSource(userId).apply {
             requestNarration()
         }
+    }
+
+    private fun createActiveYoutubeSource(userId: UUID): Source {
+        val source = Source.create(
+            id = UUID.randomUUID(),
+            rawUrl = "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            userId = userId,
+            sourceType = com.briefy.api.domain.knowledgegraph.source.SourceType.VIDEO
+        )
+        source.startExtraction()
+        val content = Content.from("Transcript content for video")
+        source.completeExtraction(
+            content,
+            Metadata.from(
+                title = "Video",
+                author = "Channel",
+                publishedDate = null,
+                platform = "youtube",
+                wordCount = content.wordCount,
+                aiFormatted = false,
+                extractionProvider = "youtube",
+                videoId = "dQw4w9WgXcQ",
+                videoEmbedUrl = "https://www.youtube.com/embed/dQw4w9WgXcQ",
+                videoDurationSeconds = 61,
+                transcriptSource = "captions"
+            )
+        )
+        return source
     }
 
     private fun contentHash(content: String): String {
