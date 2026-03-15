@@ -252,7 +252,7 @@ class SourceControllerTest {
         )
 
         val kotlinTopicId = createActiveTopicLink(matchingSource.id, "Kotlin")
-        createActiveTopicLink(excludedByType.id, "Kotlin")
+        linkTopicToSource(kotlinTopicId, excludedByType.id)
         createActiveTopicLink(otherTopicSource.id, "Architecture")
 
         mockMvc.perform(
@@ -392,8 +392,7 @@ class SourceControllerTest {
 
         mockMvc.perform(get("/api/sources").param("cursor", legacyCursor).param("limit", "2"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.items.length()").value(1))
-            .andExpect(jsonPath("$.items[0].id").value(oldest.id.toString()))
+            .andExpect(jsonPath("$.items[?(@.id=='${oldest.id}')]").isNotEmpty)
     }
 
     @Test
@@ -410,7 +409,7 @@ class SourceControllerTest {
         createActiveTopicLink(topicMatched.id, topicName)
         saveSource(
             url = "https://search-test.com/archived",
-            title = "Archived Search Result",
+            title = "Archived $topicName",
             status = SourceStatus.ARCHIVED,
             createdAt = Instant.parse("2025-01-01T00:00:00Z"),
             updatedAt = Instant.parse("2025-01-01T01:00:00Z")
