@@ -1,21 +1,29 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { Check, ExternalLink } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { MarkdownContent } from '@/components/content/MarkdownContent'
 import { PublicNarrationPlayer } from '@/features/audio/components/PublicNarrationPlayer'
 import { ApiClientError } from '@/lib/api/client'
+import { createSource } from '@/lib/api/sources'
+import { useAuth } from '@/lib/auth/useAuth'
 import { resolveShareLink, type SharedSourceResponse } from '@/lib/api/shareLinks'
 
 export const Route = createFileRoute('/share/$token')({
   component: SharedSourcePage,
 })
 
+type SaveState = 'idle' | 'submitting' | 'saved' | 'already_saved' | 'error'
+
 function SharedSourcePage() {
   const { token } = Route.useParams()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const [data, setData] = useState<SharedSourceResponse | null>(null)
   const [error, setError] = useState<{ status: number; message: string } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -46,6 +54,11 @@ function SharedSourcePage() {
     return () => {
       cancelled = true
     }
+  }, [token])
+
+  useEffect(() => {
+    setSaveState('idle')
+    setSaveError(null)
   }, [token])
 
   useEffect(() => {
@@ -100,23 +113,70 @@ function SharedSourcePage() {
     source.readingTimeMinutes && `${source.readingTimeMinutes} min read`,
   ].filter(Boolean)
 
+  const showSaveButton = !isAuthLoading && user !== null
+
+  async function handleSaveSource() {
+    if (!showSaveButton || saveState === 'submitting') return
+
+    setSaveState('submitting')
+    setSaveError(null)
+
+    try {
+      await createSource({ url: source.url })
+      setSaveState('saved')
+    } catch (e) {
+      if (e instanceof ApiClientError && e.status === 409) {
+        setSaveState('already_saved')
+        return
+      }
+
+      setSaveState('error')
+      if (e instanceof ApiClientError) {
+        setSaveError(e.apiError?.message ?? e.message)
+      } else {
+        setSaveError(e instanceof Error ? e.message : 'Failed to save source')
+      }
+    }
+  }
+
   return (
     <div className="mx-auto max-w-2xl py-12 animate-fade-in">
       <div className="mb-8">
-        <div className="mb-4 flex items-center gap-3">
-          <Badge variant="secondary">{source.sourceType}</Badge>
-          {source.url && (
-            <a
-              href={source.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-muted-foreground hover:text-primary transition-colors truncate"
-            >
-              {extractDomain(source.url)}
-              <ExternalLink className="ml-1 inline-block size-2.5 -translate-y-px" aria-hidden="true" />
-            </a>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <Badge variant="secondary">{source.sourceType}</Badge>
+            {source.url && (
+              <a
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-w-0 truncate text-xs text-muted-foreground transition-colors hover:text-primary"
+              >
+                {extractDomain(source.url)}
+                <ExternalLink className="ml-1 inline-block size-2.5 -translate-y-px" aria-hidden="true" />
+              </a>
+            )}
+          </div>
+
+          {showSaveButton && (
+            <div className="flex items-end gap-1.5">
+              <Button
+                type="button"
+                size="sm"
+                variant={saveState === 'idle' || saveState === 'error' ? 'outline' : 'secondary'}
+                disabled={saveState === 'submitting' || saveState === 'saved' || saveState === 'already_saved'}
+                onClick={() => void handleSaveSource()}
+              >
+                {(saveState === 'saved' || saveState === 'already_saved') && <Check className="size-3.5" />}
+                {saveButtonLabel(saveState)}
+              </Button>
+            </div>
           )}
         </div>
+
+        {showSaveButton && saveError && (
+          <p className="mb-4 text-right text-xs text-destructive">{saveError}</p>
+        )}
 
         <h1 className="text-2xl font-bold tracking-tight leading-snug">
           {source.title ?? source.url}
@@ -170,5 +230,18 @@ function extractDomain(url: string): string {
     return hostname.replace(/^www\./, '')
   } catch {
     return url
+  }
+}
+
+function saveButtonLabel(saveState: SaveState): string {
+  switch (saveState) {
+    case 'submitting':
+      return 'Saving...'
+    case 'saved':
+      return 'Saved'
+    case 'already_saved':
+      return 'Already saved'
+    default:
+      return 'Save to library'
   }
 }
