@@ -5,6 +5,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 
 ## Mistakes Log
 
+- [2026-03-15] Ran `git commit` and `git push` in parallel, so the push raced ahead of the new commit and initially left the PR branch behind -> verified remote SHA with `git rev-parse`/`git ls-remote` and pushed again only after the commit existed -> never parallelize commit/push; commit first, then push after confirming the local branch tip.
 - [2026-03-15] Ran two Gradle `test` tasks in parallel against the same module, which collided while writing XML reports under `build/test-results/test` -> reran the test classes serially -> when verifying multiple backend test classes in the same Gradle module, avoid parallel `:test` invocations unless each task writes to isolated report directories.
 - [2026-03-15] Replaced markdown emphasis with the marker capture instead of the inner text in `MarkdownStripper`, which broke narration plaintext and the new TTS tests -> switched the replacement from `$1` to `$2` -> when using regex capture groups for markdown cleanup, verify the replacement preserves semantic text, not syntax markers.
 - [2026-03-15] Wrote source filter coverage with two separate same-name `Kotlin` topics -> the request filters by `topicId`, so the test never actually exercised `sourceType` exclusion -> when testing `topicIds` filters, reuse the exact same topic id across fixtures rather than relying on topic names.
