@@ -37,12 +37,13 @@ class SettingsControllerTest {
     }
 
     @Test
-    fun `GET extraction settings includes firecrawl x_api and jsoup without secrets`() {
+    fun `GET extraction settings includes firecrawl x_api elevenlabs and jsoup without secrets`() {
         mockMvc.perform(get("/api/settings/extraction"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.providers[0].type").value("firecrawl"))
             .andExpect(jsonPath("$.providers[1].type").value("x_api"))
-            .andExpect(jsonPath("$.providers[2].type").value("jsoup"))
+            .andExpect(jsonPath("$.providers[2].type").value("elevenlabs"))
+            .andExpect(jsonPath("$.providers[3].type").value("jsoup"))
     }
 
     @Test
@@ -97,5 +98,32 @@ class SettingsControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.providers[1].enabled").value(false))
             .andExpect(jsonPath("$.providers[1].configured").value(false))
+    }
+
+    @Test
+    fun `PUT elevenlabs updates enabled and configured state`() {
+        mockMvc.perform(
+            put("/api/settings/extraction/providers/elevenlabs")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":true,"apiKey":"el-user-key"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.providers[2].enabled").value(true))
+            .andExpect(jsonPath("$.providers[2].configured").value(true))
+    }
+
+    @Test
+    fun `DELETE elevenlabs key disables provider`() {
+        mockMvc.perform(
+            put("/api/settings/extraction/providers/elevenlabs")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":true,"apiKey":"el-user-key"}""")
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(delete("/api/settings/extraction/providers/elevenlabs/key"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.providers[2].enabled").value(false))
+            .andExpect(jsonPath("$.providers[2].configured").value(false))
     }
 }

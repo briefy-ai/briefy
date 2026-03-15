@@ -52,6 +52,11 @@ function SettingsPage() {
   const [xApiEnabled, setXApiEnabled] = useState(false)
   const [xApiToken, setXApiToken] = useState('')
   const [showXApiToken, setShowXApiToken] = useState(false)
+  const [elevenlabsEnabled, setElevenlabsEnabled] = useState(false)
+  const [elevenlabsApiKey, setElevenlabsApiKey] = useState('')
+  const [showElevenlabsKey, setShowElevenlabsKey] = useState(false)
+  const [elevenlabsSaving, setElevenlabsSaving] = useState(false)
+  const [elevenlabsRemovingKey, setElevenlabsRemovingKey] = useState(false)
   const [topicProvider, setTopicProvider] = useState<AiProviderId>('zhipuai')
   const [topicModel, setTopicModel] = useState<string>('')
   const [formatterProvider, setFormatterProvider] = useState<AiProviderId>('zhipuai')
@@ -81,8 +86,10 @@ function SettingsPage() {
         setTelegramStatus(telegramData)
         const firecrawl = extractionData.providers.find((provider) => provider.type === 'firecrawl')
         const xApi = extractionData.providers.find((provider) => provider.type === 'x_api')
+        const elevenlabs = extractionData.providers.find((provider) => provider.type === 'elevenlabs')
         setFirecrawlEnabled(firecrawl?.enabled ?? false)
         setXApiEnabled(xApi?.enabled ?? false)
+        setElevenlabsEnabled(elevenlabs?.enabled ?? false)
         applyAiUseCaseState(aiData.useCases)
       } catch (e) {
         if (!mounted) return
@@ -111,6 +118,10 @@ function SettingsPage() {
   )
   const xApiProvider = useMemo(
     () => providers.find((provider) => provider.type === 'x_api'),
+    [providers]
+  )
+  const elevenlabsProvider = useMemo(
+    () => providers.find((provider) => provider.type === 'elevenlabs'),
     [providers]
   )
   const topicUseCase = useMemo(
@@ -201,6 +212,43 @@ function SettingsPage() {
       setError(e instanceof Error ? e.message : 'Failed to remove X API key')
     } finally {
       setXApiRemovingKey(false)
+    }
+  }
+
+  const saveElevenlabsSettings = async () => {
+    setElevenlabsSaving(true)
+    setError(null)
+    setSuccessMessage(null)
+    try {
+      const data = await updateProvider('elevenlabs', {
+        enabled: elevenlabsEnabled,
+        apiKey: elevenlabsApiKey.trim() ? elevenlabsApiKey.trim() : undefined,
+      })
+      setProviders(data.providers)
+      setElevenlabsApiKey('')
+      setSuccessMessage('ElevenLabs settings updated.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update ElevenLabs settings')
+    } finally {
+      setElevenlabsSaving(false)
+    }
+  }
+
+  const removeElevenlabsKey = async () => {
+    setElevenlabsRemovingKey(true)
+    setError(null)
+    setSuccessMessage(null)
+    try {
+      const data = await deleteProviderKey('elevenlabs')
+      setProviders(data.providers)
+      const elevenlabs = data.providers.find((provider) => provider.type === 'elevenlabs')
+      setElevenlabsEnabled(elevenlabs?.enabled ?? false)
+      setElevenlabsApiKey('')
+      setSuccessMessage('ElevenLabs key removed.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to remove ElevenLabs key')
+    } finally {
+      setElevenlabsRemovingKey(false)
     }
   }
 
@@ -535,6 +583,73 @@ function SettingsPage() {
                 disabled={xApiRemovingKey || !xApiProvider?.configured}
               >
                 {xApiRemovingKey ? 'Removing...' : 'Remove key'}
+              </Button>
+            </CardFooter>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                ElevenLabs
+                {elevenlabsProvider?.configured && <Badge variant="secondary">Configured</Badge>}
+              </CardTitle>
+              <CardDescription>
+                Text-to-speech for listening to your sources. Provide your own API key.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-xs text-muted-foreground">
+                A paid ElevenLabs subscription is required. Free-tier API keys do not support the voice model used for narration.
+              </div>
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <p className="text-sm font-medium">Enable ElevenLabs</p>
+                  <p className="text-xs text-muted-foreground">Use your own API key for source narration.</p>
+                </div>
+                <Toggle
+                  pressed={elevenlabsEnabled}
+                  onPressedChange={setElevenlabsEnabled}
+                  variant="outline"
+                  aria-label="Toggle ElevenLabs provider"
+                  className="min-w-16"
+                >
+                  {elevenlabsEnabled ? 'On' : 'Off'}
+                </Toggle>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="elevenlabs-api-key" className="text-sm font-medium">
+                  API key
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="elevenlabs-api-key"
+                    type={showElevenlabsKey ? 'text' : 'password'}
+                    placeholder={elevenlabsProvider?.configured ? 'Configured (enter to replace)' : 'sk_...'}
+                    value={elevenlabsApiKey}
+                    onChange={(event) => setElevenlabsApiKey(event.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowElevenlabsKey((current) => !current)}
+                  >
+                    {showElevenlabsKey ? <EyeOff /> : <Eye />}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="gap-2">
+              <Button type="button" onClick={() => void saveElevenlabsSettings()} disabled={elevenlabsSaving || loading}>
+                {elevenlabsSaving ? 'Saving...' : 'Save'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void removeElevenlabsKey()}
+                disabled={elevenlabsRemovingKey || !elevenlabsProvider?.configured}
+              >
+                {elevenlabsRemovingKey ? 'Removing...' : 'Remove key'}
               </Button>
             </CardFooter>
           </Card>

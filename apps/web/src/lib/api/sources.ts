@@ -134,3 +134,28 @@ export async function updateSourceAnnotation(
 export async function deleteSourceAnnotation(sourceId: string, annotationId: string): Promise<void> {
   await apiDelete(`/api/sources/${sourceId}/annotations/${annotationId}`)
 }
+
+export async function narrateSource(id: string): Promise<Source> {
+  return apiPost<Source>(`/api/sources/${id}/narrate`)
+}
+
+export async function retryNarration(id: string): Promise<Source> {
+  return apiPost<Source>(`/api/sources/${id}/narrate/retry`)
+}
+
+export interface AudioUrlResponse {
+  audioUrl: string
+}
+
+export async function getSourceAudio(id: string): Promise<AudioUrlResponse> {
+  return apiGet<AudioUrlResponse>(`/api/sources/${id}/audio`)
+}
+
+export interface NarrationEstimateResponse {
+  characterCount: number
+  modelId: string
+}
+
+export async function getNarrationEstimate(id: string): Promise<NarrationEstimateResponse> {
+  return apiGet<NarrationEstimateResponse>(`/api/sources/${id}/narrate/estimate`)
+}

@@ -31,6 +31,14 @@ export interface SourceTopicChip {
   name: string
 }
 
+export type NarrationState = 'not_generated' | 'pending' | 'succeeded' | 'failed'
+
+export interface AudioContentDto {
+  audioUrl: string
+  durationSeconds: number
+  format: string
+}
+
 export interface Source {
   id: string
   url: SourceUrl
@@ -43,6 +51,10 @@ export interface Source {
   pendingSuggestedTopicsCount: number
   read: boolean
   topics: SourceTopicChip[]
+  narrationState: NarrationState
+  narrationFailureMessage: string | null
+  narrationFailureRetryable: boolean | null
+  audio: AudioContentDto | null
   createdAt: string
   updatedAt: string
 }
@@ -156,7 +168,7 @@ export interface LoginRequest {
   password: string
 }
 
-export type ExtractionProviderType = 'firecrawl' | 'x_api' | 'jsoup'
+export type ExtractionProviderType = 'firecrawl' | 'x_api' | 'jsoup' | 'elevenlabs'
 
 export interface ProviderSettingDto {
   type: ExtractionProviderType

@@ -242,6 +242,7 @@ function SourceDetailPage() {
 
       <SourceHeader
         source={source}
+        onSourceUpdate={setSource}
         onGenerateBriefing={() =>
           openFromSource({
             sourceId: source.id,

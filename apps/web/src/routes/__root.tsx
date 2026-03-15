@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ChatPanelProvider, useChatPanel } from '@/features/chat/ChatPanelProvider'
+import { AudioPlayerProvider, useAudioPlayer } from '@/features/audio/AudioPlayerProvider'
 import { useAuth } from '@/lib/auth/useAuth'
 
 export const Route = createRootRoute({
@@ -30,7 +31,9 @@ export const Route = createRootRoute({
 function RootLayout() {
   return (
     <ChatPanelProvider>
-      <RootLayoutContent />
+      <AudioPlayerProvider>
+        <RootLayoutContent />
+      </AudioPlayerProvider>
     </ChatPanelProvider>
   )
 }
@@ -38,6 +41,7 @@ function RootLayout() {
 function RootLayoutContent() {
   const { user, isLoading, logout } = useAuth()
   const { openPanelWithDefaultContext, togglePanel } = useChatPanel()
+  const { currentSourceId: hasAudioPlayer } = useAudioPlayer()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isSettingsPath = pathname.startsWith('/settings')
   const isChatEligible = !isLoading && Boolean(user) && !isSettingsPath
@@ -155,7 +159,7 @@ function RootLayoutContent() {
           <Button
             type="button"
             size="icon"
-            className="fixed right-5 bottom-5 z-40 size-12 rounded-full shadow-lg shadow-primary/20"
+            className={`fixed right-5 z-40 size-12 rounded-full shadow-lg shadow-primary/20 transition-[bottom] ${hasAudioPlayer ? 'bottom-20' : 'bottom-5'}`}
             onClick={openPanelWithDefaultContext}
             aria-label="Open chat"
           >

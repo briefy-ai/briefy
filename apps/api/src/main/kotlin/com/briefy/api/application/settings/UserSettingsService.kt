@@ -36,6 +36,13 @@ class UserSettingsService(
                     description = "Preferred for X posts, threads, and article content"
                 ),
                 ProviderSettingDto(
+                    type = ELEVENLABS,
+                    enabled = settings.elevenlabsEnabled,
+                    configured = !settings.elevenlabsApiKeyEncrypted.isNullOrBlank(),
+                    platforms = ELEVENLABS_PLATFORMS,
+                    description = "Required to narrate source content with ElevenLabs text-to-speech"
+                ),
+                ProviderSettingDto(
                     type = JSOUP,
                     enabled = true,
                     configured = true,
@@ -68,6 +75,12 @@ class UserSettingsService(
                     settings.xApiBearerTokenEncrypted = apiKeyEncryptionService.encrypt(normalizedApiKey)
                 }
             }
+            ELEVENLABS -> {
+                settings.elevenlabsEnabled = command.enabled
+                if (normalizedApiKey != null) {
+                    settings.elevenlabsApiKeyEncrypted = apiKeyEncryptionService.encrypt(normalizedApiKey)
+                }
+            }
         }
 
         settings.updatedAt = Instant.now()
@@ -91,6 +104,10 @@ class UserSettingsService(
             X_API -> {
                 settings.xApiEnabled = false
                 settings.xApiBearerTokenEncrypted = null
+            }
+            ELEVENLABS -> {
+                settings.elevenlabsEnabled = false
+                settings.elevenlabsApiKeyEncrypted = null
             }
         }
         settings.updatedAt = Instant.now()
@@ -129,6 +146,21 @@ class UserSettingsService(
         return settings.xApiEnabled && !settings.xApiBearerTokenEncrypted.isNullOrBlank()
     }
 
+    @Transactional
+    fun getElevenlabsApiKey(userId: UUID): String? {
+        val settings = getOrCreateSettings(userId)
+        if (!settings.elevenlabsEnabled || settings.elevenlabsApiKeyEncrypted.isNullOrBlank()) {
+            return null
+        }
+        return apiKeyEncryptionService.decrypt(settings.elevenlabsApiKeyEncrypted!!)
+    }
+
+    @Transactional
+    fun isElevenlabsEnabled(userId: UUID): Boolean {
+        val settings = getOrCreateSettings(userId)
+        return settings.elevenlabsEnabled && !settings.elevenlabsApiKeyEncrypted.isNullOrBlank()
+    }
+
     private fun getOrCreateSettings(userId: UUID): UserExtractionSettings {
         val existing = userExtractionSettingsRepository.findByUserId(userId)
         if (existing != null) {
@@ -144,6 +176,8 @@ class UserSettingsService(
                 firecrawlApiKeyEncrypted = null,
                 xApiEnabled = false,
                 xApiBearerTokenEncrypted = null,
+                elevenlabsEnabled = false,
+                elevenlabsApiKeyEncrypted = null,
                 createdAt = now,
                 updatedAt = now
             )
@@ -153,6 +187,7 @@ class UserSettingsService(
     companion object {
         const val FIRECRAWL = "firecrawl"
         const val X_API = "x_api"
+        const val ELEVENLABS = "elevenlabs"
         const val JSOUP = "jsoup"
 
         private val FIRECRAWL_PLATFORMS = listOf(
@@ -165,7 +200,8 @@ class UserSettingsService(
             "github"
         )
         private val X_API_PLATFORMS = listOf("x", "twitter")
-        private val updatableProviders = setOf(FIRECRAWL, X_API)
-        private val keyDeletableProviders = setOf(FIRECRAWL, X_API)
+        private val ELEVENLABS_PLATFORMS = listOf("all")
+        private val updatableProviders = setOf(FIRECRAWL, X_API, ELEVENLABS)
+        private val keyDeletableProviders = setOf(FIRECRAWL, X_API, ELEVENLABS)
     }
 }

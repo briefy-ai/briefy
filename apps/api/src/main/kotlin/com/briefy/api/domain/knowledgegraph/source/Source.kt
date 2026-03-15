@@ -44,7 +44,17 @@ class Source(
     var topicExtractionState: TopicExtractionState = TopicExtractionState.PENDING,
 
     @Column(name = "topic_extraction_failure_reason", length = 255)
-    var topicExtractionFailureReason: String? = null
+    var topicExtractionFailureReason: String? = null,
+
+    @Embedded
+    var audioContent: AudioContent? = null,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "narration_state", nullable = false, length = 20)
+    var narrationState: NarrationState = NarrationState.NOT_GENERATED,
+
+    @Column(name = "narration_failure_reason", columnDefinition = "TEXT")
+    var narrationFailureReason: String? = null
 ) {
     fun startExtraction() {
         transitionTo(SourceStatus.EXTRACTING)
@@ -53,6 +63,7 @@ class Source(
     fun completeExtraction(content: Content, metadata: Metadata) {
         this.content = content
         this.metadata = metadata
+        clearNarration()
         markUnread()
         transitionTo(SourceStatus.ACTIVE)
     }
@@ -82,6 +93,7 @@ class Source(
         }
         this.content = content
         this.metadata = metadata
+        clearNarration()
         markUnread()
         markTopicExtractionPending()
     }
@@ -102,6 +114,41 @@ class Source(
         topicExtractionState = TopicExtractionState.FAILED
         topicExtractionFailureReason = reason?.trim()?.take(255)?.ifBlank { null }
         updatedAt = Instant.now()
+    }
+
+    fun requestNarration() {
+        require(status == SourceStatus.ACTIVE) {
+            "Cannot request narration for source in status $status"
+        }
+        narrationState = NarrationState.PENDING
+        narrationFailureReason = null
+        updatedAt = Instant.now()
+    }
+
+    fun completeNarration(audioContent: AudioContent) {
+        require(status == SourceStatus.ACTIVE) {
+            "Cannot complete narration for source in status $status"
+        }
+        this.audioContent = audioContent
+        narrationState = NarrationState.SUCCEEDED
+        narrationFailureReason = null
+        updatedAt = Instant.now()
+    }
+
+    fun failNarration(reason: String?) {
+        require(status == SourceStatus.ACTIVE) {
+            "Cannot fail narration for source in status $status"
+        }
+        audioContent = null
+        narrationState = NarrationState.FAILED
+        narrationFailureReason = reason?.trim()?.take(255)?.ifBlank { null }
+        updatedAt = Instant.now()
+    }
+
+    fun clearNarration() {
+        audioContent = null
+        narrationState = NarrationState.NOT_GENERATED
+        narrationFailureReason = null
     }
 
     fun markRead(): Boolean {

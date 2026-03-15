@@ -5,6 +5,8 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 
 ## Mistakes Log
 
+- [2026-03-15] Ran two Gradle `test` tasks in parallel against the same module, which collided while writing XML reports under `build/test-results/test` -> reran the test classes serially -> when verifying multiple backend test classes in the same Gradle module, avoid parallel `:test` invocations unless each task writes to isolated report directories.
+- [2026-03-15] Replaced markdown emphasis with the marker capture instead of the inner text in `MarkdownStripper`, which broke narration plaintext and the new TTS tests -> switched the replacement from `$1` to `$2` -> when using regex capture groups for markdown cleanup, verify the replacement preserves semantic text, not syntax markers.
 - [2026-03-15] Wrote source filter coverage with two separate same-name `Kotlin` topics -> the request filters by `topicId`, so the test never actually exercised `sourceType` exclusion -> when testing `topicIds` filters, reuse the exact same topic id across fixtures rather than relying on topic names.
 - [2026-03-14] Mapped native `sources.id` search rows with `toString()` -> H2 returned UUID columns as `ByteArray`, causing `GET /api/sources/search` to 500 with `Invalid UUID string` -> when mapping native UUID columns, handle both `UUID` and `ByteArray` so H2 tests match PostgreSQL behavior.
 - [2026-03-11] Tightened X thread filtering but left a thread test fixture without `in_reply_to_user_id` on a legitimate self-reply -> updated the mock payload to include explicit self-reply metadata -> when testing X thread membership, always model reply tweets with `in_reply_to_user_id` so filters match real API payloads.

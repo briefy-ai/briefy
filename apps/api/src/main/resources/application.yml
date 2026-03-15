@@ -101,6 +101,22 @@ transcription:
     api-key: ${TRANSCRIPTION_OPENAI_API_KEY:${OPENAI_API_KEY:}}
     model: ${TRANSCRIPTION_OPENAI_MODEL:whisper-1}
 
+audio:
+  storage:
+    endpoint: ${AUDIO_STORAGE_ENDPOINT:http://localhost:9000}
+    access-key-id: ${AUDIO_STORAGE_ACCESS_KEY:minioadmin}
+    secret-access-key: ${AUDIO_STORAGE_SECRET_KEY:minioadmin}
+    bucket: ${AUDIO_STORAGE_BUCKET:briefy-audio}
+    region: ${AUDIO_STORAGE_REGION:us-east-1}
+    presigned-url-expiry-hours: ${AUDIO_STORAGE_PRESIGNED_URL_EXPIRY_HOURS:24}
+
+tts:
+  elevenlabs:
+    base-url: ${ELEVENLABS_BASE_URL:https://api.elevenlabs.io}
+    voice-id: ${ELEVENLABS_VOICE_ID:21m00Tcm4TlvDq8ikWAM}
+    model-id: ${ELEVENLABS_MODEL_ID:eleven_flash_v2_5}
+    max-characters: ${ELEVENLABS_MAX_CHARACTERS:100000}
+
 google:
   auth:
     enabled: ${GOOGLE_AUTH_ENABLED:false}

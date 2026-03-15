@@ -150,6 +150,7 @@ class SourceContentFormatterService(
 
         source.content = formattedContent
         source.metadata = formattedMetadata
+        source.clearNarration()
         source.updatedAt = Instant.now()
         sourceRepository.save(source)
 
