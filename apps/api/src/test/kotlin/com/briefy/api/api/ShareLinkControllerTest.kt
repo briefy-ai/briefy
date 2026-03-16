@@ -106,7 +106,7 @@ class ShareLinkControllerTest {
         whenever(coverImageService.generateAndStore(any(), eq(userId))).thenReturn(
             CoverImageResult(
                 coverKey = "images/covers/${source.id}/original.png",
-                featuredKey = "images/covers/${source.id}/featured.png"
+                featuredKey = "images/covers/${source.id}/featured.jpg"
             )
         )
 
@@ -122,7 +122,7 @@ class ShareLinkControllerTest {
 
         val updatedSource = sourceRepository.findById(source.id).orElseThrow()
         assertEquals("images/covers/${source.id}/original.png", updatedSource.coverImageKey)
-        assertEquals("images/covers/${source.id}/featured.png", updatedSource.featuredImageKey)
+        assertEquals("images/covers/${source.id}/featured.jpg", updatedSource.featuredImageKey)
     }
 
     @Test

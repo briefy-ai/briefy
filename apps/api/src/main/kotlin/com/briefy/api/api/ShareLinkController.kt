@@ -65,13 +65,20 @@ class ShareLinkController(
         return ResponseEntity.ok(html)
     }
 
-    @GetMapping("/api/public/og-image/{token}", produces = ["image/png"])
+    @GetMapping("/api/public/og-image/{token}", produces = ["image/jpeg", "image/png"])
     fun shareOgImage(@PathVariable token: String): ResponseEntity<ByteArray> {
         logger.info("[controller] Build share og:image token={}…", token.take(8))
         val imageBytes = shareLinkService.buildOgImage(token)
+        val contentType = if (isPng(imageBytes)) MediaType.IMAGE_PNG else MediaType.IMAGE_JPEG
         return ResponseEntity.ok()
-            .contentType(MediaType.IMAGE_PNG)
+            .contentType(contentType)
+            .header("Cache-Control", "public, max-age=86400")
             .body(imageBytes)
+    }
+
+    private fun isPng(bytes: ByteArray): Boolean {
+        return bytes.size >= 4 && bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte()
+            && bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()
     }
 
     private fun buildBaseUrl(host: String, proto: String): String {

@@ -63,9 +63,9 @@ class CoverImageServiceTest {
         val result = service.generateAndStore(source, userId)
 
         assertEquals("images/covers/${source.id}/original.png", result?.coverKey)
-        assertEquals("images/covers/${source.id}/featured.png", result?.featuredKey)
+        assertEquals("images/covers/${source.id}/featured.jpg", result?.featuredKey)
         verify(imageStorageService).uploadImage("images/covers/${source.id}/original.png", originalBytes)
-        verify(imageStorageService).uploadImage("images/covers/${source.id}/featured.png", featuredBytes)
+        verify(imageStorageService).uploadImage("images/covers/${source.id}/featured.jpg", featuredBytes)
 
         val promptCaptor = argumentCaptor<String>()
         verify(openRouterImageClient).generate(eq("or-key"), eq("google/gemini-3.1-flash-image-preview"), promptCaptor.capture(), eq("1792x1024"))

@@ -441,7 +441,7 @@ class ShareLinkService(
         }
 
         return ByteArrayOutputStream().use { output ->
-            ImageIO.write(image, "png", output)
+            ImageIO.write(image, "jpg", output)
             output.toByteArray()
         }
     }

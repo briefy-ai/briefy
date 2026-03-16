@@ -132,7 +132,7 @@ class CoverImageService(
 
     private fun originalKey(sourceId: UUID): String = "images/covers/$sourceId/original.png"
 
-    private fun featuredKey(sourceId: UUID): String = "images/covers/$sourceId/featured.png"
+    private fun featuredKey(sourceId: UUID): String = "images/covers/$sourceId/featured.jpg"
 
     private fun cleanupUploadedImage(key: String?, sourceId: UUID, userId: UUID) {
         val imageKey = key?.trim()?.ifBlank { null } ?: return

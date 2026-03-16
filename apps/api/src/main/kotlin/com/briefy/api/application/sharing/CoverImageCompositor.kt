@@ -7,14 +7,16 @@ import java.awt.Font
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
+import javax.imageio.IIOImage
 import javax.imageio.ImageIO
+import javax.imageio.ImageWriteParam
 
 @Component
 class CoverImageCompositor {
     fun composite(baseImageBytes: ByteArray, title: String): ByteArray {
         val baseImage = ImageIO.read(baseImageBytes.inputStream())
             ?: throw IllegalArgumentException("Base image could not be decoded")
-        val canvas = BufferedImage(OUTPUT_WIDTH, OUTPUT_HEIGHT, BufferedImage.TYPE_INT_ARGB)
+        val canvas = BufferedImage(OUTPUT_WIDTH, OUTPUT_HEIGHT, BufferedImage.TYPE_INT_RGB)
         val graphics = canvas.createGraphics()
 
         try {
@@ -62,7 +64,14 @@ class CoverImageCompositor {
         }
 
         return ByteArrayOutputStream().use { output ->
-            ImageIO.write(canvas, "png", output)
+            val writer = ImageIO.getImageWritersByFormatName("jpg").next()
+            val param = writer.defaultWriteParam.apply {
+                compressionMode = ImageWriteParam.MODE_EXPLICIT
+                compressionQuality = 0.85f
+            }
+            writer.output = ImageIO.createImageOutputStream(output)
+            writer.write(null, IIOImage(canvas, null, null), param)
+            writer.dispose()
             output.toByteArray()
         }
     }
@@ -77,7 +86,7 @@ class CoverImageCompositor {
         val offsetX = (OUTPUT_WIDTH - scaledWidth) / 2
         val offsetY = (OUTPUT_HEIGHT - scaledHeight) / 2
 
-        val scaled = BufferedImage(OUTPUT_WIDTH, OUTPUT_HEIGHT, BufferedImage.TYPE_INT_ARGB)
+        val scaled = BufferedImage(OUTPUT_WIDTH, OUTPUT_HEIGHT, BufferedImage.TYPE_INT_RGB)
         val graphics = scaled.createGraphics()
         try {
             graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
@@ -89,7 +98,7 @@ class CoverImageCompositor {
     }
 
     private fun titleAscent(): Int {
-        val probe = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB).createGraphics()
+        val probe = BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB).createGraphics()
         return try {
             probe.font = Font("SansSerif", Font.BOLD, 58)
             probe.fontMetrics.ascent
