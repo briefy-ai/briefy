@@ -156,6 +156,18 @@ class ShareLinkService(
         }
 
         val source = sourceRepository.findById(shareLink.entityId).orElse(null) ?: return loadDefaultOgImage()
+
+        // Serve the generated featured image if available
+        val featuredKey = source.featuredImageKey?.trim()?.ifBlank { null }
+        if (featuredKey != null) {
+            return try {
+                imageStorageService.downloadImage(featuredKey)
+            } catch (ex: Exception) {
+                logger.warn("[service] Failed to download featured image key={}, falling back to rendered", featuredKey, ex)
+                try { renderOgImage(source) } catch (_: Exception) { loadDefaultOgImage() }
+            }
+        }
+
         return try {
             renderOgImage(source)
         } catch (_: Exception) {
@@ -331,7 +343,16 @@ class ShareLinkService(
 
     private fun resolveOgImageUrl(source: Source, baseUrl: String, token: String): String {
         val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
-        resolveFeaturedImageUrl(source)?.let { return it }
+
+        // If a featured image exists, serve it through our own og-image endpoint
+        // (not the presigned S3 URL, which social crawlers often can't fetch)
+        if (!source.featuredImageKey.isNullOrBlank()) {
+            return if (normalizedBaseUrl.isBlank()) {
+                "/api/public/og-image/$token"
+            } else {
+                "$normalizedBaseUrl/api/public/og-image/$token"
+            }
+        }
 
         val metadataOgImageUrl = source.metadata?.ogImageUrl?.trim()
         if (!metadataOgImageUrl.isNullOrBlank()) {
