@@ -207,3 +207,9 @@ briefing:
     worker:
       poll-ms: ${BRIEFING_GENERATION_WORKER_POLL_MS:5000}
       batch-size: ${BRIEFING_GENERATION_WORKER_BATCH_SIZE:5}
+
+cover-image:
+  prompt-crafting:
+    enabled: ${COVER_IMAGE_PROMPT_CRAFTING_ENABLED:true}
+    provider: ${COVER_IMAGE_PROMPT_CRAFTING_PROVIDER:google_genai}
+    model: ${COVER_IMAGE_PROMPT_CRAFTING_MODEL:gemini-2.5-flash}
