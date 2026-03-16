@@ -6,7 +6,8 @@ data class TelegramLinkStatusResponse(
     val linked: Boolean,
     val telegramUsername: String?,
     val maskedTelegramId: String?,
-    val linkedAt: Instant?
+    val linkedAt: Instant?,
+    val pendingLinkCode: Boolean = false
 )
 
 data class TelegramLinkCodeResponse(

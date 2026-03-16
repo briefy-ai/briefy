@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { BrainCircuit, Check, Copy, Eye, EyeOff, Headphones, KeyRound, MessageCircle, Settings } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -22,7 +22,9 @@ import {
   updateProvider,
   updateTtsProvider,
 } from '@/lib/api/settings'
+import { resetOnboarding } from '@/lib/api/auth'
 import { requireAuth } from '@/lib/auth/requireAuth'
+import { useAuth } from '@/lib/auth/useAuth'
 import type {
   AiProviderId,
   AiProviderDto,
@@ -434,6 +436,8 @@ function SettingsPage() {
           Configure extraction providers and account preferences.
         </p>
       </div>
+
+      <SetupGuideCard />
 
       {error && (
         <Alert variant="destructive">
@@ -1044,6 +1048,12 @@ function SettingsPage() {
                     <p className="mt-1 font-mono text-lg">{telegramLinkCode}</p>
                   </div>
                 )}
+
+                {!telegramLinkCode && telegramStatus?.pendingLinkCode && !telegramStatus.linked && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
+                    A link code was previously generated. Use it with your Telegram bot, or generate a new one below.
+                  </div>
+                )}
               </CardContent>
               <CardFooter className="gap-2">
                 <Button
@@ -1067,5 +1077,38 @@ function SettingsPage() {
         </section>
       </div>
     </div>
+  )
+}
+
+function SetupGuideCard() {
+  const navigate = useNavigate()
+  const { setUser } = useAuth()
+  const [resetting, setResetting] = useState(false)
+
+  async function handleRunSetup() {
+    setResetting(true)
+    try {
+      const updatedUser = await resetOnboarding()
+      setUser(updatedUser)
+      await navigate({ to: '/onboarding' })
+    } finally {
+      setResetting(false)
+    }
+  }
+
+  return (
+    <Card className="border-border/50 bg-card/50">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">Setup Guide</CardTitle>
+        <CardDescription className="text-xs">
+          Re-run the onboarding wizard to explore features and configure integrations.
+        </CardDescription>
+      </CardHeader>
+      <CardFooter>
+        <Button size="sm" variant="outline" onClick={handleRunSetup} disabled={resetting}>
+          {resetting ? 'Starting...' : 'Run Setup Guide'}
+        </Button>
+      </CardFooter>
+    </Card>
   )
 }

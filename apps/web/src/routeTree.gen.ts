@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ContentGenerationRouteImport } from './routes/content-generation'
 import { Route as ContentConsumptionRouteImport } from './routes/content-consumption'
@@ -25,6 +26,11 @@ import { Route as BriefingsBriefingIdRouteImport } from './routes/briefings/$bri
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/content-consumption': typeof ContentConsumptionRoute
   '/content-generation': typeof ContentGenerationRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/briefings/$briefingId': typeof BriefingsBriefingIdRoute
   '/share/$token': typeof ShareTokenRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/content-consumption': typeof ContentConsumptionRoute
   '/content-generation': typeof ContentGenerationRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/briefings/$briefingId': typeof BriefingsBriefingIdRoute
   '/share/$token': typeof ShareTokenRoute
@@ -117,6 +125,7 @@ export interface FileRoutesById {
   '/content-consumption': typeof ContentConsumptionRoute
   '/content-generation': typeof ContentGenerationRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/signup': typeof SignupRoute
   '/briefings/$briefingId': typeof BriefingsBriefingIdRoute
   '/share/$token': typeof ShareTokenRoute
@@ -133,6 +142,7 @@ export interface FileRouteTypes {
     | '/content-consumption'
     | '/content-generation'
     | '/login'
+    | '/onboarding'
     | '/signup'
     | '/briefings/$briefingId'
     | '/share/$token'
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/content-consumption'
     | '/content-generation'
     | '/login'
+    | '/onboarding'
     | '/signup'
     | '/briefings/$briefingId'
     | '/share/$token'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/content-consumption'
     | '/content-generation'
     | '/login'
+    | '/onboarding'
     | '/signup'
     | '/briefings/$briefingId'
     | '/share/$token'
@@ -176,6 +188,7 @@ export interface RootRouteChildren {
   ContentConsumptionRoute: typeof ContentConsumptionRoute
   ContentGenerationRoute: typeof ContentGenerationRoute
   LoginRoute: typeof LoginRoute
+  OnboardingRoute: typeof OnboardingRoute
   SignupRoute: typeof SignupRoute
   BriefingsBriefingIdRoute: typeof BriefingsBriefingIdRoute
   ShareTokenRoute: typeof ShareTokenRoute
@@ -193,6 +206,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -280,6 +300,7 @@ const rootRouteChildren: RootRouteChildren = {
   ContentConsumptionRoute: ContentConsumptionRoute,
   ContentGenerationRoute: ContentGenerationRoute,
   LoginRoute: LoginRoute,
+  OnboardingRoute: OnboardingRoute,
   SignupRoute: SignupRoute,
   BriefingsBriefingIdRoute: BriefingsBriefingIdRoute,
   ShareTokenRoute: ShareTokenRoute,

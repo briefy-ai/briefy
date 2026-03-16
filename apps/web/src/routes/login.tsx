@@ -31,8 +31,8 @@ function LoginPage() {
 
     try {
       await login({ email: email.trim(), password })
-      await refreshUser()
-      await navigate({ to: '/sources' })
+      const user = await refreshUser()
+      await navigate({ to: user?.onboardingCompleted ? '/sources' : '/onboarding' })
     } catch (e) {
       if (e instanceof ApiClientError) {
         setError(e.apiError?.message ?? e.message)

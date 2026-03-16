@@ -156,6 +156,7 @@ export interface AuthUser {
   email: string
   role: 'USER' | 'ADMIN'
   displayName: string | null
+  onboardingCompleted: boolean
 }
 
 export interface SignUpRequest {
@@ -227,6 +228,7 @@ export interface TelegramLinkStatusResponse {
   telegramUsername: string | null
   maskedTelegramId: string | null
   linkedAt: string | null
+  pendingLinkCode: boolean
 }
 
 export interface TelegramLinkCodeResponse {

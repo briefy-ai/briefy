@@ -9,14 +9,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { listSources } from '@/lib/api/sources'
 import { createTopic, listTopics } from '@/lib/api/topics'
 import { ApiClientError } from '@/lib/api/client'
-import { requireAuth } from '@/lib/auth/requireAuth'
+import { requireAuthWithOnboarding } from '@/lib/auth/requireAuth'
 import type { Source, TopicSummary } from '@/lib/api/types'
 
 const SOURCE_PICKER_PAGE_SIZE = 20
 
 export const Route = createFileRoute('/topics/')({
   beforeLoad: async () => {
-    await requireAuth()
+    await requireAuthWithOnboarding()
   },
   component: TopicsPage,
 })

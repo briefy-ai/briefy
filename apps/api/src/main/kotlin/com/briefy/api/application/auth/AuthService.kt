@@ -98,6 +98,28 @@ class AuthService(
     }
 
     @Transactional
+    fun completeOnboarding(userId: java.util.UUID): AuthUserResponse {
+        logger.info("[service] Completing onboarding userId={}", userId)
+        val user = userRepository.findById(userId).orElseThrow { UserNotFoundException() }
+        user.ensureActive()
+        user.onboardingCompleted = true
+        user.updatedAt = Instant.now()
+        userRepository.save(user)
+        return user.toAuthUserResponse()
+    }
+
+    @Transactional
+    fun resetOnboarding(userId: java.util.UUID): AuthUserResponse {
+        logger.info("[service] Resetting onboarding userId={}", userId)
+        val user = userRepository.findById(userId).orElseThrow { UserNotFoundException() }
+        user.ensureActive()
+        user.onboardingCompleted = false
+        user.updatedAt = Instant.now()
+        userRepository.save(user)
+        return user.toAuthUserResponse()
+    }
+
+    @Transactional
     fun logout(refreshToken: String?) {
         logger.info("[service] Logging out session hasToken={}", !refreshToken.isNullOrBlank())
         if (refreshToken.isNullOrBlank()) {
