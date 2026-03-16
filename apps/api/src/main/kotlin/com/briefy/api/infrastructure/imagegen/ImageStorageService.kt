@@ -12,6 +12,7 @@ import software.amazon.awssdk.services.s3.model.BucketAlreadyOwnedByYouException
 import software.amazon.awssdk.services.s3.model.BucketLocationConstraint
 import software.amazon.awssdk.services.s3.model.CreateBucketConfiguration
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
@@ -79,6 +80,26 @@ class ImageStorageService(
                 )
                 .build()
         ).url().toString()
+    }
+
+    fun downloadImage(key: String): ByteArray {
+        ensureBucketExistsIfNeeded()
+        return s3Client.getObjectAsBytes(
+            GetObjectRequest.builder()
+                .bucket(properties.bucket)
+                .key(key)
+                .build()
+        ).asByteArray()
+    }
+
+    fun deleteImage(key: String) {
+        ensureBucketExistsIfNeeded()
+        s3Client.deleteObject(
+            DeleteObjectRequest.builder()
+                .bucket(properties.bucket)
+                .key(key)
+                .build()
+        )
     }
 
     private fun ensureBucketExistsIfNeeded() {

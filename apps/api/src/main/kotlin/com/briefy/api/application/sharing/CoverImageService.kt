@@ -25,17 +25,19 @@ class CoverImageService(
     private val logger = LoggerFactory.getLogger(CoverImageService::class.java)
 
     fun generateAndStore(source: Source, userId: UUID): CoverImageResult? {
-        val config = imageGenSettingsService.resolveConfig(userId)
-        if (config == null) {
-            logger.info(
-                "[service] Cover image generation skipped sourceId={} userId={} reason=image_gen_not_configured",
-                source.id,
-                userId
-            )
-            return null
-        }
-
+        var uploadedFeaturedKey: String? = null
+        var uploadedCoverKey: String? = null
         return try {
+            val config = imageGenSettingsService.resolveConfig(userId)
+            if (config == null) {
+                logger.info(
+                    "[service] Cover image generation skipped sourceId={} userId={} reason=image_gen_not_configured",
+                    source.id,
+                    userId
+                )
+                return null
+            }
+
             val topicNames = activeTopicNames(source.id, userId)
             val sourceTitle = sourceTitle(source)
             logger.info(
@@ -58,8 +60,10 @@ class CoverImageService(
             val featuredKey = featuredKey(source.id)
 
             imageStorageService.uploadImage(coverKey, rawBytes)
+            uploadedCoverKey = coverKey
             val featuredBytes = coverImageCompositor.composite(rawBytes, sourceTitle(source))
             imageStorageService.uploadImage(featuredKey, featuredBytes)
+            uploadedFeaturedKey = featuredKey
 
             logger.info(
                 "[service] Cover image generation completed sourceId={} userId={} model={} coverKey={} featuredKey={} originalBytes={} featuredBytes={}",
@@ -77,6 +81,8 @@ class CoverImageService(
                 featuredKey = featuredKey
             )
         } catch (ex: Exception) {
+            cleanupUploadedImage(uploadedFeaturedKey, source.id, userId)
+            cleanupUploadedImage(uploadedCoverKey, source.id, userId)
             logger.warn(
                 "[service] Cover image generation failed sourceId={} userId={}",
                 source.id,
@@ -127,4 +133,19 @@ class CoverImageService(
     private fun originalKey(sourceId: UUID): String = "images/covers/$sourceId/original.png"
 
     private fun featuredKey(sourceId: UUID): String = "images/covers/$sourceId/featured.png"
+
+    private fun cleanupUploadedImage(key: String?, sourceId: UUID, userId: UUID) {
+        val imageKey = key?.trim()?.ifBlank { null } ?: return
+        try {
+            imageStorageService.deleteImage(imageKey)
+        } catch (ex: Exception) {
+            logger.warn(
+                "[service] Cover image cleanup failed sourceId={} userId={} key={}",
+                sourceId,
+                userId,
+                imageKey,
+                ex
+            )
+        }
+    }
 }

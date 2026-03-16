@@ -27,6 +27,12 @@ const VALIDITY_OPTIONS: { value: Validity; label: string }[] = [
   { value: 'never', label: 'Never expires' },
 ]
 
+function sortLinksNewestFirst(links: ShareLinkDto[]): ShareLinkDto[] {
+  return [...links].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )
+}
+
 function computeExpiresAt(validity: Validity): string | undefined {
   if (validity === 'never') return undefined
   const ms = { '7d': 604800000, '30d': 2592000000, '90d': 7776000000 }[validity]
@@ -94,7 +100,7 @@ export function ShareDialog({
     setLoadingLinks(true)
     try {
       const result = await listShareLinks('SOURCE', sourceId)
-      setLinks(result)
+      setLinks(sortLinksNewestFirst(result))
     } catch {
       // silent
     } finally {
@@ -118,7 +124,7 @@ export function ShareDialog({
       const expiresAt = computeExpiresAt(validity)
       const link = await createShareLink('SOURCE', sourceId, expiresAt, generateCover)
       setJustCreated(link)
-      setLinks((prev) => [link, ...prev])
+      setLinks((prev) => sortLinksNewestFirst([link, ...prev]))
       await copyToClipboard(link.token)
     } catch {
       // silent

@@ -191,6 +191,11 @@ function SharedSourcePage() {
             {source.title ?? source.url}
           </h1>
         )}
+        {source.coverImageUrl && (
+          <h1 className="sr-only">
+            {source.title ?? source.url}
+          </h1>
+        )}
 
         {meta.length > 0 && (
           <div className={`${source.coverImageUrl ? 'mt-4' : 'mt-3'} flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground`}>

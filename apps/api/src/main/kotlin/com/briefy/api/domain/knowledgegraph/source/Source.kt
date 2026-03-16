@@ -69,6 +69,7 @@ class Source(
     fun completeExtraction(content: Content, metadata: Metadata) {
         this.content = content
         this.metadata = metadata
+        clearGeneratedImages()
         clearNarration()
         markUnread()
         transitionTo(SourceStatus.ACTIVE)
@@ -99,6 +100,7 @@ class Source(
         }
         this.content = content
         this.metadata = metadata
+        clearGeneratedImages()
         clearNarration()
         markUnread()
         markTopicExtractionPending()
@@ -159,6 +161,11 @@ class Source(
 
     fun hasGeneratedCoverImage(): Boolean {
         return !coverImageKey.isNullOrBlank() || !featuredImageKey.isNullOrBlank()
+    }
+
+    private fun clearGeneratedImages() {
+        coverImageKey = null
+        featuredImageKey = null
     }
 
     fun markRead(): Boolean {

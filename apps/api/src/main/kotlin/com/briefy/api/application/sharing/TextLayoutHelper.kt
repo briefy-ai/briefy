@@ -44,7 +44,7 @@ object TextLayoutHelper {
             return lines.take(maxLines)
         }
         if (lines.size == maxLines && words.joinToString(" ") != lines.joinToString(" ")) {
-            lines[maxLines - 1] = ellipsize(lines[maxLines - 1], fontMetrics, maxWidth)
+            lines[maxLines - 1] = forceEllipsis(lines[maxLines - 1], fontMetrics, maxWidth)
         }
         return lines
     }
@@ -59,5 +59,13 @@ object TextLayoutHelper {
             candidate = candidate.dropLast(1)
         }
         return if (candidate.isEmpty()) ellipsis else "$candidate$ellipsis"
+    }
+
+    private fun forceEllipsis(text: String, fontMetrics: FontMetrics, maxWidth: Int): String {
+        val ellipsis = "..."
+        if (fontMetrics.stringWidth("$text$ellipsis") <= maxWidth) {
+            return "$text$ellipsis"
+        }
+        return ellipsize(text, fontMetrics, maxWidth)
     }
 }
