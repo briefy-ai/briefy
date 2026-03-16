@@ -11,7 +11,8 @@ data class CreateShareLinkRequest(
     val entityType: ShareLinkEntityType,
     @field:NotNull(message = "entityId is required")
     val entityId: UUID,
-    val expiresAt: Instant? = null
+    val expiresAt: Instant? = null,
+    val generateCoverImage: Boolean = false
 )
 
 data class ShareLinkResponse(
@@ -27,6 +28,7 @@ data class SharedSourceData(
     val title: String?,
     val url: String,
     val sourceType: String,
+    val coverImageUrl: String?,
     val author: String?,
     val publishedDate: Instant?,
     val readingTimeMinutes: Int?,

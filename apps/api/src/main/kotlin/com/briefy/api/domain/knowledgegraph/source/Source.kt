@@ -54,7 +54,13 @@ class Source(
     var narrationState: NarrationState = NarrationState.NOT_GENERATED,
 
     @Column(name = "narration_failure_reason", columnDefinition = "TEXT")
-    var narrationFailureReason: String? = null
+    var narrationFailureReason: String? = null,
+
+    @Column(name = "cover_image_key", length = 512)
+    var coverImageKey: String? = null,
+
+    @Column(name = "featured_image_key", length = 512)
+    var featuredImageKey: String? = null
 ) {
     fun startExtraction() {
         transitionTo(SourceStatus.EXTRACTING)
@@ -63,6 +69,7 @@ class Source(
     fun completeExtraction(content: Content, metadata: Metadata) {
         this.content = content
         this.metadata = metadata
+        clearGeneratedImages()
         clearNarration()
         markUnread()
         transitionTo(SourceStatus.ACTIVE)
@@ -93,6 +100,7 @@ class Source(
         }
         this.content = content
         this.metadata = metadata
+        clearGeneratedImages()
         clearNarration()
         markUnread()
         markTopicExtractionPending()
@@ -149,6 +157,15 @@ class Source(
         audioContent = null
         narrationState = NarrationState.NOT_GENERATED
         narrationFailureReason = null
+    }
+
+    fun hasGeneratedCoverImage(): Boolean {
+        return !coverImageKey.isNullOrBlank() || !featuredImageKey.isNullOrBlank()
+    }
+
+    private fun clearGeneratedImages() {
+        coverImageKey = null
+        featuredImageKey = null
     }
 
     fun markRead(): Boolean {

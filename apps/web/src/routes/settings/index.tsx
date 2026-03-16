@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
-import { BrainCircuit, Check, Copy, Eye, EyeOff, Headphones, KeyRound, MessageCircle, Settings } from 'lucide-react'
+import { BrainCircuit, Check, Copy, Eye, EyeOff, Headphones, ImageIcon, KeyRound, MessageCircle, Settings } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -11,13 +11,16 @@ import { Toggle } from '@/components/ui/toggle'
 import { formatCostDisplay } from '@/features/audio/narrationCost'
 import { getAiSettings, updateAiUseCase } from '@/lib/api/aiSettings'
 import {
+  deleteImageGenProviderKey,
   deleteTtsProviderKey,
   deleteProviderKey,
   generateTelegramLinkCode,
   getExtractionSettings,
+  getImageGenSettings,
   getTelegramLinkStatus,
   getTtsSettings,
   unlinkTelegram,
+  updateImageGenProvider,
   updatePreferredTtsProvider,
   updateProvider,
   updateTtsProvider,
@@ -30,6 +33,7 @@ import type {
   AiProviderDto,
   AiUseCaseId,
   AiUseCaseSettingDto,
+  ImageGenSettingsResponse,
   ProviderSettingDto,
   TelegramLinkStatusResponse,
   TtsProviderSettingDto,
@@ -76,6 +80,13 @@ function SettingsPage() {
   const [inworldSaving, setInworldSaving] = useState(false)
   const [inworldRemovingKey, setInworldRemovingKey] = useState(false)
   const [preferredTtsSaving, setPreferredTtsSaving] = useState(false)
+  const [imageGenSettings, setImageGenSettings] = useState<ImageGenSettingsResponse | null>(null)
+  const [imageGenEnabled, setImageGenEnabled] = useState(false)
+  const [imageGenApiKey, setImageGenApiKey] = useState('')
+  const [imageGenModelId, setImageGenModelId] = useState('google/gemini-3.1-flash-image-preview')
+  const [showImageGenKey, setShowImageGenKey] = useState(false)
+  const [imageGenSaving, setImageGenSaving] = useState(false)
+  const [imageGenRemovingKey, setImageGenRemovingKey] = useState(false)
   const [topicProvider, setTopicProvider] = useState<AiProviderId>('zhipuai')
   const [topicModel, setTopicModel] = useState<string>('')
   const [formatterProvider, setFormatterProvider] = useState<AiProviderId>('zhipuai')
@@ -93,15 +104,17 @@ function SettingsPage() {
       setLoading(true)
       setError(null)
       try {
-        const [extractionData, ttsData, aiData, telegramData] = await Promise.all([
+        const [extractionData, ttsData, imageGenData, aiData, telegramData] = await Promise.all([
           getExtractionSettings(),
           getTtsSettings(),
+          getImageGenSettings(),
           getAiSettings(),
           getTelegramLinkStatus(),
         ])
         if (!mounted) return
         setProviders(extractionData.providers)
         applyTtsState(ttsData)
+        applyImageGenState(imageGenData)
         setAiProviders(aiData.providers)
         setAiUseCases(aiData.useCases)
         setTelegramStatus(telegramData)
@@ -249,6 +262,12 @@ function SettingsPage() {
     setInworldModelId(inworld?.selectedModelId ?? 'inworld-tts-1.5-mini')
   }
 
+  const applyImageGenState = (data: ImageGenSettingsResponse) => {
+    setImageGenSettings(data)
+    setImageGenEnabled(data.enabled)
+    setImageGenModelId(data.selectedModel)
+  }
+
   const savePreferredTtsSettings = async () => {
     setPreferredTtsSaving(true)
     setError(null)
@@ -321,6 +340,42 @@ function SettingsPage() {
       } else {
         setInworldRemovingKey(false)
       }
+    }
+  }
+
+  const saveImageGenSettings = async () => {
+    setImageGenSaving(true)
+    setError(null)
+    setSuccessMessage(null)
+    try {
+      const data = await updateImageGenProvider({
+        enabled: imageGenEnabled,
+        apiKey: imageGenApiKey.trim() || undefined,
+        modelId: imageGenModelId,
+      })
+      applyImageGenState(data)
+      setImageGenApiKey('')
+      setSuccessMessage('Image generation settings updated.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update image generation settings')
+    } finally {
+      setImageGenSaving(false)
+    }
+  }
+
+  const removeImageGenKey = async () => {
+    setImageGenRemovingKey(true)
+    setError(null)
+    setSuccessMessage(null)
+    try {
+      const data = await deleteImageGenProviderKey()
+      applyImageGenState(data)
+      setImageGenApiKey('')
+      setSuccessMessage('Image generation key removed.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to remove image generation key')
+    } finally {
+      setImageGenRemovingKey(false)
     }
   }
 
@@ -472,6 +527,13 @@ function SettingsPage() {
             >
               <Headphones className="size-4" />
               TTS
+            </a>
+            <a
+              href="#image-generation"
+              className="mt-1 flex items-center gap-2 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ImageIcon className="size-4" />
+              Image Generation
             </a>
             <a
               href="#ai-models"
@@ -867,6 +929,97 @@ function SettingsPage() {
                   disabled={inworldRemovingKey || !inworldProvider?.configured}
                 >
                   {inworldRemovingKey ? 'Removing...' : 'Remove key'}
+                </Button>
+              </CardFooter>
+            </Card>
+          </div>
+
+          <div id="image-generation" className="space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold tracking-tight">Image Generation</h2>
+              <p className="text-sm text-muted-foreground">
+                Configure OpenRouter for AI-generated cover images used in shared source links.
+              </p>
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  OpenRouter
+                  {imageGenSettings?.configured && <Badge variant="secondary">Configured</Badge>}
+                </CardTitle>
+                <CardDescription>
+                  Generates raw cover artwork before Briefy composites the branded share image.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border px-3 py-2 text-xs text-muted-foreground">
+                  Share-link cover generation is opt-in per link. Briefy will only generate images when you enable it in the share dialog.
+                </div>
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Enable OpenRouter</p>
+                    <p className="text-xs text-muted-foreground">Use your own API key for shared cover image generation.</p>
+                  </div>
+                  <Toggle
+                    pressed={imageGenEnabled}
+                    onPressedChange={setImageGenEnabled}
+                    variant="outline"
+                    aria-label="Toggle OpenRouter image generation"
+                    className="min-w-16"
+                  >
+                    {imageGenEnabled ? 'On' : 'Off'}
+                  </Toggle>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Model</label>
+                  <Select value={imageGenModelId} onValueChange={setImageGenModelId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(imageGenSettings?.models ?? []).map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
+                          {model.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="image-gen-api-key" className="text-sm font-medium">
+                    API key
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="image-gen-api-key"
+                      type={showImageGenKey ? 'text' : 'password'}
+                      placeholder={imageGenSettings?.configured ? 'Configured (enter to replace)' : 'sk-or-v1-...'}
+                      value={imageGenApiKey}
+                      onChange={(event) => setImageGenApiKey(event.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setShowImageGenKey((current) => !current)}
+                    >
+                      {showImageGenKey ? <EyeOff /> : <Eye />}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="gap-2">
+                <Button type="button" onClick={() => void saveImageGenSettings()} disabled={imageGenSaving || loading}>
+                  {imageGenSaving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void removeImageGenKey()}
+                  disabled={imageGenRemovingKey || !imageGenSettings?.configured}
+                >
+                  {imageGenRemovingKey ? 'Removing...' : 'Remove key'}
                 </Button>
               </CardFooter>
             </Card>

@@ -45,6 +45,7 @@ export interface Source {
   url: SourceUrl
   status: 'submitted' | 'extracting' | 'active' | 'failed' | 'archived'
   sourceType: 'news' | 'blog' | 'research' | 'video'
+  hasGeneratedCoverImage: boolean
   content: SourceContent | null
   metadata: SourceMetadata | null
   topicExtractionState: 'pending' | 'succeeded' | 'failed'
@@ -221,6 +222,24 @@ export interface UpdateTtsProviderRequest {
 
 export interface UpdatePreferredTtsProviderRequest {
   preferredProvider: TtsProviderType
+}
+
+export interface ImageGenModelDto {
+  id: string
+  label: string
+}
+
+export interface ImageGenSettingsResponse {
+  enabled: boolean
+  configured: boolean
+  selectedModel: string
+  models: ImageGenModelDto[]
+}
+
+export interface UpdateImageGenProviderRequest {
+  enabled: boolean
+  apiKey?: string
+  modelId?: string
 }
 
 export interface TelegramLinkStatusResponse {

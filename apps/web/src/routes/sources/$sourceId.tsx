@@ -410,6 +410,10 @@ function SourceDetailPage() {
         open={shareOpen}
         onOpenChange={setShareOpen}
         sourceId={sourceId}
+        hasGeneratedCoverImage={source.hasGeneratedCoverImage}
+        onGeneratedCoverImage={() => {
+          setSource((current) => (current ? { ...current, hasGeneratedCoverImage: true } : current))
+        }}
       />
 
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>

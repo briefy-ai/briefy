@@ -53,6 +53,15 @@ class UserExtractionSettings(
     @Column(name = "tts_preferred_provider", nullable = false, length = 30)
     var ttsPreferredProvider: TtsProviderType = TtsProviderType.ELEVENLABS,
 
+    @Column(name = "openrouter_enabled", nullable = false)
+    var openrouterEnabled: Boolean = false,
+
+    @Column(name = "openrouter_api_key_encrypted", columnDefinition = "TEXT")
+    var openrouterApiKeyEncrypted: String? = null,
+
+    @Column(name = "openrouter_image_model", length = 100)
+    var openrouterImageModel: String? = null,
+
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant = Instant.now(),
 

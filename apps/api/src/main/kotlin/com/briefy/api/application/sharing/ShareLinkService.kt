@@ -10,6 +10,7 @@ import com.briefy.api.domain.knowledgegraph.source.SourceType
 import com.briefy.api.domain.sharing.ShareLink
 import com.briefy.api.domain.sharing.ShareLinkEntityType
 import com.briefy.api.domain.sharing.ShareLinkRepository
+import com.briefy.api.infrastructure.imagegen.ImageStorageService
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.briefy.api.infrastructure.tts.AudioStorageService
 import com.briefy.api.infrastructure.tts.ElevenLabsTtsProperties
@@ -18,10 +19,10 @@ import com.briefy.api.infrastructure.tts.TtsVoiceResolver
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.util.HtmlUtils
 import java.awt.Color
 import java.awt.Font
-import java.awt.FontMetrics
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
@@ -36,27 +37,56 @@ class ShareLinkService(
     private val currentUserProvider: CurrentUserProvider,
     private val sharedAudioCacheRepository: SharedAudioCacheRepository,
     private val audioStorageService: AudioStorageService,
+    private val imageStorageService: ImageStorageService,
     private val ttsVoiceResolver: TtsVoiceResolver,
     private val elevenLabsProperties: ElevenLabsTtsProperties,
-    private val originalVideoAudioService: OriginalVideoAudioService
+    private val originalVideoAudioService: OriginalVideoAudioService,
+    private val coverImageService: CoverImageService,
+    private val transactionTemplate: TransactionTemplate
 ) {
     private val logger = LoggerFactory.getLogger(ShareLinkService::class.java)
 
-    @Transactional
     fun create(request: CreateShareLinkRequest): ShareLinkResponse {
         val userId = currentUserProvider.requireUserId()
         logger.info("[service] Creating share link userId={} entityType={} entityId={}", userId, request.entityType, request.entityId)
 
-        validateEntityOwnership(userId, request.entityType, request.entityId)
+        val source = validateEntityOwnership(userId, request.entityType, request.entityId)
+        val shouldGenerateCover = request.generateCoverImage && source != null && !source.hasGeneratedCoverImage()
+        if (request.generateCoverImage && source != null && !shouldGenerateCover) {
+            logger.info(
+                "[service] Cover image generation skipped sourceId={} userId={} reason=existing_generated_image",
+                source.id,
+                userId
+            )
+        }
+        val coverResult = if (shouldGenerateCover) {
+            coverImageService.generateAndStore(source, userId)
+        } else {
+            null
+        }
 
-        val shareLink = ShareLink(
-            token = ShareLink.generateToken(),
-            entityType = request.entityType,
-            entityId = request.entityId,
-            userId = userId,
-            expiresAt = request.expiresAt
-        )
-        shareLinkRepository.save(shareLink)
+        val shareLink = transactionTemplate.execute<ShareLink> {
+            val createdShareLink = ShareLink(
+                token = ShareLink.generateToken(),
+                entityType = request.entityType,
+                entityId = request.entityId,
+                userId = userId,
+                expiresAt = request.expiresAt
+            )
+            shareLinkRepository.save(createdShareLink)
+
+            if (coverResult != null && request.entityType == ShareLinkEntityType.SOURCE) {
+                val sourceToUpdate = sourceRepository.findByIdAndUserId(request.entityId, userId)
+                    ?: throw IllegalArgumentException("Source not found: ${request.entityId}")
+                sourceToUpdate.coverImageKey = coverResult.coverKey
+                sourceToUpdate.featuredImageKey = coverResult.featuredKey
+                sourceToUpdate.updatedAt = Instant.now()
+                sourceRepository.save(sourceToUpdate)
+            }
+
+            createdShareLink
+        } ?: throw IllegalStateException("Failed to create share link")
+
         logger.info("[service] Share link created id={} userId={}", shareLink.id, userId)
         return shareLink.toResponse()
     }
@@ -169,8 +199,8 @@ class ShareLinkService(
         return shareLink
     }
 
-    private fun validateEntityOwnership(userId: UUID, entityType: ShareLinkEntityType, entityId: UUID) {
-        when (entityType) {
+    private fun validateEntityOwnership(userId: UUID, entityType: ShareLinkEntityType, entityId: UUID): Source? {
+        return when (entityType) {
             ShareLinkEntityType.SOURCE -> {
                 sourceRepository.findByIdAndUserId(entityId, userId)
                     ?: throw IllegalArgumentException("Source not found: $entityId")
@@ -196,6 +226,7 @@ class ShareLinkService(
                 title = source.metadata?.title,
                 url = source.url.raw,
                 sourceType = source.sourceType.name.lowercase(),
+                coverImageUrl = resolveFeaturedImageUrl(source),
                 author = source.metadata?.author,
                 publishedDate = source.metadata?.publishedDate,
                 readingTimeMinutes = source.metadata?.estimatedReadingTime,
@@ -300,6 +331,8 @@ class ShareLinkService(
 
     private fun resolveOgImageUrl(source: Source, baseUrl: String, token: String): String {
         val normalizedBaseUrl = baseUrl.trim().trimEnd('/')
+        resolveFeaturedImageUrl(source)?.let { return it }
+
         val metadataOgImageUrl = source.metadata?.ogImageUrl?.trim()
         if (!metadataOgImageUrl.isNullOrBlank()) {
             return metadataOgImageUrl
@@ -325,6 +358,21 @@ class ShareLinkService(
         }
     }
 
+    private fun resolveFeaturedImageUrl(source: Source): String? {
+        val featuredImageKey = source.featuredImageKey?.trim()?.ifBlank { null } ?: return null
+        return try {
+            imageStorageService.generatePresignedGetUrl(featuredImageKey)
+        } catch (ex: Exception) {
+            logger.warn(
+                "[service] Share featured image presign failed sourceId={} key={}",
+                source.id,
+                featuredImageKey,
+                ex
+            )
+            null
+        }
+    }
+
     private fun renderOgImage(source: Source): ByteArray {
         val image = BufferedImage(OG_IMAGE_WIDTH, OG_IMAGE_HEIGHT, BufferedImage.TYPE_INT_RGB)
         val graphics = image.createGraphics()
@@ -340,7 +388,7 @@ class ShareLinkService(
             val title = source.metadata?.title?.trim()?.ifBlank { null } ?: source.url.raw
             graphics.font = Font("SansSerif", Font.BOLD, 48)
             graphics.color = Color(0xFF, 0xFF, 0xFF)
-            val titleLines = wrapText(
+            val titleLines = TextLayoutHelper.wrapText(
                 text = title,
                 fontMetrics = graphics.fontMetrics,
                 maxWidth = OG_IMAGE_WIDTH - (OG_IMAGE_HORIZONTAL_PADDING * 2),
@@ -375,64 +423,6 @@ class ShareLinkService(
             ImageIO.write(image, "png", output)
             output.toByteArray()
         }
-    }
-
-    private fun wrapText(text: String, fontMetrics: FontMetrics, maxWidth: Int, maxLines: Int): List<String> {
-        val normalizedText = text.replace(Regex("\\s+"), " ").trim().ifBlank { "Briefy AI" }
-        val words = normalizedText.split(" ")
-        val lines = mutableListOf<String>()
-        var currentLine = StringBuilder()
-
-        fun flushLine() {
-            if (currentLine.isNotEmpty()) {
-                lines.add(currentLine.toString())
-                currentLine = StringBuilder()
-            }
-        }
-
-        for (word in words) {
-            val candidate = if (currentLine.isEmpty()) word else "${currentLine} $word"
-            if (fontMetrics.stringWidth(candidate) <= maxWidth) {
-                currentLine = StringBuilder(candidate)
-                continue
-            }
-
-            flushLine()
-            if (lines.size == maxLines) {
-                break
-            }
-
-            if (fontMetrics.stringWidth(word) <= maxWidth) {
-                currentLine.append(word)
-            } else {
-                currentLine.append(ellipsize(word, fontMetrics, maxWidth))
-                flushLine()
-            }
-        }
-        flushLine()
-
-        if (lines.isEmpty()) {
-            return listOf("Briefy AI")
-        }
-        if (lines.size > maxLines) {
-            return lines.take(maxLines)
-        }
-        if (lines.size == maxLines && words.joinToString(" ") != lines.joinToString(" ")) {
-            lines[maxLines - 1] = ellipsize(lines[maxLines - 1], fontMetrics, maxWidth)
-        }
-        return lines
-    }
-
-    private fun ellipsize(text: String, fontMetrics: FontMetrics, maxWidth: Int): String {
-        if (fontMetrics.stringWidth(text) <= maxWidth) {
-            return text
-        }
-        val ellipsis = "..."
-        var candidate = text
-        while (candidate.isNotEmpty() && fontMetrics.stringWidth("$candidate$ellipsis") > maxWidth) {
-            candidate = candidate.dropLast(1)
-        }
-        return if (candidate.isEmpty()) ellipsis else "$candidate$ellipsis"
     }
 
     private fun loadDefaultOgImage(): ByteArray {
