@@ -407,14 +407,26 @@ function AdvancedSection() {
 
   function handleTopicProviderChange(value: AiProviderId) {
     setTopicProvider(value)
+    setTopicSaved(false)
     const models = aiProviders.find((p) => p.id === value)?.models ?? []
     if (models.length > 0) setTopicModel(models[0].id)
   }
 
+  function handleTopicModelChange(value: string) {
+    setTopicModel(value)
+    setTopicSaved(false)
+  }
+
   function handleFormatterProviderChange(value: AiProviderId) {
     setFormatterProvider(value)
+    setFormatterSaved(false)
     const models = aiProviders.find((p) => p.id === value)?.models ?? []
     if (models.length > 0) setFormatterModel(models[0].id)
+  }
+
+  function handleFormatterModelChange(value: string) {
+    setFormatterModel(value)
+    setFormatterSaved(false)
   }
 
   async function saveTopic() {
@@ -525,7 +537,7 @@ function AdvancedSection() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Select value={topicModel} onValueChange={setTopicModel}>
+                    <Select value={topicModel} onValueChange={handleTopicModelChange}>
                       <SelectTrigger className="h-9 text-xs">
                         <SelectValue placeholder="Model" />
                       </SelectTrigger>
@@ -562,7 +574,7 @@ function AdvancedSection() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <Select value={formatterModel} onValueChange={setFormatterModel}>
+                    <Select value={formatterModel} onValueChange={handleFormatterModelChange}>
                       <SelectTrigger className="h-9 text-xs">
                         <SelectValue placeholder="Model" />
                       </SelectTrigger>

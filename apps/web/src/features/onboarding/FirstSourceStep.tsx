@@ -26,7 +26,7 @@ export function FirstSourceStep({ onComplete, onSkip }: FirstSourceStepProps) {
     try {
       await createSource({ url: url.trim() })
       setAdded(true)
-      setTimeout(onComplete, 800)
+      setTimeout(() => void onComplete(), 800)
     } catch (e) {
       if (e instanceof ApiClientError) {
         setError(e.apiError?.message ?? e.message)

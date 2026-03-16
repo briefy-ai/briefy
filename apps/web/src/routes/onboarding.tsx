@@ -1,6 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { Stepper } from '@/components/ui/stepper'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { completeOnboarding } from '@/lib/api/auth'
 import { requireAuth } from '@/lib/auth/requireAuth'
 import { loadCurrentUser } from '@/lib/auth/session'
@@ -27,6 +28,7 @@ function OnboardingPage() {
   const navigate = useNavigate()
   const { refreshUser } = useAuth()
   const [currentStep, setCurrentStep] = useState(0)
+  const [finishError, setFinishError] = useState<string | null>(null)
   const [selectedFeatures, setSelectedFeatures] = useState<Set<OnboardingFeature>>(
     () => new Set(['web', 'youtube']),
   )
@@ -64,11 +66,16 @@ function OnboardingPage() {
     setCurrentStep(needsConfigStep ? 2 : 1)
   }
 
-  async function finishOnboarding() {
-    await completeOnboarding()
-    await refreshUser()
-    await navigate({ to: '/sources' })
-  }
+  const finishOnboarding = useCallback(async () => {
+    setFinishError(null)
+    try {
+      await completeOnboarding()
+      await refreshUser()
+      await navigate({ to: '/sources' })
+    } catch {
+      setFinishError('Something went wrong completing setup. Please try again.')
+    }
+  }, [refreshUser, navigate])
 
   const effectiveStep = needsConfigStep ? currentStep : currentStep === 0 ? 0 : currentStep + 1
 
@@ -82,6 +89,12 @@ function OnboardingPage() {
         </div>
 
         <Stepper steps={steps} currentStep={currentStep} />
+
+        {finishError && (
+          <Alert variant="destructive">
+            <AlertDescription>{finishError}</AlertDescription>
+          </Alert>
+        )}
 
         <div className="mt-8">
           {effectiveStep === 0 && (

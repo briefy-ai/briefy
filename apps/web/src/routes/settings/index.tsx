@@ -1082,14 +1082,14 @@ function SettingsPage() {
 
 function SetupGuideCard() {
   const navigate = useNavigate()
-  const { refreshUser } = useAuth()
+  const { setUser } = useAuth()
   const [resetting, setResetting] = useState(false)
 
   async function handleRunSetup() {
     setResetting(true)
     try {
-      await resetOnboarding()
-      await refreshUser()
+      const updatedUser = await resetOnboarding()
+      setUser(updatedUser)
       await navigate({ to: '/onboarding' })
     } finally {
       setResetting(false)
