@@ -33,6 +33,35 @@ function computeExpiresAt(validity: Validity): string | undefined {
   return new Date(Date.now() + ms).toISOString()
 }
 
+function formatCreatedAt(createdAt: string): string {
+  const createdDate = new Date(createdAt)
+  const diffMs = Date.now() - createdDate.getTime()
+  const minuteMs = 60 * 1000
+  const hourMs = 60 * minuteMs
+  const dayMs = 24 * hourMs
+
+  if (diffMs < hourMs) {
+    const minutes = Math.max(1, Math.floor(diffMs / minuteMs))
+    return `Created ${minutes} min ago`
+  }
+
+  if (diffMs < dayMs) {
+    const hours = Math.max(1, Math.floor(diffMs / hourMs))
+    return `Created ${hours} hr ago`
+  }
+
+  if (diffMs < 30 * dayMs) {
+    const days = Math.max(1, Math.floor(diffMs / dayMs))
+    return `Created ${days} day${days === 1 ? '' : 's'} ago`
+  }
+
+  return `Created ${createdDate.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })}`
+}
+
 interface ShareDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -211,13 +240,18 @@ export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) 
                 {links.map((link) => (
                   <div
                     key={link.id}
-                    className="flex items-center justify-between rounded-md border px-3 py-1.5 text-xs"
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-xs"
                   >
-                    <span className="text-muted-foreground">
-                      {link.expiresAt
-                        ? `Expires ${new Date(link.expiresAt).toLocaleDateString()}`
-                        : 'Never expires'}
-                    </span>
+                    <div className="min-w-0">
+                      <p className="text-muted-foreground">
+                        {link.expiresAt
+                          ? `Expires ${new Date(link.expiresAt).toLocaleDateString()}`
+                          : 'Never expires'}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground/80">
+                        {formatCreatedAt(link.createdAt)}
+                      </p>
+                    </div>
                     <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
