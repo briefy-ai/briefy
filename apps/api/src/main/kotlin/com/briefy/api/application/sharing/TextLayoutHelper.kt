@@ -63,9 +63,10 @@ object TextLayoutHelper {
 
     private fun forceEllipsis(text: String, fontMetrics: FontMetrics, maxWidth: Int): String {
         val ellipsis = "..."
-        if (fontMetrics.stringWidth("$text$ellipsis") <= maxWidth) {
-            return "$text$ellipsis"
+        var candidate = text
+        while (candidate.isNotEmpty() && fontMetrics.stringWidth("$candidate$ellipsis") > maxWidth) {
+            candidate = candidate.dropLast(1)
         }
-        return ellipsize(text, fontMetrics, maxWidth)
+        return if (candidate.isEmpty()) ellipsis else "$candidate$ellipsis"
     }
 }

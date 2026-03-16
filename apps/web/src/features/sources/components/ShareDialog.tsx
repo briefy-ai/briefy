@@ -73,6 +73,7 @@ interface ShareDialogProps {
   onOpenChange: (open: boolean) => void
   sourceId: string
   hasGeneratedCoverImage: boolean
+  onGeneratedCoverImage?: () => void
 }
 
 export function ShareDialog({
@@ -80,6 +81,7 @@ export function ShareDialog({
   onOpenChange,
   sourceId,
   hasGeneratedCoverImage,
+  onGeneratedCoverImage,
 }: ShareDialogProps) {
   const [validity, setValidity] = useState<Validity>('never')
   const [generateCover, setGenerateCover] = useState(false)
@@ -123,6 +125,9 @@ export function ShareDialog({
     try {
       const expiresAt = computeExpiresAt(validity)
       const link = await createShareLink('SOURCE', sourceId, expiresAt, generateCover)
+      if (generateCover && !hasGeneratedCoverImage) {
+        onGeneratedCoverImage?.()
+      }
       setJustCreated(link)
       setLinks((prev) => sortLinksNewestFirst([link, ...prev]))
       await copyToClipboard(link.token)

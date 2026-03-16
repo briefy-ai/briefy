@@ -8,9 +8,6 @@ import org.springframework.web.client.HttpStatusCodeException
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 import java.io.ByteArrayOutputStream
-import java.net.InetAddress
-import java.net.URI
-import java.net.UnknownHostException
 import java.util.Base64
 import javax.imageio.ImageIO
 
@@ -22,7 +19,6 @@ class OpenRouterImageClient(
     private val objectMapper: ObjectMapper
 ) {
     private val restClient = restClientBuilder.baseUrl("https://openrouter.ai").build()
-    private val downloadClient = restClientBuilder.build()
 
     fun generate(
         apiKey: String,
@@ -109,7 +105,7 @@ class OpenRouterImageClient(
 
         val imageBytes = when {
             url.startsWith("data:", ignoreCase = true) -> decodeDataUrl(url)
-            else -> downloadImage(url)
+            else -> throw ImageGenerationException("OpenRouter returned an unsupported remote image URL")
         }
 
         return normalizeToPng(imageBytes)
@@ -152,54 +148,6 @@ class OpenRouterImageClient(
         } catch (ex: IllegalArgumentException) {
             throw ImageGenerationException("OpenRouter returned invalid base64 image data", ex)
         }
-    }
-
-    private fun downloadImage(url: String): ByteArray {
-        val imageUri = validateImageUri(url)
-
-        return downloadClient.get()
-            .uri(imageUri)
-            .retrieve()
-            .body(ByteArray::class.java)
-            ?: throw ImageGenerationException("Image download returned an empty body")
-    }
-
-    private fun validateImageUri(url: String): URI {
-        if (url.isBlank()) {
-            throw ImageGenerationException("OpenRouter returned an empty image URL")
-        }
-
-        val imageUri = try {
-            URI.create(url)
-        } catch (ex: IllegalArgumentException) {
-            throw ImageGenerationException("OpenRouter returned an invalid image URL", ex)
-        }
-
-        if (!imageUri.scheme.equals("https", ignoreCase = true)) {
-            throw ImageGenerationException("OpenRouter returned a non-HTTPS image URL")
-        }
-
-        val host = imageUri.host?.trim()?.ifBlank { null }
-            ?: throw ImageGenerationException("OpenRouter returned an image URL without a host")
-        val addresses = try {
-            InetAddress.getAllByName(host)
-        } catch (ex: UnknownHostException) {
-            throw ImageGenerationException("OpenRouter returned an image URL with an unresolvable host", ex)
-        }
-
-        if (addresses.any { !it.isSafePublicAddress() }) {
-            throw ImageGenerationException("OpenRouter returned an image URL with a non-public host")
-        }
-
-        return imageUri
-    }
-
-    private fun InetAddress.isSafePublicAddress(): Boolean {
-        return !(isAnyLocalAddress
-            || isLoopbackAddress
-            || isLinkLocalAddress
-            || isSiteLocalAddress
-            || isMulticastAddress)
     }
 
     private fun normalizeToPng(imageBytes: ByteArray): ByteArray {
