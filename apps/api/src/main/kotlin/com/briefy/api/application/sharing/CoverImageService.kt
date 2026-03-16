@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.util.UUID
+import javax.imageio.ImageIO
 
 data class CoverImageResult(
     val coverKey: String,
@@ -67,10 +68,11 @@ class CoverImageService(
                 prompt = promptSelection.prompt,
                 size = "1792x1024"
             )
-            val coverKey = originalKey(source.id)
+            val originalImageFormat = detectOriginalImageFormat(rawBytes)
+            val coverKey = originalKey(source.id, originalImageFormat.extension)
             val featuredKey = featuredKey(source.id)
 
-            imageStorageService.uploadImage(coverKey, rawBytes)
+            imageStorageService.uploadImage(coverKey, rawBytes, originalImageFormat.contentType)
             uploadedCoverKey = coverKey
             val featuredBytes = coverImageCompositor.composite(rawBytes, sourceTitle(source))
             imageStorageService.uploadImage(featuredKey, featuredBytes)
@@ -146,6 +148,14 @@ class CoverImageService(
             ).trim()
 
             craftedPrompt.takeIf { it.length in MIN_CRAFTED_PROMPT_LENGTH..MAX_CRAFTED_PROMPT_LENGTH }
+                ?: run {
+                    logger.warn(
+                        "[service] Cover image prompt crafting discarded sourceId={} promptLength={} reason=out_of_bounds",
+                        source.id,
+                        craftedPrompt.length
+                    )
+                    null
+                }
         } catch (ex: Exception) {
             logger.warn(
                 "[service] Cover image prompt crafting failed sourceId={} provider={} model={}",
@@ -207,7 +217,24 @@ class CoverImageService(
             .distinct()
     }
 
-    private fun originalKey(sourceId: UUID): String = "images/covers/$sourceId/original.png"
+    private fun detectOriginalImageFormat(imageBytes: ByteArray): StoredImageFormat {
+        ImageIO.createImageInputStream(imageBytes.inputStream()).use { imageInput ->
+            requireNotNull(imageInput) { "Generated image could not be opened" }
+            val reader = ImageIO.getImageReaders(imageInput).asSequence().firstOrNull()
+                ?: throw IllegalArgumentException("Generated image format could not be detected")
+            return try {
+                when (reader.formatName.trim().lowercase()) {
+                    "png" -> StoredImageFormat(extension = "png", contentType = "image/png")
+                    "jpeg", "jpg" -> StoredImageFormat(extension = "jpg", contentType = "image/jpeg")
+                    else -> throw IllegalArgumentException("Unsupported generated image format: ${reader.formatName}")
+                }
+            } finally {
+                reader.dispose()
+            }
+        }
+    }
+
+    private fun originalKey(sourceId: UUID, extension: String): String = "images/covers/$sourceId/original.$extension"
 
     private fun featuredKey(sourceId: UUID): String = "images/covers/$sourceId/featured.jpg"
 
@@ -229,6 +256,11 @@ class CoverImageService(
     private data class PromptSelection(
         val prompt: String,
         val wasCrafted: Boolean
+    )
+
+    private data class StoredImageFormat(
+        val extension: String,
+        val contentType: String
     )
 
     companion object {

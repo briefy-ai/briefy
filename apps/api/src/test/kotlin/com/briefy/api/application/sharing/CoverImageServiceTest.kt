@@ -23,7 +23,11 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.awt.Color
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
 import java.util.UUID
+import javax.imageio.ImageIO
 
 class CoverImageServiceTest {
     private val imageGenSettingsService: ImageGenSettingsService = mock()
@@ -39,7 +43,7 @@ class CoverImageServiceTest {
     fun `generateAndStore returns both keys on happy path`() {
         val userId = UUID.randomUUID()
         val source = createActiveSource(userId)
-        val originalBytes = "original".toByteArray()
+        val originalBytes = createPngBytes()
         val featuredBytes = "featured".toByteArray()
 
         whenever(imageGenSettingsService.resolveConfig(userId)).thenReturn(
@@ -63,7 +67,7 @@ class CoverImageServiceTest {
 
         assertEquals("images/covers/${source.id}/original.png", result?.coverKey)
         assertEquals("images/covers/${source.id}/featured.jpg", result?.featuredKey)
-        verify(imageStorageService).uploadImage("images/covers/${source.id}/original.png", originalBytes)
+        verify(imageStorageService).uploadImage("images/covers/${source.id}/original.png", originalBytes, "image/png")
         verify(imageStorageService).uploadImage("images/covers/${source.id}/featured.jpg", featuredBytes)
 
         val promptCaptor = argumentCaptor<String>()
@@ -91,7 +95,7 @@ class CoverImageServiceTest {
     fun `generateAndStore falls back to raw prompt when prompt crafting fails`() {
         val userId = UUID.randomUUID()
         val source = createActiveSource(userId)
-        val originalBytes = "original".toByteArray()
+        val originalBytes = createPngBytes()
         val featuredBytes = "featured".toByteArray()
 
         whenever(imageGenSettingsService.resolveConfig(userId)).thenReturn(
@@ -123,7 +127,7 @@ class CoverImageServiceTest {
         val disabledService = createService(promptCraftingEnabled = false)
         val userId = UUID.randomUUID()
         val source = createActiveSource(userId)
-        val originalBytes = "original".toByteArray()
+        val originalBytes = createPngBytes()
         val featuredBytes = "featured".toByteArray()
 
         whenever(imageGenSettingsService.resolveConfig(userId)).thenReturn(
@@ -174,6 +178,58 @@ class CoverImageServiceTest {
         verify(coverImageCompositor, never()).composite(any(), any())
     }
 
+    @Test
+    fun `generateAndStore stores jpeg originals with matching extension and content type`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId)
+        val originalBytes = createJpegBytes()
+        val featuredBytes = "featured".toByteArray()
+
+        whenever(imageGenSettingsService.resolveConfig(userId)).thenReturn(
+            ResolvedImageGenConfig(
+                apiKey = "or-key",
+                model = "google/gemini-3.1-flash-image-preview"
+            )
+        )
+        whenever(topicLinkRepository.findActiveTopicsBySourceIds(userId, listOf(source.id))).thenReturn(emptyList())
+        whenever(aiAdapter.complete(eq("google_genai"), eq("gemini-2.5-flash"), any(), any(), eq("cover_image_prompt_crafting")))
+            .thenReturn("A quiet editorial city scene with soft light and an uncluttered center.")
+        whenever(openRouterImageClient.generate(eq("or-key"), eq("google/gemini-3.1-flash-image-preview"), any(), eq("1792x1024"))).thenReturn(originalBytes)
+        whenever(coverImageCompositor.composite(originalBytes, "Shared Source")).thenReturn(featuredBytes)
+
+        val result = service.generateAndStore(source, userId)
+
+        assertEquals("images/covers/${source.id}/original.jpg", result?.coverKey)
+        verify(imageStorageService).uploadImage("images/covers/${source.id}/original.jpg", originalBytes, "image/jpeg")
+    }
+
+    @Test
+    fun `generateAndStore falls back when crafted prompt is out of bounds`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId)
+        val originalBytes = createPngBytes()
+        val featuredBytes = "featured".toByteArray()
+
+        whenever(imageGenSettingsService.resolveConfig(userId)).thenReturn(
+            ResolvedImageGenConfig(
+                apiKey = "or-key",
+                model = "google/gemini-3.1-flash-image-preview"
+            )
+        )
+        whenever(topicLinkRepository.findActiveTopicsBySourceIds(userId, listOf(source.id))).thenReturn(emptyList())
+        whenever(aiAdapter.complete(eq("google_genai"), eq("gemini-2.5-flash"), any(), any(), eq("cover_image_prompt_crafting")))
+            .thenReturn("short")
+        whenever(openRouterImageClient.generate(eq("or-key"), eq("google/gemini-3.1-flash-image-preview"), any(), eq("1792x1024"))).thenReturn(originalBytes)
+        whenever(coverImageCompositor.composite(originalBytes, "Shared Source")).thenReturn(featuredBytes)
+
+        val result = service.generateAndStore(source, userId)
+
+        assertEquals("images/covers/${source.id}/original.png", result?.coverKey)
+        val promptCaptor = argumentCaptor<String>()
+        verify(openRouterImageClient).generate(eq("or-key"), eq("google/gemini-3.1-flash-image-preview"), promptCaptor.capture(), eq("1792x1024"))
+        assertTrue(promptCaptor.firstValue.contains("Source excerpt:"))
+    }
+
     private fun createService(promptCraftingEnabled: Boolean = true): CoverImageService {
         return CoverImageService(
             imageGenSettingsService = imageGenSettingsService,
@@ -216,6 +272,26 @@ class CoverImageServiceTest {
             override val sourceId: UUID = sourceIdValue
             override val topicId: UUID = UUID.randomUUID()
             override val topicName: String = name
+        }
+    }
+
+    private fun createPngBytes(): ByteArray = createImageBytes("png")
+
+    private fun createJpegBytes(): ByteArray = createImageBytes("jpg")
+
+    private fun createImageBytes(format: String): ByteArray {
+        val image = BufferedImage(4, 4, BufferedImage.TYPE_INT_RGB)
+        val graphics = image.createGraphics()
+        try {
+            graphics.color = Color(0x33, 0x66, 0x99)
+            graphics.fillRect(0, 0, image.width, image.height)
+        } finally {
+            graphics.dispose()
+        }
+
+        return ByteArrayOutputStream().use { output ->
+            ImageIO.write(image, format, output)
+            output.toByteArray()
         }
     }
 }

@@ -5,6 +5,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 
 ## Mistakes Log
 
+- [2026-03-16] Removed `normalizeToPng` from cover generation without updating original-image storage metadata -> raw provider bytes could be JPEG while we still stored `original.png` with `image/png` -> detect the returned image format and upload with matching extension/content type when removing image normalization steps.
 - [2026-03-15] Signed narration presigned URLs against an optional `publicEndpoint`, and also let that property bind from an empty env default -> Spring context boot failed locally with an invalid URI and the design would also break signed R2/S3 URLs on custom/public hosts -> sign against the actual S3 API endpoint only; treat browser-reachable audio delivery as a separate proxy/streaming concern rather than host-rewriting presigned URLs.
 - [2026-03-15] Re-ran backend verification with two Gradle `test` invocations in parallel against `apps/api`, which collided while writing XML reports under `build/test-results/test` -> reran the affected test selections serially and used the serial result as authoritative -> never parallelize Gradle `test` commands within the same module in this repo.
 - [2026-03-15] Ran `git commit` and `git push` in parallel, so the push raced ahead of the new commit and initially left the PR branch behind -> verified remote SHA with `git rev-parse`/`git ls-remote` and pushed again only after the commit existed -> never parallelize commit/push; commit first, then push after confirming the local branch tip.
