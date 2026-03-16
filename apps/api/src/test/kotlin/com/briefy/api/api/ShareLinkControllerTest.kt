@@ -118,6 +118,7 @@ class ShareLinkControllerTest {
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.entityType").value("SOURCE"))
             .andExpect(jsonPath("$.entityId").value(source.id.toString()))
+            .andExpect(jsonPath("$.coverImageGenerated").value(true))
 
         val updatedSource = sourceRepository.findById(source.id).orElseThrow()
         assertEquals("images/covers/${source.id}/original.png", updatedSource.coverImageKey)
@@ -141,6 +142,7 @@ class ShareLinkControllerTest {
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.entityType").value("SOURCE"))
             .andExpect(jsonPath("$.entityId").value(source.id.toString()))
+            .andExpect(jsonPath("$.coverImageGenerated").value(false))
 
         verify(coverImageService, never()).generateAndStore(any(), any())
     }

@@ -21,7 +21,8 @@ data class ShareLinkResponse(
     val entityType: ShareLinkEntityType,
     val entityId: UUID,
     val expiresAt: Instant?,
-    val createdAt: Instant
+    val createdAt: Instant,
+    val coverImageGenerated: Boolean = false
 )
 
 data class SharedSourceData(
@@ -52,11 +53,12 @@ data class ShareLinkAudioResponse(
     val audioUrl: String
 )
 
-fun ShareLink.toResponse() = ShareLinkResponse(
+fun ShareLink.toResponse(coverImageGenerated: Boolean = false) = ShareLinkResponse(
     id = id,
     token = token,
     entityType = entityType,
     entityId = entityId,
     expiresAt = expiresAt,
-    createdAt = createdAt
+    createdAt = createdAt,
+    coverImageGenerated = coverImageGenerated
 )

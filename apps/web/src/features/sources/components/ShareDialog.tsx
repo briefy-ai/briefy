@@ -128,7 +128,7 @@ export function ShareDialog({
     try {
       const expiresAt = computeExpiresAt(validity)
       const link = await createShareLink('SOURCE', sourceId, expiresAt, generateCover)
-      if (generateCover && !hasGeneratedCoverImage) {
+      if (link.coverImageGenerated) {
         onGeneratedCoverImage?.()
       }
       setJustCreated(link)

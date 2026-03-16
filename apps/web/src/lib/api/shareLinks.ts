@@ -8,6 +8,7 @@ export interface ShareLinkDto {
   entityId: string
   expiresAt: string | null
   createdAt: string
+  coverImageGenerated: boolean
 }
 
 export interface SharedSourceData {

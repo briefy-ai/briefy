@@ -88,7 +88,7 @@ class ShareLinkService(
         } ?: throw IllegalStateException("Failed to create share link")
 
         logger.info("[service] Share link created id={} userId={}", shareLink.id, userId)
-        return shareLink.toResponse()
+        return shareLink.toResponse(coverImageGenerated = coverResult != null)
     }
 
     @Transactional(readOnly = true)
