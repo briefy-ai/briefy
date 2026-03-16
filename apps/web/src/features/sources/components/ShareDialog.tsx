@@ -90,6 +90,7 @@ export function ShareDialog({
   const [links, setLinks] = useState<ShareLinkDto[]>([])
   const [loadingLinks, setLoadingLinks] = useState(false)
   const [justCreated, setJustCreated] = useState<ShareLinkDto | null>(null)
+  const [createError, setCreateError] = useState<string | null>(null)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -113,6 +114,7 @@ export function ShareDialog({
   useEffect(() => {
     if (open) {
       setJustCreated(null)
+      setCreateError(null)
       setCopiedToken(null)
       setValidity('never')
       setGenerateCover(false)
@@ -122,6 +124,7 @@ export function ShareDialog({
 
   async function handleCreate() {
     setCreating(true)
+    setCreateError(null)
     try {
       const expiresAt = computeExpiresAt(validity)
       const link = await createShareLink('SOURCE', sourceId, expiresAt, generateCover)
@@ -132,7 +135,7 @@ export function ShareDialog({
       setLinks((prev) => sortLinksNewestFirst([link, ...prev]))
       await copyToClipboard(link.token)
     } catch {
-      // silent
+      setCreateError('Failed to create share link. Please try again.')
     } finally {
       setCreating(false)
     }
@@ -265,6 +268,13 @@ export function ShareDialog({
               <span className="truncate text-muted-foreground">
                 Link copied to clipboard
               </span>
+            </div>
+          )}
+
+          {/* Error feedback */}
+          {createError && (
+            <div className="flex items-center gap-2 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-xs">
+              <span className="text-destructive">{createError}</span>
             </div>
           )}
 
