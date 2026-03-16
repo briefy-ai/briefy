@@ -43,9 +43,10 @@ class ImageGenSettingsControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.enabled").value(false))
             .andExpect(jsonPath("$.configured").value(false))
-            .andExpect(jsonPath("$.selectedModel").value("openai/dall-e-3"))
-            .andExpect(jsonPath("$.models[0].id").value("openai/dall-e-3"))
-            .andExpect(jsonPath("$.models[1].id").value("openai/gpt-image-1"))
+            .andExpect(jsonPath("$.selectedModel").value("google/gemini-3.1-flash-image-preview"))
+            .andExpect(jsonPath("$.models[0].id").value("google/gemini-3.1-flash-image-preview"))
+            .andExpect(jsonPath("$.models[1].id").value("bytedance-seed/seedream-4.5"))
+            .andExpect(jsonPath("$.models[2].id").value("black-forest-labs/flux.2-max"))
     }
 
     @Test
@@ -53,12 +54,12 @@ class ImageGenSettingsControllerTest {
         mockMvc.perform(
             put("/api/settings/image-gen/provider")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"enabled":true,"apiKey":"or-key","modelId":"openai/gpt-image-1"}""")
+                .content("""{"enabled":true,"apiKey":"or-key","modelId":"black-forest-labs/flux.2-max"}""")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.enabled").value(true))
             .andExpect(jsonPath("$.configured").value(true))
-            .andExpect(jsonPath("$.selectedModel").value("openai/gpt-image-1"))
+            .andExpect(jsonPath("$.selectedModel").value("black-forest-labs/flux.2-max"))
     }
 
     @Test
@@ -66,7 +67,7 @@ class ImageGenSettingsControllerTest {
         mockMvc.perform(
             put("/api/settings/image-gen/provider")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"enabled":true,"apiKey":"or-key","modelId":"openai/dall-e-3"}""")
+                .content("""{"enabled":true,"apiKey":"or-key","modelId":"google/gemini-3.1-flash-image-preview"}""")
         )
             .andExpect(status().isOk)
 

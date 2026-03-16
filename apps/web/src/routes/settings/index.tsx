@@ -83,7 +83,7 @@ function SettingsPage() {
   const [imageGenSettings, setImageGenSettings] = useState<ImageGenSettingsResponse | null>(null)
   const [imageGenEnabled, setImageGenEnabled] = useState(false)
   const [imageGenApiKey, setImageGenApiKey] = useState('')
-  const [imageGenModelId, setImageGenModelId] = useState('openai/dall-e-3')
+  const [imageGenModelId, setImageGenModelId] = useState('google/gemini-3.1-flash-image-preview')
   const [showImageGenKey, setShowImageGenKey] = useState(false)
   const [imageGenSaving, setImageGenSaving] = useState(false)
   const [imageGenRemovingKey, setImageGenRemovingKey] = useState(false)

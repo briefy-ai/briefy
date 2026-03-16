@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, Copy, Link, Trash2 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -143,14 +144,40 @@ export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) 
               ))}
             </div>
 
-            <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground">
+            <label
+              className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 transition-colors ${
+                generateCover
+                  ? 'border-primary/40 bg-primary/5'
+                  : 'border-border bg-card hover:border-primary/25 hover:bg-accent/30'
+              }`}
+            >
               <input
                 type="checkbox"
                 checked={generateCover}
                 onChange={(event) => setGenerateCover(event.target.checked)}
-                className="size-4 rounded border-border"
+                className="sr-only"
               />
-              <span>Generate cover image</span>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`flex size-4 items-center justify-center rounded-sm border transition-colors ${
+                    generateCover
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-background text-transparent'
+                  }`}
+                  aria-hidden="true"
+                >
+                  <Check className="size-3" />
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">Generate cover image</span>
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[10px] text-amber-700"
+                  >
+                    ~ $0.10
+                  </Badge>
+                </div>
+              </div>
             </label>
 
             <Button

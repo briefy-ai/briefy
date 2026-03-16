@@ -82,16 +82,20 @@ class ImageGenSettingsService(
     }
 
     companion object {
-        private const val DEFAULT_MODEL_ID = "openai/dall-e-3"
+        private const val DEFAULT_MODEL_ID = "google/gemini-3.1-flash-image-preview"
 
         private val MODELS = listOf(
             ImageGenModelDto(
-                id = "openai/dall-e-3",
-                label = "DALL-E 3"
+                id = "google/gemini-3.1-flash-image-preview",
+                label = "Gemini 3.1 Flash Image Preview"
             ),
             ImageGenModelDto(
-                id = "openai/gpt-image-1",
-                label = "GPT Image 1"
+                id = "bytedance-seed/seedream-4.5",
+                label = "Seedream 4.5"
+            ),
+            ImageGenModelDto(
+                id = "black-forest-labs/flux.2-max",
+                label = "FLUX.2 Max"
             )
         )
     }

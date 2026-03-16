@@ -25,10 +25,29 @@ class CoverImageService(
     private val logger = LoggerFactory.getLogger(CoverImageService::class.java)
 
     fun generateAndStore(source: Source, userId: UUID): CoverImageResult? {
-        val config = imageGenSettingsService.resolveConfig(userId) ?: return null
+        val config = imageGenSettingsService.resolveConfig(userId)
+        if (config == null) {
+            logger.info(
+                "[service] Cover image generation skipped sourceId={} userId={} reason=image_gen_not_configured",
+                source.id,
+                userId
+            )
+            return null
+        }
 
         return try {
-            val prompt = buildPrompt(source, userId)
+            val topicNames = activeTopicNames(source.id, userId)
+            val sourceTitle = sourceTitle(source)
+            logger.info(
+                "[service] Cover image generation started sourceId={} userId={} model={} topicCount={} titleLength={} contentChars={}",
+                source.id,
+                userId,
+                config.model,
+                topicNames.size,
+                sourceTitle.length,
+                source.content?.text?.length ?: 0
+            )
+            val prompt = buildPrompt(source, topicNames)
             val rawBytes = openRouterImageClient.generate(
                 apiKey = config.apiKey,
                 model = config.model,
@@ -41,6 +60,17 @@ class CoverImageService(
             imageStorageService.uploadImage(coverKey, rawBytes)
             val featuredBytes = coverImageCompositor.composite(rawBytes, sourceTitle(source))
             imageStorageService.uploadImage(featuredKey, featuredBytes)
+
+            logger.info(
+                "[service] Cover image generation completed sourceId={} userId={} model={} coverKey={} featuredKey={} originalBytes={} featuredBytes={}",
+                source.id,
+                userId,
+                config.model,
+                coverKey,
+                featuredKey,
+                rawBytes.size,
+                featuredBytes.size
+            )
 
             CoverImageResult(
                 coverKey = coverKey,
@@ -57,11 +87,7 @@ class CoverImageService(
         }
     }
 
-    private fun buildPrompt(source: Source, userId: UUID): String {
-        val topicNames = topicLinkRepository.findActiveTopicsBySourceIds(userId, listOf(source.id))
-            .map { it.topicName.trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
+    private fun buildPrompt(source: Source, topicNames: List<String>): String {
         val excerpt = source.content?.text
             ?.replace(Regex("\\s+"), " ")
             ?.trim()
@@ -89,6 +115,13 @@ class CoverImageService(
 
     private fun sourceTitle(source: Source): String {
         return source.metadata?.title?.trim()?.ifBlank { null } ?: source.url.raw
+    }
+
+    private fun activeTopicNames(sourceId: UUID, userId: UUID): List<String> {
+        return topicLinkRepository.findActiveTopicsBySourceIds(userId, listOf(sourceId))
+            .map { it.topicName.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
     }
 
     private fun originalKey(sourceId: UUID): String = "images/covers/$sourceId/original.png"

@@ -48,7 +48,7 @@ class CoverImageServiceTest {
         whenever(imageGenSettingsService.resolveConfig(userId)).thenReturn(
             ResolvedImageGenConfig(
                 apiKey = "or-key",
-                model = "openai/dall-e-3"
+                model = "google/gemini-3.1-flash-image-preview"
             )
         )
         whenever(topicLinkRepository.findActiveTopicsBySourceIds(userId, listOf(source.id))).thenReturn(
@@ -57,7 +57,7 @@ class CoverImageServiceTest {
                 activeTopic(source.id, "Knowledge")
             )
         )
-        whenever(openRouterImageClient.generate(eq("or-key"), eq("openai/dall-e-3"), any(), eq("1792x1024"))).thenReturn(originalBytes)
+        whenever(openRouterImageClient.generate(eq("or-key"), eq("google/gemini-3.1-flash-image-preview"), any(), eq("1792x1024"))).thenReturn(originalBytes)
         whenever(coverImageCompositor.composite(originalBytes, "Shared Source")).thenReturn(featuredBytes)
 
         val result = service.generateAndStore(source, userId)
@@ -68,7 +68,7 @@ class CoverImageServiceTest {
         verify(imageStorageService).uploadImage("images/covers/${source.id}/featured.png", featuredBytes)
 
         val promptCaptor = argumentCaptor<String>()
-        verify(openRouterImageClient).generate(eq("or-key"), eq("openai/dall-e-3"), promptCaptor.capture(), eq("1792x1024"))
+        verify(openRouterImageClient).generate(eq("or-key"), eq("google/gemini-3.1-flash-image-preview"), promptCaptor.capture(), eq("1792x1024"))
         val prompt = promptCaptor.firstValue
         assertTrue(prompt.contains("Title: Shared Source"))
         assertTrue(prompt.contains("Topics: AI, Knowledge"))
@@ -96,11 +96,11 @@ class CoverImageServiceTest {
         whenever(imageGenSettingsService.resolveConfig(userId)).thenReturn(
             ResolvedImageGenConfig(
                 apiKey = "or-key",
-                model = "openai/dall-e-3"
+                model = "google/gemini-3.1-flash-image-preview"
             )
         )
         whenever(topicLinkRepository.findActiveTopicsBySourceIds(userId, listOf(source.id))).thenReturn(emptyList())
-        whenever(openRouterImageClient.generate(eq("or-key"), eq("openai/dall-e-3"), any(), eq("1792x1024"))).thenThrow(
+        whenever(openRouterImageClient.generate(eq("or-key"), eq("google/gemini-3.1-flash-image-preview"), any(), eq("1792x1024"))).thenThrow(
             ImageGenerationException("failed")
         )
 
