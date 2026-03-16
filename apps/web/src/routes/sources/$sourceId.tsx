@@ -24,7 +24,7 @@ import {
   retryTopicExtraction,
 } from '@/lib/api/sources'
 import { extractErrorMessage } from '@/lib/api/errorMessage'
-import { requireAuth } from '@/lib/auth/requireAuth'
+import { requireAuthWithOnboarding } from '@/lib/auth/requireAuth'
 import { useChatPanel } from '@/features/chat/ChatPanelProvider'
 import { useSourceData } from '@/features/sources/useSourceData'
 import { useActiveTopics } from '@/features/sources/useActiveTopics'
@@ -38,7 +38,7 @@ import { ShareDialog } from '@/features/sources/components/ShareDialog'
 
 export const Route = createFileRoute('/sources/$sourceId')({
   beforeLoad: async () => {
-    await requireAuth()
+    await requireAuthWithOnboarding()
   },
   component: SourceDetailPage,
 })

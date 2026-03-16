@@ -83,6 +83,22 @@ class AuthController(
             .build()
     }
 
+    @PostMapping("/onboarding/complete")
+    fun completeOnboarding(): ResponseEntity<AuthUserResponse> {
+        val userId = currentUserProvider.requireUserId()
+        logger.info("[controller] Complete onboarding request userId={}", userId)
+        val user = authService.completeOnboarding(userId)
+        return ResponseEntity.ok(user)
+    }
+
+    @PostMapping("/onboarding/reset")
+    fun resetOnboarding(): ResponseEntity<AuthUserResponse> {
+        val userId = currentUserProvider.requireUserId()
+        logger.info("[controller] Reset onboarding request userId={}", userId)
+        val user = authService.resetOnboarding(userId)
+        return ResponseEntity.ok(user)
+    }
+
     @GetMapping("/me")
     fun me(): ResponseEntity<AuthUserResponse> {
         logger.info("[controller] Current user request received")

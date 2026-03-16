@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { getBriefing } from '@/lib/api/briefings'
 import { extractErrorMessage } from '@/lib/api/errorMessage'
 import type { BriefingResponse } from '@/lib/api/types'
-import { requireAuth } from '@/lib/auth/requireAuth'
+import { requireAuthWithOnboarding } from '@/lib/auth/requireAuth'
 
 function stripCitationsSection(markdown: string): string {
   return markdown.replace(/\n#{1,3}\s*Citations\s*\n[\s\S]*$/i, '').trimEnd()
@@ -17,7 +17,7 @@ function stripCitationsSection(markdown: string): string {
 
 export const Route = createFileRoute('/briefings/$briefingId')({
   beforeLoad: async () => {
-    await requireAuth()
+    await requireAuthWithOnboarding()
   },
   component: BriefingDetailPage,
 })

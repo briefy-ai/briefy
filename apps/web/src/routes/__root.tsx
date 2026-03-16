@@ -44,7 +44,8 @@ function RootLayoutContent() {
   const hasAudioPlayer = useHasAudioPlayer()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isSettingsPath = pathname.startsWith('/settings')
-  const isChatEligible = !isLoading && Boolean(user) && !isSettingsPath
+  const isOnboardingPath = pathname.startsWith('/onboarding')
+  const isChatEligible = !isLoading && Boolean(user) && !isSettingsPath && !isOnboardingPath
 
   useEffect(() => {
     if (!isChatEligible) {

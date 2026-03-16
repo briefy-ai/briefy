@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { login } from '@/lib/api/auth'
 import { ApiClientError } from '@/lib/api/client'
 import { redirectAuthenticatedUser } from '@/lib/auth/requireAuth'
+import { loadCurrentUser } from '@/lib/auth/session'
 import { useAuth } from '@/lib/auth/useAuth'
 
 export const Route = createFileRoute('/login')({
@@ -32,7 +33,8 @@ function LoginPage() {
     try {
       await login({ email: email.trim(), password })
       await refreshUser()
-      await navigate({ to: '/sources' })
+      const user = await loadCurrentUser()
+      await navigate({ to: user?.onboardingCompleted ? '/sources' : '/onboarding' })
     } catch (e) {
       if (e instanceof ApiClientError) {
         setError(e.apiError?.message ?? e.message)
