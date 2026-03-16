@@ -14,6 +14,7 @@ export interface SharedSourceData {
   title: string | null
   url: string
   sourceType: string
+  coverImageUrl: string | null
   author: string | null
   publishedDate: string | null
   readingTimeMinutes: number | null
@@ -40,9 +41,15 @@ export interface ShareLinkAudioResponse {
 export async function createShareLink(
   entityType: string,
   entityId: string,
-  expiresAt?: string
+  expiresAt?: string,
+  generateCoverImage?: boolean
 ): Promise<ShareLinkDto> {
-  return apiPost<ShareLinkDto>('/api/v1/share-links', { entityType, entityId, expiresAt })
+  return apiPost<ShareLinkDto>('/api/v1/share-links', {
+    entityType,
+    entityId,
+    expiresAt,
+    generateCoverImage,
+  })
 }
 
 export async function listShareLinks(

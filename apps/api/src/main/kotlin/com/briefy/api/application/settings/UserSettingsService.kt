@@ -151,6 +151,9 @@ class UserSettingsService(
                 inworldEnabled = false,
                 inworldApiKeyEncrypted = null,
                 inworldModelId = null,
+                openrouterEnabled = false,
+                openrouterApiKeyEncrypted = null,
+                openrouterImageModel = null,
                 createdAt = now,
                 updatedAt = now
             )

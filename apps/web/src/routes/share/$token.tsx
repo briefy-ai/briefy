@@ -178,12 +178,22 @@ function SharedSourcePage() {
           <p className="mb-4 text-right text-xs text-destructive">{saveError}</p>
         )}
 
-        <h1 className="text-2xl font-bold tracking-tight leading-snug">
-          {source.title ?? source.url}
-        </h1>
+        {source.coverImageUrl ? (
+          <div className="overflow-hidden rounded-2xl border bg-muted">
+            <img
+              src={source.coverImageUrl}
+              alt={source.title ?? 'Shared source cover image'}
+              className="aspect-[1200/630] w-full object-cover"
+            />
+          </div>
+        ) : (
+          <h1 className="text-2xl font-bold tracking-tight leading-snug">
+            {source.title ?? source.url}
+          </h1>
+        )}
 
         {meta.length > 0 && (
-          <div className="mt-3 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+          <div className={`${source.coverImageUrl ? 'mt-4' : 'mt-3'} flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground`}>
             {meta.map((item, i) => (
               <span key={i}>
                 {i > 0 && <span className="mx-1 text-border/60">&middot;</span>}

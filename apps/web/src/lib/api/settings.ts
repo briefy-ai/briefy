@@ -2,10 +2,12 @@ import { apiDelete, apiGet, apiPost, apiPut } from './client'
 import type {
   ExtractionSettingsResponse,
   ExtractionProviderType,
+  ImageGenSettingsResponse,
   TelegramLinkCodeResponse,
   TelegramLinkStatusResponse,
   TtsProviderType,
   TtsSettingsResponse,
+  UpdateImageGenProviderRequest,
   UpdatePreferredTtsProviderRequest,
   UpdateProviderRequest,
   UpdateTtsProviderRequest,
@@ -47,6 +49,21 @@ export async function updatePreferredTtsProvider(
   request: UpdatePreferredTtsProviderRequest
 ): Promise<TtsSettingsResponse> {
   return apiPut<TtsSettingsResponse>('/api/settings/tts/preferred-provider', request)
+}
+
+export async function getImageGenSettings(): Promise<ImageGenSettingsResponse> {
+  return apiGet<ImageGenSettingsResponse>('/api/settings/image-gen')
+}
+
+export async function updateImageGenProvider(
+  request: UpdateImageGenProviderRequest
+): Promise<ImageGenSettingsResponse> {
+  return apiPut<ImageGenSettingsResponse>('/api/settings/image-gen/provider', request)
+}
+
+export async function deleteImageGenProviderKey(): Promise<ImageGenSettingsResponse> {
+  await apiDelete('/api/settings/image-gen/provider/key')
+  return getImageGenSettings()
 }
 
 export async function getTelegramLinkStatus(): Promise<TelegramLinkStatusResponse> {

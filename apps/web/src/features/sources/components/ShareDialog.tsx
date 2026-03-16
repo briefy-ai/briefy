@@ -40,6 +40,7 @@ interface ShareDialogProps {
 
 export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) {
   const [validity, setValidity] = useState<Validity>('never')
+  const [generateCover, setGenerateCover] = useState(false)
   const [creating, setCreating] = useState(false)
   const [copiedToken, setCopiedToken] = useState<string | null>(null)
   const [links, setLinks] = useState<ShareLinkDto[]>([])
@@ -70,6 +71,7 @@ export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) 
       setJustCreated(null)
       setCopiedToken(null)
       setValidity('never')
+      setGenerateCover(false)
       void loadLinks()
     }
   }, [open, loadLinks])
@@ -78,7 +80,7 @@ export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) 
     setCreating(true)
     try {
       const expiresAt = computeExpiresAt(validity)
-      const link = await createShareLink('SOURCE', sourceId, expiresAt)
+      const link = await createShareLink('SOURCE', sourceId, expiresAt, generateCover)
       setJustCreated(link)
       setLinks((prev) => [link, ...prev])
       await copyToClipboard(link.token)
@@ -141,6 +143,16 @@ export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) 
               ))}
             </div>
 
+            <label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={generateCover}
+                onChange={(event) => setGenerateCover(event.target.checked)}
+                className="size-4 rounded border-border"
+              />
+              <span>Generate cover image</span>
+            </label>
+
             <Button
               size="sm"
               onClick={() => void handleCreate()}
@@ -148,7 +160,7 @@ export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) 
               className="w-full"
             >
               <Link className="size-4" />
-              {creating ? 'Creating...' : 'Create link'}
+              {creating ? (generateCover ? 'Generating cover...' : 'Creating...') : 'Create link'}
             </Button>
           </div>
 

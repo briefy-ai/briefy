@@ -1,5 +1,7 @@
 package com.briefy.api.api
 
+import com.briefy.api.application.sharing.CoverImageResult
+import com.briefy.api.application.sharing.CoverImageService
 import com.briefy.api.application.source.NarrationContentHashing
 import com.briefy.api.domain.knowledgegraph.source.AudioContent
 import com.briefy.api.domain.knowledgegraph.source.Content
@@ -12,19 +14,27 @@ import com.briefy.api.domain.knowledgegraph.source.SourceType
 import com.briefy.api.domain.sharing.ShareLink
 import com.briefy.api.domain.sharing.ShareLinkEntityType
 import com.briefy.api.domain.sharing.ShareLinkRepository
+import com.briefy.api.infrastructure.imagegen.ImageStorageService
+import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.briefy.api.infrastructure.tts.AudioStorageService
 import com.briefy.api.infrastructure.tts.TtsProviderType
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.whenever
 import java.time.Instant
 import java.util.UUID
 
@@ -47,6 +57,15 @@ class ShareLinkControllerTest {
 
     @MockitoBean
     lateinit var audioStorageService: AudioStorageService
+
+    @MockitoBean
+    lateinit var imageStorageService: ImageStorageService
+
+    @MockitoBean
+    lateinit var coverImageService: CoverImageService
+
+    @MockitoBean
+    lateinit var currentUserProvider: CurrentUserProvider
 
     @Test
     fun `GET public share returns source narration when source audio exists`() {
@@ -75,6 +94,48 @@ class ShareLinkControllerTest {
             .andExpect(jsonPath("$.source.audio.audioUrl").value("https://fresh.example.com/source.mp3"))
             .andExpect(jsonPath("$.source.audio.durationSeconds").value(42))
             .andExpect(jsonPath("$.source.audio.format").value("mp3"))
+    }
+
+    @Test
+    fun `POST share link create supports generate cover image request`() {
+        val userId = UUID.randomUUID()
+        val source = saveActiveSource(userId)
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(coverImageService.generateAndStore(any(), eq(userId))).thenReturn(
+            CoverImageResult(
+                coverKey = "images/covers/${source.id}/original.png",
+                featuredKey = "images/covers/${source.id}/featured.png"
+            )
+        )
+
+        mockMvc.perform(
+            post("/api/v1/share-links")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"entityType":"SOURCE","entityId":"${source.id}","generateCoverImage":true}""")
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.entityType").value("SOURCE"))
+            .andExpect(jsonPath("$.entityId").value(source.id.toString()))
+
+        val updatedSource = sourceRepository.findById(source.id).orElseThrow()
+        assertEquals("images/covers/${source.id}/original.png", updatedSource.coverImageKey)
+        assertEquals("images/covers/${source.id}/featured.png", updatedSource.featuredImageKey)
+    }
+
+    @Test
+    fun `GET public share returns featured cover image url when available`() {
+        val source = saveActiveSource().apply {
+            featuredImageKey = "images/covers/$id/featured.png"
+        }
+        sourceRepository.save(source)
+        val token = saveShareLink(source)
+
+        whenever(imageStorageService.generatePresignedGetUrl("images/covers/${source.id}/featured.png"))
+            .thenReturn("https://fresh.example.com/featured.png")
+
+        mockMvc.perform(get("/api/public/share/$token"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.source.coverImageUrl").value("https://fresh.example.com/featured.png"))
     }
 
     @Test
@@ -263,10 +324,10 @@ class ShareLinkControllerTest {
     }
 
     private fun saveActiveSource(
+        userId: UUID = UUID.randomUUID(),
         contentText: String = "Shared source narration content ${UUID.randomUUID()}",
         transcriptLanguage: String? = null
     ): Source {
-        val userId = UUID.randomUUID()
         val source = Source.create(
             id = UUID.randomUUID(),
             rawUrl = "https://example.com/source/${UUID.randomUUID()}",

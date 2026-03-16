@@ -54,7 +54,13 @@ class Source(
     var narrationState: NarrationState = NarrationState.NOT_GENERATED,
 
     @Column(name = "narration_failure_reason", columnDefinition = "TEXT")
-    var narrationFailureReason: String? = null
+    var narrationFailureReason: String? = null,
+
+    @Column(name = "cover_image_key", length = 512)
+    var coverImageKey: String? = null,
+
+    @Column(name = "featured_image_key", length = 512)
+    var featuredImageKey: String? = null
 ) {
     fun startExtraction() {
         transitionTo(SourceStatus.EXTRACTING)
