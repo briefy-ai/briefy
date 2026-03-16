@@ -51,7 +51,15 @@ class ShareLinkService(
         logger.info("[service] Creating share link userId={} entityType={} entityId={}", userId, request.entityType, request.entityId)
 
         val source = validateEntityOwnership(userId, request.entityType, request.entityId)
-        val coverResult = if (request.generateCoverImage && source != null) {
+        val shouldGenerateCover = request.generateCoverImage && source != null && !source.hasGeneratedCoverImage()
+        if (request.generateCoverImage && source != null && !shouldGenerateCover) {
+            logger.info(
+                "[service] Cover image generation skipped sourceId={} userId={} reason=existing_generated_image",
+                source.id,
+                userId
+            )
+        }
+        val coverResult = if (shouldGenerateCover) {
             coverImageService.generateAndStore(source, userId)
         } else {
             null

@@ -157,6 +157,10 @@ class Source(
         narrationFailureReason = null
     }
 
+    fun hasGeneratedCoverImage(): Boolean {
+        return !coverImageKey.isNullOrBlank() || !featuredImageKey.isNullOrBlank()
+    }
+
     fun markRead(): Boolean {
         if (isRead) return false
         isRead = true

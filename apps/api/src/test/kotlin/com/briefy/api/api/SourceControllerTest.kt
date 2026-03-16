@@ -506,6 +506,20 @@ class SourceControllerTest {
     }
 
     @Test
+    fun `GET by id indicates when generated cover image already exists`() {
+        `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
+
+        val id = createSource("https://generated-cover-source.com/article")
+        val source = sourceRepository.findById(UUID.fromString(id)).orElseThrow()
+        source.featuredImageKey = "images/covers/${source.id}/featured.png"
+        sourceRepository.save(source)
+
+        mockMvc.perform(get("/api/sources/$id"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.hasGeneratedCoverImage").value(true))
+    }
+
+    @Test
     fun `GET by id returns 404 for unknown id`() {
         mockMvc.perform(get("/api/sources/00000000-0000-0000-0000-000000000000"))
             .andExpect(status().isNotFound)

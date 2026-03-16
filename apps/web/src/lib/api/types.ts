@@ -45,6 +45,7 @@ export interface Source {
   url: SourceUrl
   status: 'submitted' | 'extracting' | 'active' | 'failed' | 'archived'
   sourceType: 'news' | 'blog' | 'research' | 'video'
+  hasGeneratedCoverImage: boolean
   content: SourceContent | null
   metadata: SourceMetadata | null
   topicExtractionState: 'pending' | 'succeeded' | 'failed'

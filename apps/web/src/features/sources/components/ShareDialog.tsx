@@ -66,9 +66,15 @@ interface ShareDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   sourceId: string
+  hasGeneratedCoverImage: boolean
 }
 
-export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) {
+export function ShareDialog({
+  open,
+  onOpenChange,
+  sourceId,
+  hasGeneratedCoverImage,
+}: ShareDialogProps) {
   const [validity, setValidity] = useState<Validity>('never')
   const [generateCover, setGenerateCover] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -173,41 +179,60 @@ export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) 
               ))}
             </div>
 
-            <label
-              className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 transition-colors ${
-                generateCover
-                  ? 'border-primary/40 bg-primary/5'
-                  : 'border-border bg-card hover:border-primary/25 hover:bg-accent/30'
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={generateCover}
-                onChange={(event) => setGenerateCover(event.target.checked)}
-                className="sr-only"
-              />
-              <div className="flex items-center gap-3">
-                <span
-                  className={`flex size-4 items-center justify-center rounded-sm border transition-colors ${
-                    generateCover
-                      ? 'border-primary bg-primary text-primary-foreground'
-                      : 'border-border bg-background text-transparent'
-                  }`}
-                  aria-hidden="true"
-                >
-                  <Check className="size-3" />
-                </span>
+            {hasGeneratedCoverImage ? (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">Generate cover image</span>
                   <Badge
                     variant="outline"
-                    className="border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[10px] text-amber-700"
+                    className="border-emerald-500/25 bg-emerald-500/10 px-1.5 py-0 text-[10px] text-emerald-700"
                   >
-                    ~ $0.10
+                    Existing image
                   </Badge>
+                  <span className="text-sm font-medium text-foreground">
+                    Generated cover already exists
+                  </span>
                 </div>
+                <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+                  Briefy will reuse the existing generated image for new shared links.
+                </p>
               </div>
-            </label>
+            ) : (
+              <label
+                className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2.5 transition-colors ${
+                  generateCover
+                    ? 'border-primary/40 bg-primary/5'
+                    : 'border-border bg-card hover:border-primary/25 hover:bg-accent/30'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={generateCover}
+                  onChange={(event) => setGenerateCover(event.target.checked)}
+                  className="sr-only"
+                />
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`flex size-4 items-center justify-center rounded-sm border transition-colors ${
+                      generateCover
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border bg-background text-transparent'
+                    }`}
+                    aria-hidden="true"
+                  >
+                    <Check className="size-3" />
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-foreground">Generate cover image</span>
+                    <Badge
+                      variant="outline"
+                      className="border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[10px] text-amber-700"
+                    >
+                      ~ $0.10
+                    </Badge>
+                  </div>
+                </div>
+              </label>
+            )}
 
             <Button
               size="sm"
@@ -216,7 +241,9 @@ export function ShareDialog({ open, onOpenChange, sourceId }: ShareDialogProps) 
               className="w-full"
             >
               <Link className="size-4" />
-              {creating ? (generateCover ? 'Generating cover...' : 'Creating...') : 'Create link'}
+              {creating
+                ? (generateCover && !hasGeneratedCoverImage ? 'Generating cover...' : 'Creating...')
+                : 'Create link'}
             </Button>
           </div>
 

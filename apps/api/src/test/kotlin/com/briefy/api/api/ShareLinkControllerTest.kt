@@ -21,6 +21,7 @@ import com.briefy.api.infrastructure.tts.TtsProviderType
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
+import org.mockito.Mockito.never
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
@@ -34,6 +35,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.time.Instant
 import java.util.UUID
@@ -120,6 +122,27 @@ class ShareLinkControllerTest {
         val updatedSource = sourceRepository.findById(source.id).orElseThrow()
         assertEquals("images/covers/${source.id}/original.png", updatedSource.coverImageKey)
         assertEquals("images/covers/${source.id}/featured.png", updatedSource.featuredImageKey)
+    }
+
+    @Test
+    fun `POST share link create skips cover generation when source already has generated image`() {
+        val userId = UUID.randomUUID()
+        val source = saveActiveSource(userId).apply {
+            featuredImageKey = "images/covers/$id/featured.png"
+        }
+        sourceRepository.save(source)
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+
+        mockMvc.perform(
+            post("/api/v1/share-links")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"entityType":"SOURCE","entityId":"${source.id}","generateCoverImage":true}""")
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.entityType").value("SOURCE"))
+            .andExpect(jsonPath("$.entityId").value(source.id.toString()))
+
+        verify(coverImageService, never()).generateAndStore(any(), any())
     }
 
     @Test
