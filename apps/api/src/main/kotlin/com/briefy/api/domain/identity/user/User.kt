@@ -34,6 +34,9 @@ class User(
     @Column(name = "display_name", length = 120)
     var displayName: String? = null,
 
+    @Column(name = "onboarding_completed", nullable = false)
+    var onboardingCompleted: Boolean = false,
+
     @Column(name = "created_at", nullable = false)
     val createdAt: Instant = Instant.now(),
 

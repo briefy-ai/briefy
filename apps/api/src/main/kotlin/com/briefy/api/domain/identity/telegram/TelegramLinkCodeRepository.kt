@@ -8,4 +8,5 @@ import java.util.UUID
 interface TelegramLinkCodeRepository : JpaRepository<TelegramLinkCode, UUID> {
     fun findByCodeHashAndUsedAtIsNull(codeHash: String): TelegramLinkCode?
     fun deleteByUserIdAndUsedAtIsNull(userId: UUID): Long
+    fun existsByUserIdAndUsedAtIsNull(userId: UUID): Boolean
 }

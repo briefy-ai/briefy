@@ -8,9 +8,19 @@ export async function requireAuth() {
   }
 }
 
+export async function requireAuthWithOnboarding() {
+  const user = await loadCurrentUser()
+  if (!user) {
+    throw redirect({ to: '/login' })
+  }
+  if (!user.onboardingCompleted) {
+    throw redirect({ to: '/onboarding' })
+  }
+}
+
 export async function redirectAuthenticatedUser() {
   const user = await loadCurrentUser()
   if (user) {
-    throw redirect({ to: '/sources' })
+    throw redirect({ to: user.onboardingCompleted ? '/sources' : '/onboarding' })
   }
 }

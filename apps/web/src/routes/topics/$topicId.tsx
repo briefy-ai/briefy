@@ -5,12 +5,12 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getTopicDetail } from '@/lib/api/topics'
-import { requireAuth } from '@/lib/auth/requireAuth'
+import { requireAuthWithOnboarding } from '@/lib/auth/requireAuth'
 import type { TopicDetail } from '@/lib/api/types'
 
 export const Route = createFileRoute('/topics/$topicId')({
   beforeLoad: async () => {
-    await requireAuth()
+    await requireAuthWithOnboarding()
   },
   component: TopicDetailPage,
 })

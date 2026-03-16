@@ -37,7 +37,7 @@ function SignupPage() {
         displayName: displayName.trim() || undefined,
       })
       await refreshUser()
-      await navigate({ to: '/sources' })
+      await navigate({ to: '/onboarding' })
     } catch (e) {
       if (e instanceof ApiClientError) {
         setError(e.apiError?.message ?? e.message)

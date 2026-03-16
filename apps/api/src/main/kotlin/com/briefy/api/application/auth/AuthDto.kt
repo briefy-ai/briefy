@@ -8,7 +8,8 @@ data class AuthUserResponse(
     val id: UUID,
     val email: String,
     val role: UserRole,
-    val displayName: String?
+    val displayName: String?,
+    val onboardingCompleted: Boolean
 )
 
 data class AuthResult(
@@ -25,5 +26,6 @@ fun User.toAuthUserResponse(): AuthUserResponse = AuthUserResponse(
     id = id,
     email = email,
     role = role,
-    displayName = displayName
+    displayName = displayName,
+    onboardingCompleted = onboardingCompleted
 )

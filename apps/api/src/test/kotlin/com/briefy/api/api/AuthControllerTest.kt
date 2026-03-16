@@ -117,6 +117,69 @@ class AuthControllerTest {
             .andExpect(jsonPath("$.role").value("USER"))
     }
 
+    @Test
+    fun `signup returns onboardingCompleted false`() {
+        val result = mockMvc.perform(
+            post("/api/auth/signup")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"email":"onb-new@example.com","password":"password123"}""")
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.onboardingCompleted").value(false))
+            .andReturn()
+    }
+
+    @Test
+    fun `complete onboarding sets flag to true`() {
+        val auth = signUp("onb-complete@example.com")
+        mockMvc.perform(
+            post("/api/auth/onboarding/complete")
+                .cookie(auth.accessCookie)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.onboardingCompleted").value(true))
+    }
+
+    @Test
+    fun `me reflects completed onboarding state`() {
+        val auth = signUp("onb-me@example.com")
+        mockMvc.perform(
+            post("/api/auth/onboarding/complete")
+                .cookie(auth.accessCookie)
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
+            get("/api/auth/me")
+                .cookie(auth.accessCookie)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.onboardingCompleted").value(true))
+    }
+
+    @Test
+    fun `reset onboarding sets flag to false`() {
+        val auth = signUp("onb-reset@example.com")
+        mockMvc.perform(
+            post("/api/auth/onboarding/complete")
+                .cookie(auth.accessCookie)
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
+            post("/api/auth/onboarding/reset")
+                .cookie(auth.accessCookie)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.onboardingCompleted").value(false))
+    }
+
+    @Test
+    fun `complete onboarding requires authentication`() {
+        mockMvc.perform(post("/api/auth/onboarding/complete"))
+            .andExpect(status().isUnauthorized)
+    }
+
     private fun signUp(email: String): AuthCookies {
         val result = mockMvc.perform(
             post("/api/auth/signup")

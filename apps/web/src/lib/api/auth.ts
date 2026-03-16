@@ -20,3 +20,11 @@ export async function logout(): Promise<void> {
 export async function getMe(): Promise<AuthUser> {
   return apiGet<AuthUser>('/api/auth/me')
 }
+
+export async function completeOnboarding(): Promise<AuthUser> {
+  return apiPost<AuthUser>('/api/auth/onboarding/complete')
+}
+
+export async function resetOnboarding(): Promise<AuthUser> {
+  return apiPost<AuthUser>('/api/auth/onboarding/reset')
+}

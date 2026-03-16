@@ -36,7 +36,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { archiveSourcesBatch, createSource, deleteSource, listSources, restoreSource } from '@/lib/api/sources'
 import { ApiClientError } from '@/lib/api/client'
-import { requireAuth } from '@/lib/auth/requireAuth'
+import { requireAuthWithOnboarding } from '@/lib/auth/requireAuth'
 import { cn } from '@/lib/utils'
 import type { Source } from '@/lib/api/types'
 import { FilterBar, type FilterState } from './-components/FilterBar'
@@ -46,7 +46,7 @@ const RECENTLY_ADDED_COUNT = 5
 
 export const Route = createFileRoute('/sources/')({
   beforeLoad: async () => {
-    await requireAuth()
+    await requireAuthWithOnboarding()
   },
   component: SourcesPage,
 })

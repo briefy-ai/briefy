@@ -25,11 +25,13 @@ class TelegramLinkService(
     fun getLinkStatus(userId: UUID): TelegramLinkStatusResponse {
         val link = telegramLinkRepository.findByUserId(userId)
         if (link == null) {
+            val hasPendingCode = telegramLinkCodeRepository.existsByUserIdAndUsedAtIsNull(userId)
             return TelegramLinkStatusResponse(
                 linked = false,
                 telegramUsername = null,
                 maskedTelegramId = null,
-                linkedAt = null
+                linkedAt = null,
+                pendingLinkCode = hasPendingCode
             )
         }
 
