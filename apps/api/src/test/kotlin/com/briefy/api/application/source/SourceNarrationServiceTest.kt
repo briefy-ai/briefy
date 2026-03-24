@@ -20,6 +20,7 @@ import com.briefy.api.infrastructure.tts.InworldTtsProperties
 import com.briefy.api.infrastructure.tts.MarkdownStripper
 import com.briefy.api.infrastructure.tts.NarrationLanguageResolver
 import com.briefy.api.infrastructure.tts.NarrationProperties
+import com.briefy.api.infrastructure.tts.NarrationScriptPreparer
 import com.briefy.api.infrastructure.tts.TtsModelCatalog
 import com.briefy.api.infrastructure.tts.TtsProvider
 import com.briefy.api.infrastructure.tts.TtsProviderRegistry
@@ -78,7 +79,8 @@ class SourceNarrationServiceTest {
         modelId = "inworld-tts-1.5-mini"
     )
     private val markdownStripper = MarkdownStripper()
-    private val narrationLanguageResolver = NarrationLanguageResolver(markdownStripper)
+    private val narrationScriptPreparer = NarrationScriptPreparer(markdownStripper)
+    private val narrationLanguageResolver = NarrationLanguageResolver(narrationScriptPreparer)
     private val ttsVoiceResolver = TtsVoiceResolver(
         elevenLabsProperties = ElevenLabsTtsProperties(),
         inworldProperties = InworldTtsProperties()
@@ -95,7 +97,7 @@ class SourceNarrationServiceTest {
         ttsVoiceResolver = ttsVoiceResolver,
         originalVideoAudioService = originalVideoAudioService,
         youTubeExtractionProvider = youTubeExtractionProvider,
-        markdownStripper = markdownStripper,
+        narrationScriptPreparer = narrationScriptPreparer,
         narrationProperties = NarrationProperties(),
         inworldProperties = InworldTtsProperties(),
         currentUserProvider = currentUserProvider,
@@ -143,6 +145,35 @@ class SourceNarrationServiceTest {
         verify(sharedAudioCacheRepository, never()).save(any())
         verify(eventPublisher, never()).publishEvent(any())
         verify(ttsProvider, never()).synthesize(any())
+    }
+
+    @Test
+    fun `estimateNarration uses prepared script length for structured content`() {
+        val userId = UUID.randomUUID()
+        val source = createActiveSource(userId).apply {
+            content = Content.from(
+                """
+                # Inverted Indexes
+
+                An inverted index maps terms to documents.
+
+                across -> D0, D1, D2
+                and -> D2, D3
+                bat -> D3
+                black -> D2
+
+                Search for cat.
+                """.trimIndent()
+            )
+        }
+        val preparedText = "Inverted Indexes An inverted index maps terms to documents. Dense structured example skipped for audio clarity. Search for cat."
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(ttsSettingsService.resolvePreferredProvider(userId)).thenReturn(elevenLabsConfig)
+
+        val estimate = service.estimateNarration(source.id)
+
+        assertEquals(preparedText.length, estimate.characterCount)
     }
 
     @Test
@@ -219,6 +250,51 @@ class SourceNarrationServiceTest {
         assertEquals(NarrationState.SUCCEEDED, source.narrationState)
         assertEquals("https://fresh.example.com/generated.mp3", source.audioContent?.audioUrl)
         assertEquals(TtsProviderType.ELEVENLABS, source.audioContent?.providerType)
+    }
+
+    @Test
+    fun `processNarration replaces dense structured blocks before synthesis`() {
+        val userId = UUID.randomUUID()
+        val source = createPendingSource(userId).apply {
+            content = Content.from(
+                """
+                # Inverted Indexes
+
+                An inverted index maps terms to documents.
+
+                across -> D0, D1, D2
+                and -> D2, D3
+                bat -> D3
+                black -> D2
+
+                Search for cat.
+                """.trimIndent()
+            )
+        }
+        val preparedText = "Inverted Indexes An inverted index maps terms to documents. Dense structured example skipped for audio clarity. Search for cat."
+        val hash = contentHash(preparedText)
+        whenever(ttsSettingsService.resolvePreferredProvider(userId)).thenReturn(elevenLabsConfig)
+        whenever(ttsProviderRegistry.get(TtsProviderType.ELEVENLABS)).thenReturn(ttsProvider)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(hash, TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+            .thenReturn(null)
+        whenever(ttsProvider.synthesize(any())).thenReturn(sampleMp3Bytes())
+        whenever(audioStorageService.generatePresignedGetUrl(hash, TtsProviderType.ELEVENLABS, "iiidtqDt9FBdT1vfBluA", "eleven_flash_v2_5"))
+            .thenReturn("https://fresh.example.com/generated-structured.mp3")
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+        whenever(sharedAudioCacheRepository.save(any())).thenAnswer { it.arguments[0] as SharedAudioCache }
+        whenever(idGenerator.newId()).thenReturn(UUID.randomUUID())
+
+        service.processNarration(source.id, userId)
+
+        verify(ttsProvider).synthesize(
+            argThat<TtsSynthesisRequest> {
+                text == preparedText &&
+                    apiKey == "el-key" &&
+                    voiceId == "iiidtqDt9FBdT1vfBluA" &&
+                    modelId == "eleven_flash_v2_5"
+            }
+        )
     }
 
     @Test

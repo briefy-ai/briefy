@@ -4,7 +4,7 @@ import org.springframework.stereotype.Component
 
 @Component
 class NarrationLanguageResolver(
-    private val markdownStripper: MarkdownStripper
+    private val narrationScriptPreparer: NarrationScriptPreparer
 ) {
     fun resolve(transcriptLanguage: String?, contentText: String?): String {
         normalizeLanguageCode(transcriptLanguage)?.let { return it }
@@ -27,7 +27,7 @@ class NarrationLanguageResolver(
     }
 
     private fun detectFromText(contentText: String): String {
-        val plainText = markdownStripper.strip(contentText).lowercase()
+        val plainText = narrationScriptPreparer.prepare(contentText).lowercase()
         if (plainText.isBlank()) return LANGUAGE_ENGLISH
 
         val tokens = WORD_PATTERN.findAll(plainText)

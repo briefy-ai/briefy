@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class NarrationLanguageResolverTest {
-    private val resolver = NarrationLanguageResolver(MarkdownStripper())
+    private val resolver = NarrationLanguageResolver(NarrationScriptPreparer(MarkdownStripper()))
 
     @Test
     fun `uses normalized transcript language when available`() {
