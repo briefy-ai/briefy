@@ -27,7 +27,7 @@ class NarrationLanguageResolver(
     }
 
     private fun detectFromText(contentText: String): String {
-        val plainText = narrationScriptPreparer.prepare(contentText).lowercase()
+        val plainText = narrationScriptPreparer.prepareForLanguageDetection(contentText).lowercase()
         if (plainText.isBlank()) return LANGUAGE_ENGLISH
 
         val tokens = WORD_PATTERN.findAll(plainText)

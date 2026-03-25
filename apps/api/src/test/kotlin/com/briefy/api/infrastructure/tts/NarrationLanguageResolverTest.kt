@@ -22,4 +22,17 @@ class NarrationLanguageResolverTest {
         val text = "This is a short source narration for an English article."
         assertEquals("en", resolver.resolve(null, text))
     }
+
+    @Test
+    fun `detects spanish without being biased by english skip annotations`() {
+        val text = """
+            Esta guia es para pruebas
+
+            ```python
+            print("hola")
+            ```
+        """.trimIndent()
+
+        assertEquals("es", resolver.resolve(null, text))
+    }
 }

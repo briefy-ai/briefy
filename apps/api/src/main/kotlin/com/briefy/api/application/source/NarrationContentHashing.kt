@@ -1,6 +1,7 @@
 package com.briefy.api.application.source
 
 import com.briefy.api.infrastructure.tts.MarkdownStripper
+import com.briefy.api.infrastructure.tts.NarrationLanguageResolver
 import com.briefy.api.infrastructure.tts.NarrationScriptPreparer
 import java.security.MessageDigest
 import java.util.HexFormat
@@ -8,14 +9,20 @@ import java.util.HexFormat
 object NarrationContentHashing {
     private val markdownStripper = MarkdownStripper()
     private val narrationScriptPreparer = NarrationScriptPreparer(markdownStripper)
+    private val narrationLanguageResolver = NarrationLanguageResolver(narrationScriptPreparer)
 
-    fun hash(contentText: String): String {
-        return hashExact(narrationScriptPreparer.prepare(contentText))
+    fun hash(contentText: String, transcriptLanguage: String? = null): String {
+        val languageCode = narrationLanguageResolver.resolve(transcriptLanguage, contentText)
+        return hashPreparedText(narrationScriptPreparer.prepare(contentText, languageCode))
     }
 
-    fun lookupHashes(contentText: String): List<String> {
+    fun hashPreparedText(preparedText: String): String {
+        return hashExact(preparedText)
+    }
+
+    fun lookupHashes(contentText: String, transcriptLanguage: String? = null): List<String> {
         return listOf(
-            hash(contentText),
+            hash(contentText, transcriptLanguage),
             strippedMarkdownHash(contentText),
             legacyHash(contentText)
         ).distinct()

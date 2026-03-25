@@ -283,7 +283,7 @@ class ShareLinkService(
         }
 
         val contentText = source.content?.text?.takeIf { it.isNotBlank() } ?: return null
-        val cachedAudio = NarrationContentHashing.lookupHashes(contentText)
+        val cachedAudio = NarrationContentHashing.lookupHashes(contentText, source.metadata?.transcriptLanguage)
             .firstNotNullOfOrNull { hash ->
                 sharedAudioCacheRepository.findFirstByContentHashOrderByCreatedAtDesc(hash)
             } ?: return null

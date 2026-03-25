@@ -175,7 +175,8 @@ class SourceNarrationService(
 
         validateNarrationRequest(source.status, source.content?.text)
         val providerConfig = requirePreferredProvider(userId)
-        val characterCount = narrationScriptPreparer.prepare(source.content!!.text).length
+        val languageCode = narrationLanguageResolver.resolve(source.metadata?.transcriptLanguage, source.content!!.text)
+        val characterCount = narrationScriptPreparer.prepare(source.content!!.text, languageCode).length
         val model = ttsModelCatalog.modelFor(providerConfig.providerType, providerConfig.modelId)
 
         return NarrationEstimateResponse(
@@ -213,7 +214,7 @@ class SourceNarrationService(
                     userId = source.userId,
                     transcriptLanguage = source.metadata?.transcriptLanguage,
                     contentText = contentText,
-                    contentHash = NarrationContentHashing.hash(contentText)
+                    contentHash = NarrationContentHashing.hash(contentText, source.metadata?.transcriptLanguage)
                 )
             }
         } ?: return
@@ -224,7 +225,8 @@ class SourceNarrationService(
         }
 
         loaded as TextNarrationInput
-        val plainText = narrationScriptPreparer.prepare(loaded.contentText)
+        val languageCode = narrationLanguageResolver.resolve(loaded.transcriptLanguage, loaded.contentText)
+        val plainText = narrationScriptPreparer.prepare(loaded.contentText, languageCode)
         if (plainText.isBlank()) {
             markNarrationFailedIfCurrent(loaded, REASON_EMPTY_CONTENT)
             return
@@ -242,11 +244,10 @@ class SourceNarrationService(
             return
         }
 
-        val languageCode = narrationLanguageResolver.resolve(loaded.transcriptLanguage, loaded.contentText)
         val voiceId = ttsVoiceResolver.resolveVoiceId(providerConfig.providerType, languageCode)
 
         val cachedAudio = transactionTemplate.execute {
-            NarrationContentHashing.lookupHashes(loaded.contentText)
+            NarrationContentHashing.lookupHashes(loaded.contentText, loaded.transcriptLanguage)
                 .firstNotNullOfOrNull { hash ->
                     sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(
                         hash,
@@ -422,7 +423,7 @@ class SourceNarrationService(
             if (source.status != SourceStatus.ACTIVE || source.narrationState != NarrationState.PENDING) {
                 return@execute null
             }
-            if (NarrationContentHashing.hash(source.content?.text.orEmpty()) != loaded.contentHash) {
+            if (NarrationContentHashing.hash(source.content?.text.orEmpty(), source.metadata?.transcriptLanguage) != loaded.contentHash) {
                 return@execute null
             }
 
@@ -456,7 +457,7 @@ class SourceNarrationService(
             if (source.status != SourceStatus.ACTIVE || source.narrationState != NarrationState.PENDING) {
                 return@execute null
             }
-            if (NarrationContentHashing.hash(source.content?.text.orEmpty()) != loaded.contentHash) {
+            if (NarrationContentHashing.hash(source.content?.text.orEmpty(), source.metadata?.transcriptLanguage) != loaded.contentHash) {
                 return@execute null
             }
 

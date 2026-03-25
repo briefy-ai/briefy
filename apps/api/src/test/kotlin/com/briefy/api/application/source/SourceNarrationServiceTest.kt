@@ -362,6 +362,56 @@ class SourceNarrationServiceTest {
     }
 
     @Test
+    fun `processNarration localizes skip annotations for spanish synthesis`() {
+        val userId = UUID.randomUUID()
+        val source = createPendingSource(userId).apply {
+            content = Content.from(
+                """
+                Esta guia es para pruebas.
+
+                ```python
+                print("hola")
+                ```
+                """.trimIndent()
+            )
+            metadata = Metadata.from(
+                title = "Fuente",
+                author = "Autor",
+                publishedDate = null,
+                platform = "web",
+                wordCount = content!!.wordCount,
+                aiFormatted = true,
+                extractionProvider = "jsoup",
+                transcriptLanguage = "es"
+            )
+        }
+        val preparedText = "Esta guia es para pruebas. Se omitio un ejemplo de codigo para mayor claridad del audio."
+        val hash = contentHash(preparedText, "es")
+        whenever(ttsSettingsService.resolvePreferredProvider(userId)).thenReturn(inworldConfig)
+        whenever(ttsProviderRegistry.get(TtsProviderType.INWORLD)).thenReturn(ttsProvider)
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sharedAudioCacheRepository.findByContentHashAndProviderTypeAndVoiceIdAndModelId(hash, TtsProviderType.INWORLD, "Miguel", "inworld-tts-1.5-mini"))
+            .thenReturn(null)
+        whenever(ttsProvider.synthesize(any())).thenReturn(sampleMp3Bytes())
+        whenever(audioStorageService.generatePresignedGetUrl(hash, TtsProviderType.INWORLD, "Miguel", "inworld-tts-1.5-mini"))
+            .thenReturn("https://fresh.example.com/generated-es-structured.mp3")
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+        whenever(sharedAudioCacheRepository.save(any())).thenAnswer { it.arguments[0] as SharedAudioCache }
+        whenever(idGenerator.newId()).thenReturn(UUID.randomUUID())
+
+        service.processNarration(source.id, userId)
+
+        verify(ttsProvider).synthesize(
+            argThat<TtsSynthesisRequest> {
+                text == preparedText &&
+                    voiceId == "Miguel" &&
+                    modelId == "inworld-tts-1.5-mini" &&
+                    apiKey == "in-key"
+            }
+        )
+    }
+
+    @Test
     fun `refreshAudio updates source and shared cache url`() {
         val userId = UUID.randomUUID()
         val source = createActiveSource(userId).apply {
@@ -557,8 +607,8 @@ class SourceNarrationServiceTest {
         return source
     }
 
-    private fun contentHash(content: String): String {
-        return NarrationContentHashing.hash(content)
+    private fun contentHash(content: String, transcriptLanguage: String? = null): String {
+        return NarrationContentHashing.hash(content, transcriptLanguage)
     }
 
     private fun sampleMp3Bytes(): ByteArray = byteArrayOf(
