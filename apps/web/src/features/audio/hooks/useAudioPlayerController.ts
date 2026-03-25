@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getSourceAudio } from '@/lib/api/sources'
+import { loadAudioPlaybackRate, persistAudioPlaybackRate } from '../playbackRate'
 import { useMediaSession } from './useMediaSession'
 
 export interface AudioPlayerState {
@@ -10,13 +11,16 @@ export interface AudioPlayerState {
   isLoading: boolean
   currentTime: number
   duration: number
+  playbackRate: number
 }
 
 export function useAudioPlayerController() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const currentSourceIdRef = useRef<string | null>(null)
   const refreshAttemptsRef = useRef(0)
-  const [state, setState] = useState<AudioPlayerState>({
+  const [initialPlaybackRate] = useState(loadAudioPlaybackRate)
+  const playbackRateRef = useRef(initialPlaybackRate)
+  const [state, setState] = useState<AudioPlayerState>(() => ({
     currentSourceId: null,
     currentSourceTitle: null,
     currentArtworkUrl: null,
@@ -24,11 +28,13 @@ export function useAudioPlayerController() {
     isLoading: false,
     currentTime: 0,
     duration: 0,
-  })
+    playbackRate: initialPlaybackRate,
+  }))
 
   // Create the audio element once
   useEffect(() => {
     const audio = new Audio()
+    audio.playbackRate = playbackRateRef.current
     audioRef.current = audio
 
     const onTimeUpdate = () => {
@@ -75,6 +81,13 @@ export function useAudioPlayerController() {
     }
   }, [])
 
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+
+    audio.playbackRate = state.playbackRate
+  }, [state.playbackRate])
+
   const playSource = useCallback(
     (sourceId: string, title: string, audioUrl: string, duration?: number, artworkUrl?: string | null) => {
       const audio = audioRef.current
@@ -82,6 +95,7 @@ export function useAudioPlayerController() {
 
       currentSourceIdRef.current = sourceId
       refreshAttemptsRef.current = 0
+      audio.playbackRate = playbackRateRef.current
       audio.src = audioUrl
       audio.load()
       void audio.play()
@@ -93,6 +107,7 @@ export function useAudioPlayerController() {
         isLoading: true,
         currentTime: 0,
         duration: duration ?? 0,
+        playbackRate: playbackRateRef.current,
       })
     },
     []
@@ -127,6 +142,7 @@ export function useAudioPlayerController() {
       isLoading: false,
       currentTime: 0,
       duration: 0,
+      playbackRate: playbackRateRef.current,
     })
   }, [])
 
@@ -149,6 +165,7 @@ export function useAudioPlayerController() {
         const audio = audioRef.current
         if (!audio || currentSourceIdRef.current !== sourceId) return
         const currentTime = audio.currentTime
+        audio.playbackRate = playbackRateRef.current
         audio.src = data.audioUrl
         audio.currentTime = currentTime
         void audio.play()
@@ -159,6 +176,18 @@ export function useAudioPlayerController() {
     },
     [stop]
   )
+
+  const setPlaybackRate = useCallback((nextRate: number) => {
+    const playbackRate = persistAudioPlaybackRate(nextRate)
+    playbackRateRef.current = playbackRate
+
+    const audio = audioRef.current
+    if (audio) {
+      audio.playbackRate = playbackRate
+    }
+
+    setState((prev) => ({ ...prev, playbackRate }))
+  }, [])
 
   // Try one presigned URL refresh before stopping on persistent media errors.
   useEffect(() => {
@@ -204,5 +233,7 @@ export function useAudioPlayerController() {
     stop,
     skipForward,
     skipBackward,
+    playbackRate: state.playbackRate,
+    setPlaybackRate,
   }
 }

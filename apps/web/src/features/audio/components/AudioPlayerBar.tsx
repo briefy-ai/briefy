@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { Loader2, Pause, Play, RotateCcw, RotateCw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAudioPlayer } from '../AudioPlayerProvider'
+import { PlaybackRateSelect } from './PlaybackRateSelect'
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
@@ -19,12 +20,14 @@ export function AudioPlayerBar() {
     isLoading,
     currentTime,
     duration,
+    playbackRate,
     pause,
     resume,
     seek,
     stop,
     skipForward,
     skipBackward,
+    setPlaybackRate,
   } = useAudioPlayer()
 
   if (!currentSourceId) return null
@@ -98,6 +101,12 @@ export function AudioPlayerBar() {
             <RotateCw className="size-3.5" />
           </Button>
         </div>
+
+        <PlaybackRateSelect
+          value={playbackRate}
+          onChange={setPlaybackRate}
+          triggerClassName="h-9 w-[4.75rem] text-[11px] sm:h-8 sm:w-[4.5rem] sm:text-xs"
+        />
 
         {/* Progress bar */}
         <div className="flex min-w-0 flex-1 items-center gap-2">

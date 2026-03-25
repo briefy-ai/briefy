@@ -11,6 +11,7 @@ interface AudioPlayerContextValue {
   isLoading: boolean
   currentTime: number
   duration: number
+  playbackRate: number
   playSource: (sourceId: string, title: string, audioUrl: string, duration?: number, artworkUrl?: string | null) => void
   pause: () => void
   resume: () => void
@@ -18,6 +19,7 @@ interface AudioPlayerContextValue {
   stop: () => void
   skipForward: (seconds?: number) => void
   skipBackward: (seconds?: number) => void
+  setPlaybackRate: (rate: number) => void
 }
 
 const AudioPlayerVisibilityContext = createContext(false)
@@ -37,6 +39,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
           isLoading: controller.isLoading,
           currentTime: controller.currentTime,
           duration: controller.duration,
+          playbackRate: controller.playbackRate,
           playSource: controller.playSource,
           pause: controller.pause,
           resume: controller.resume,
@@ -44,6 +47,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
           stop: controller.stop,
           skipForward: controller.skipForward,
           skipBackward: controller.skipBackward,
+          setPlaybackRate: controller.setPlaybackRate,
         }}
       >
         {children}

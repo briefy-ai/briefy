@@ -3,6 +3,8 @@ import { Headphones, Loader2, Pause, Play, RotateCcw, RotateCw } from 'lucide-re
 import { Button } from '@/components/ui/button'
 import { getShareLinkAudio } from '@/lib/api/shareLinks'
 import { useMediaSession } from '../hooks/useMediaSession'
+import { loadAudioPlaybackRate, persistAudioPlaybackRate } from '../playbackRate'
+import { PlaybackRateSelect } from './PlaybackRateSelect'
 
 interface PublicNarrationPlayerProps {
   token: string
@@ -17,6 +19,7 @@ interface PlayerState {
   currentTime: number
   duration: number
   error: string | null
+  playbackRate: number
 }
 
 export function PublicNarrationPlayer({
@@ -47,17 +50,21 @@ function PublicNarrationPlayerContent({
   const refreshAttemptsRef = useRef(0)
   const hasStartedPlaybackRef = useRef(false)
   const playbackSessionRef = useRef(0)
-  const [state, setState] = useState<PlayerState>({
+  const [initialPlaybackRate] = useState(loadAudioPlaybackRate)
+  const playbackRateRef = useRef(initialPlaybackRate)
+  const [state, setState] = useState<PlayerState>(() => ({
     isPlaying: false,
     isLoading: false,
     currentTime: 0,
     duration: durationSeconds,
     error: null,
-  })
+    playbackRate: initialPlaybackRate,
+  }))
 
   useEffect(() => {
     const audio = new Audio()
     audio.preload = 'none'
+    audio.playbackRate = playbackRateRef.current
     audioRef.current = audio
 
     const onTimeUpdate = () => {
@@ -109,6 +116,7 @@ function PublicNarrationPlayerContent({
     if (!audio) return
 
     currentUrlRef.current = nextUrl
+    audio.playbackRate = playbackRateRef.current
     audio.src = nextUrl
     audio.load()
     if (typeof seekTo === 'number' && seekTo > 0) {
@@ -163,6 +171,18 @@ function PublicNarrationPlayerContent({
     if (!audio) return
     audio.currentTime = time
     setState((prev) => ({ ...prev, currentTime: time }))
+  }, [])
+
+  const setPlaybackRate = useCallback((nextRate: number) => {
+    const playbackRate = persistAudioPlaybackRate(nextRate)
+    playbackRateRef.current = playbackRate
+
+    const audio = audioRef.current
+    if (audio) {
+      audio.playbackRate = playbackRate
+    }
+
+    setState((prev) => ({ ...prev, playbackRate }))
   }, [])
 
   const skipBackward = useCallback(() => {
@@ -273,7 +293,7 @@ function PublicNarrationPlayerContent({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 px-4 py-3 sm:gap-3">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3 sm:flex-nowrap sm:gap-3">
         <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
           <Button
             type="button"
@@ -319,6 +339,12 @@ function PublicNarrationPlayerContent({
             <RotateCw className="size-3.5" />
           </Button>
         </div>
+
+        <PlaybackRateSelect
+          value={state.playbackRate}
+          onChange={setPlaybackRate}
+          triggerClassName="h-9 w-[4.75rem] text-[11px] sm:h-8 sm:w-[4.5rem] sm:text-xs"
+        />
 
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="hidden text-[10px] tabular-nums text-muted-foreground sm:inline">
