@@ -1,0 +1,242 @@
+package com.briefy.api.infrastructure.tts
+
+import org.springframework.stereotype.Component
+
+@Component
+class NarrationScriptPreparer(
+    private val markdownStripper: MarkdownStripper
+) {
+    fun prepare(content: String): String = prepare(content, LANGUAGE_ENGLISH)
+
+    fun prepare(content: String, languageCode: String): String {
+        return prepare(content, normalizedLanguageCode(languageCode), includeAnnotations = true)
+    }
+
+    fun prepareForLanguageDetection(content: String): String {
+        return prepare(content, LANGUAGE_ENGLISH, includeAnnotations = false)
+    }
+
+    private fun prepare(content: String, languageCode: String, includeAnnotations: Boolean): String {
+        if (content.isBlank()) return ""
+
+        val parts = mutableListOf<String>()
+        var index = 0
+        val lines = content.lines()
+
+        while (index < lines.size) {
+            if (lines[index].isBlank()) {
+                index++
+                continue
+            }
+
+            val fence = parseFence(lines[index])
+            if (fence != null) {
+                appendPart(parts, annotationFor(SkipBlockType.CODE, languageCode, includeAnnotations))
+                index = skipFence(lines, index + 1, fence)
+                continue
+            }
+
+            val block = mutableListOf<String>()
+            while (index < lines.size) {
+                val line = lines[index]
+                if (line.isBlank()) {
+                    break
+                }
+                if (parseFence(line) != null) {
+                    break
+                }
+                block += line
+                index++
+            }
+
+            appendBlock(parts, block, languageCode, includeAnnotations)
+        }
+
+        return parts.joinToString(" ")
+            .replace(WHITESPACE_REGEX, " ")
+            .trim()
+    }
+
+    private fun appendBlock(parts: MutableList<String>, lines: List<String>, languageCode: String, includeAnnotations: Boolean) {
+        if (lines.isEmpty()) return
+
+        if (containsMarkdownTable(lines)) {
+            appendTableAwareBlock(parts, lines, languageCode, includeAnnotations)
+            return
+        }
+
+        val trimmedLines = lines.map(String::trim).filter(String::isNotBlank)
+        val replacement = when {
+            isDenseStructuredBlock(trimmedLines) -> annotationFor(SkipBlockType.DENSE_STRUCTURED, languageCode, includeAnnotations)
+            else -> markdownStripper.strip(lines.joinToString("\n"))
+        }
+
+        appendPart(parts, replacement)
+    }
+
+    private fun appendTableAwareBlock(parts: MutableList<String>, lines: List<String>, languageCode: String, includeAnnotations: Boolean) {
+        val proseBuffer = mutableListOf<String>()
+        var index = 0
+
+        while (index < lines.size) {
+            if (isMarkdownTableStart(lines, index)) {
+                flushProse(parts, proseBuffer)
+                appendPart(parts, annotationFor(SkipBlockType.TABLE, languageCode, includeAnnotations))
+                index = skipMarkdownTable(lines, index)
+                continue
+            }
+
+            proseBuffer += lines[index]
+            index++
+        }
+
+        flushProse(parts, proseBuffer)
+    }
+
+    private fun appendPart(parts: MutableList<String>, part: String) {
+        val normalized = part.trim()
+        if (normalized.isBlank()) return
+        if (parts.lastOrNull() == normalized) return
+        parts += normalized
+    }
+
+    private fun flushProse(parts: MutableList<String>, proseBuffer: MutableList<String>) {
+        if (proseBuffer.isEmpty()) return
+        appendPart(parts, markdownStripper.strip(proseBuffer.joinToString("\n")))
+        proseBuffer.clear()
+    }
+
+    private fun parseFence(line: String): Fence? {
+        val trimmed = line.trimStart()
+        val marker = trimmed.firstOrNull() ?: return null
+        if (marker != '`' && marker != '~') return null
+
+        val markerLength = trimmed.takeWhile { it == marker }.length
+        if (markerLength < 3) return null
+
+        return Fence(marker, markerLength)
+    }
+
+    private fun skipFence(lines: List<String>, startIndex: Int, fence: Fence): Int {
+        var index = startIndex
+        while (index < lines.size) {
+            val trimmed = lines[index].trimStart()
+            val markerLength = trimmed.takeWhile { it == fence.marker }.length
+            if (markerLength >= fence.length && trimmed.drop(markerLength).isBlank()) {
+                return index + 1
+            }
+            index++
+        }
+        return lines.size
+    }
+
+    private fun containsMarkdownTable(lines: List<String>): Boolean {
+        return lines.indices.any { isMarkdownTableStart(lines, it) }
+    }
+
+    private fun isMarkdownTableStart(lines: List<String>, index: Int): Boolean {
+        if (index + 1 >= lines.size) return false
+        return TABLE_ROW_REGEX.matches(lines[index].trim()) &&
+            TABLE_SEPARATOR_REGEX.matches(lines[index + 1].trim())
+    }
+
+    private fun skipMarkdownTable(lines: List<String>, startIndex: Int): Int {
+        var index = startIndex + 2
+        while (index < lines.size && TABLE_ROW_REGEX.matches(lines[index].trim())) {
+            index++
+        }
+        return index
+    }
+
+    private fun isDenseStructuredBlock(lines: List<String>): Boolean {
+        if (lines.size < 4) return false
+
+        val structuredLineCount = lines.count(::isStructuredLine)
+        val sentenceLikeLines = lines.count(::isSentenceLikeLine)
+
+        return structuredLineCount * 10 >= lines.size * 6 && sentenceLikeLines < 2
+    }
+
+    private fun isStructuredLine(line: String): Boolean {
+        return STRUCTURED_ARROW_REGEX.containsMatchIn(line) ||
+            DOCUMENT_IDENTIFIER_REGEX.containsMatchIn(line) ||
+            SECTION_STEP_REGEX.matches(line) ||
+            KEY_VALUE_REGEX.matches(line) ||
+            shortTokenDensity(line) >= 0.6
+    }
+
+    private fun isSentenceLikeLine(line: String): Boolean {
+        val words = WORD_REGEX.findAll(line).count()
+        return words >= 5 && SENTENCE_PUNCTUATION_REGEX.containsMatchIn(line)
+    }
+
+    private fun shortTokenDensity(line: String): Double {
+        val tokens = WORD_REGEX.findAll(line).map { it.value }.toList()
+        if (tokens.size < 4) return 0.0
+
+        val shortTokenCount = tokens.count { it.length <= 4 || DIGIT_REGEX.containsMatchIn(it) }
+        return shortTokenCount.toDouble() / tokens.size.toDouble()
+    }
+
+    private fun annotationFor(type: SkipBlockType, languageCode: String, includeAnnotations: Boolean): String {
+        if (!includeAnnotations) return ""
+
+        return when (normalizedLanguageCode(languageCode)) {
+            LANGUAGE_SPANISH -> when (type) {
+                SkipBlockType.CODE -> CODE_BLOCK_ANNOTATION_ES
+                SkipBlockType.TABLE -> TABLE_ANNOTATION_ES
+                SkipBlockType.DENSE_STRUCTURED -> DENSE_STRUCTURED_BLOCK_ANNOTATION_ES
+            }
+
+            else -> when (type) {
+                SkipBlockType.CODE -> CODE_BLOCK_ANNOTATION
+                SkipBlockType.TABLE -> TABLE_ANNOTATION
+                SkipBlockType.DENSE_STRUCTURED -> DENSE_STRUCTURED_BLOCK_ANNOTATION
+            }
+        }
+    }
+
+    private fun normalizedLanguageCode(languageCode: String?): String {
+        return languageCode
+            ?.trim()
+            ?.lowercase()
+            ?.substringBefore('-')
+            ?.substringBefore('_')
+            ?.ifBlank { LANGUAGE_ENGLISH }
+            ?: LANGUAGE_ENGLISH
+    }
+
+    companion object {
+        private const val LANGUAGE_ENGLISH = "en"
+        private const val LANGUAGE_SPANISH = "es"
+
+        const val CODE_BLOCK_ANNOTATION = "Code example skipped for audio clarity."
+        const val TABLE_ANNOTATION = "Table skipped for audio clarity."
+        const val DENSE_STRUCTURED_BLOCK_ANNOTATION = "Dense structured example skipped for audio clarity."
+        const val CODE_BLOCK_ANNOTATION_ES = "Se omitio un ejemplo de codigo para mayor claridad del audio."
+        const val TABLE_ANNOTATION_ES = "Se omitio una tabla para mayor claridad del audio."
+        const val DENSE_STRUCTURED_BLOCK_ANNOTATION_ES = "Se omitio un ejemplo estructurado para mayor claridad del audio."
+
+        private val WHITESPACE_REGEX = Regex("\\s+")
+        private val STRUCTURED_ARROW_REGEX = Regex("(->|→)")
+        private val DOCUMENT_IDENTIFIER_REGEX = Regex("\\b[A-Z]\\d+\\b")
+        private val SECTION_STEP_REGEX = Regex("^\\d+[.)]?\\s+[A-Z][^.!?]*$")
+        private val KEY_VALUE_REGEX = Regex("^[^:]{1,30}:\\s+.+$")
+        private val TABLE_ROW_REGEX = Regex("^\\|?.*\\|.*\\|?.*$")
+        private val TABLE_SEPARATOR_REGEX = Regex("^\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?$")
+        private val WORD_REGEX = Regex("\\p{L}[\\p{L}\\p{N}]*")
+        private val DIGIT_REGEX = Regex("\\d")
+        private val SENTENCE_PUNCTUATION_REGEX = Regex("[.!?]")
+    }
+}
+
+private enum class SkipBlockType {
+    CODE,
+    TABLE,
+    DENSE_STRUCTURED
+}
+
+private data class Fence(
+    val marker: Char,
+    val length: Int
+)

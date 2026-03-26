@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class NarrationLanguageResolverTest {
-    private val resolver = NarrationLanguageResolver(MarkdownStripper())
+    private val resolver = NarrationLanguageResolver(NarrationScriptPreparer(MarkdownStripper()))
 
     @Test
     fun `uses normalized transcript language when available`() {
@@ -21,5 +21,18 @@ class NarrationLanguageResolverTest {
     fun `defaults to english when no stronger signal exists`() {
         val text = "This is a short source narration for an English article."
         assertEquals("en", resolver.resolve(null, text))
+    }
+
+    @Test
+    fun `detects spanish without being biased by english skip annotations`() {
+        val text = """
+            Esta guia es para pruebas
+
+            ```python
+            print("hola")
+            ```
+        """.trimIndent()
+
+        assertEquals("es", resolver.resolve(null, text))
     }
 }
