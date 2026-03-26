@@ -193,6 +193,26 @@ class SourceControllerTest {
     }
 
     @Test
+    fun `GET source includes extraction failure message and retryability`() {
+        val failedSource = Source.create(
+            id = UUID.randomUUID(),
+            rawUrl = "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            userId = testUserId,
+            sourceType = SourceType.VIDEO
+        )
+        failedSource.startExtraction()
+        failedSource.failExtraction("supadata_invalid_api_key")
+        sourceRepository.save(failedSource)
+
+        mockMvc.perform(get("/api/sources/${failedSource.id}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.status").value("failed"))
+            .andExpect(jsonPath("$.extractionFailureReason").value("supadata_invalid_api_key"))
+            .andExpect(jsonPath("$.extractionFailureMessage").value("Your Supadata API key is invalid. Update it in Settings and try again."))
+            .andExpect(jsonPath("$.extractionFailureRetryable").value(false))
+    }
+
+    @Test
     fun `GET list returns all sources`() {
         `when`(extractionProvider.extract(any())).thenReturn(sampleExtractionResult)
 

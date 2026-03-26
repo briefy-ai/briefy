@@ -268,7 +268,9 @@ function SourceDetailPage() {
       {source.status === 'failed' && (
         <div className="mb-6 animate-scale-in">
           <div className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3">
-            <p className="text-sm text-destructive">Content extraction failed.</p>
+            <p className="text-sm text-destructive">
+              {source.extractionFailureMessage || 'Content extraction failed.'}
+            </p>
             <div className="ml-4 flex shrink-0 gap-2">
               <Button
                 variant="outline"

@@ -25,6 +25,9 @@ data class SourceResponse(
     val narrationFailureReason: String?,
     val narrationFailureMessage: String?,
     val narrationFailureRetryable: Boolean?,
+    val extractionFailureReason: String?,
+    val extractionFailureMessage: String?,
+    val extractionFailureRetryable: Boolean?,
     val audio: AudioContentDto?,
     val topicExtractionState: String,
     val topicExtractionFailureReason: String?,
@@ -120,6 +123,9 @@ fun Source.toResponse(
     narrationFailureReason = narrationFailureReason,
     narrationFailureMessage = NarrationFailureCatalog.messageFor(narrationFailureReason),
     narrationFailureRetryable = NarrationFailureCatalog.retryableFor(narrationFailureReason),
+    extractionFailureReason = extractionFailureReason,
+    extractionFailureMessage = ExtractionFailureCatalog.messageFor(extractionFailureReason),
+    extractionFailureRetryable = ExtractionFailureCatalog.retryableFor(extractionFailureReason),
     id = id,
     url = url.toDto(),
     status = status.name.lowercase(),
@@ -205,6 +211,26 @@ private object NarrationFailureCatalog {
             "too_many_concurrent_requests", "system_busy", "voice_not_ready", "audio_storage_failed", "audio_url_refresh_failed", "tts_generation_failed", "elevenlabs_server_error", "elevenlabs_request_retryable", "inworld_server_error", "inworld_request_retryable", "inworld_rate_limited" -> true
             "source_audio_download_failed", "source_audio_storage_failed", "source_audio_url_refresh_failed" -> true
             else -> false
+        }
+    }
+}
+
+private object ExtractionFailureCatalog {
+    fun messageFor(code: String?): String? {
+        return when (code) {
+            null -> null
+            "supadata_invalid_api_key" -> "Your Supadata API key is invalid. Update it in Settings and try again."
+            "supadata_rate_limited" -> "Your Supadata quota has been exceeded. Check your Supadata account and try again."
+            "youtube_bot_blocked" -> "YouTube is blocking requests from this server. Configure Supadata in Settings for reliable extraction."
+            else -> "Content extraction failed. Try again or paste content manually."
+        }
+    }
+
+    fun retryableFor(code: String?): Boolean? {
+        return when (code) {
+            null -> null
+            "supadata_invalid_api_key", "supadata_rate_limited", "youtube_bot_blocked" -> false
+            else -> true
         }
     }
 }

@@ -50,7 +50,12 @@ class YouTubeExtractionWorker(
                     job.attempts + 1,
                     e
                 )
-                sourceExtractionJobService.markRetry(job.id, e.message ?: "unknown_error", Instant.now())
+                val rootMessage = generateSequence<Throwable>(e) { it.cause }
+                    .mapNotNull { it.message }
+                    .lastOrNull()
+                    ?: e.message
+                    ?: "unknown_error"
+                sourceExtractionJobService.markRetry(job.id, rootMessage, Instant.now())
             } finally {
                 heartbeatRunning.set(false)
                 heartbeatThread.join(2_000)

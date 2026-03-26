@@ -19,8 +19,9 @@ class YouTubeAiContentFormatterTest {
     private val formatter = YouTubeAiContentFormatter(aiAdapter)
 
     @Test
-    fun `supports youtube extractor only`() {
+    fun `supports youtube and supadata youtube extractors`() {
         assertTrue(formatter.supports(ExtractionProviderId.YOUTUBE))
+        assertTrue(formatter.supports(ExtractionProviderId.SUPADATA_YOUTUBE))
         assertFalse(formatter.supports(ExtractionProviderId.JSOUP))
         assertFalse(formatter.supports(ExtractionProviderId.FIRECRAWL))
     }

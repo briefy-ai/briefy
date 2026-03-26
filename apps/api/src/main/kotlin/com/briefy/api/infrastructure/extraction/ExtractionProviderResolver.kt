@@ -14,13 +14,7 @@ class ExtractionProviderResolver(
 
     fun resolveProvider(userId: UUID, platform: String): ExtractionProvider {
         if (platform.equals("youtube", ignoreCase = true)) {
-            logger.info(
-                "[resolver] Extraction provider resolved userId={} platform={} provider={} reason=platform_youtube",
-                userId,
-                platform,
-                ExtractionProviderId.YOUTUBE
-            )
-            return extractionProviderFactory.youtube()
+            return resolveForYouTubePlatform(userId, platform)
         }
 
         if (isPosthogPlatform(platform)) {
@@ -69,6 +63,37 @@ class ExtractionProviderResolver(
             ExtractionProviderId.JSOUP
         )
         return extractionProviderFactory.jsoup()
+    }
+
+    private fun resolveForYouTubePlatform(userId: UUID, platform: String): ExtractionProvider {
+        if (!userSettingsService.isSupadataEnabled(userId)) {
+            logger.info(
+                "[resolver] Extraction provider resolved userId={} platform={} provider={} reason=supadata_disabled_or_unconfigured",
+                userId,
+                platform,
+                ExtractionProviderId.YOUTUBE
+            )
+            return extractionProviderFactory.youtube()
+        }
+
+        val apiKey = userSettingsService.getSupadataApiKey(userId)
+        if (!apiKey.isNullOrBlank()) {
+            logger.info(
+                "[resolver] Extraction provider resolved userId={} platform={} provider={} reason=supadata_enabled",
+                userId,
+                platform,
+                ExtractionProviderId.SUPADATA_YOUTUBE
+            )
+            return extractionProviderFactory.supadata(apiKey)
+        }
+
+        logger.info(
+            "[resolver] Extraction provider resolved userId={} platform={} provider={} reason=missing_supadata_key",
+            userId,
+            platform,
+            ExtractionProviderId.YOUTUBE
+        )
+        return extractionProviderFactory.youtube()
     }
 
     private fun resolveForXPlatform(userId: UUID, platform: String): ExtractionProvider {

@@ -212,6 +212,69 @@ class SourceContentFormatterServiceTest {
     }
 
     @Test
+    fun `formats supadata transcript with forced google flash lite model`() {
+        val userId = UUID.randomUUID()
+        val sourceId = UUID.randomUUID()
+        val snapshotId = UUID.randomUUID()
+        val source = createActiveSource(
+            sourceId = sourceId,
+            userId = userId,
+            text = "line one line two line three",
+            aiFormatted = false,
+            extractionProvider = "supadata_youtube",
+            platform = "youtube",
+            videoId = "xgpLjLHB5sA",
+            transcriptSource = "supadata"
+        )
+        val latestSnapshot = SharedSourceSnapshot(
+            id = UUID.randomUUID(),
+            urlNormalized = source.url.normalized,
+            sourceType = SourceType.VIDEO,
+            status = SharedSourceSnapshotStatus.ACTIVE,
+            content = Content.from("line one line two line three"),
+            metadata = Metadata(
+                title = "Video title",
+                platform = "youtube",
+                aiFormatted = false,
+                extractionProvider = "supadata_youtube",
+                videoId = "xgpLjLHB5sA",
+                transcriptSource = "supadata"
+            ),
+            fetchedAt = Instant.now().minusSeconds(60),
+            expiresAt = Instant.now().plusSeconds(3_600),
+            version = 1,
+            isLatest = true
+        )
+
+        whenever(jsoupFormatter.supports(ExtractionProviderId.SUPADATA_YOUTUBE)).thenReturn(false)
+        whenever(youtubeFormatter.supports(ExtractionProviderId.SUPADATA_YOUTUBE)).thenReturn(true)
+        whenever(youtubeFormatter.format(any(), any(), any())).thenReturn("Line one.\n\nLine two.\n\nLine three.")
+        whenever(sourceRepository.findByIdAndUserId(sourceId, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+        whenever(sharedSourceSnapshotRepository.findFirstByUrlNormalizedAndIsLatestTrue(source.url.normalized))
+            .thenReturn(latestSnapshot)
+        whenever(sharedSourceSnapshotRepository.findMaxVersionByUrlNormalized(source.url.normalized)).thenReturn(1)
+        whenever(idGenerator.newId()).thenReturn(snapshotId)
+
+        service.formatSourceContent(sourceId, userId, ExtractionProviderId.SUPADATA_YOUTUBE)
+
+        verify(userAiSettingsService, never()).resolveUseCaseSelection(any(), any())
+        verify(youtubeFormatter).format(
+            "line one line two line three",
+            "google_genai",
+            "gemini-2.5-flash-lite"
+        )
+        assertEquals("supadata", source.metadata?.transcriptSource)
+        assertTrue(source.metadata?.aiFormatted == true)
+        assertEquals(FormattingState.SUCCEEDED, source.metadata?.formattingState)
+        assertNull(source.metadata?.formattingFailureReason)
+        val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
+        verify(eventPublisher).publishEvent(eventCaptor.capture())
+        assertEquals(sourceId, eventCaptor.firstValue.sourceId)
+        assertEquals(userId, eventCaptor.firstValue.userId)
+    }
+
+    @Test
     fun `skips youtube formatting for non-caption transcript`() {
         val userId = UUID.randomUUID()
         val sourceId = UUID.randomUUID()
@@ -228,6 +291,34 @@ class SourceContentFormatterServiceTest {
         whenever(sourceRepository.findByIdAndUserId(sourceId, userId)).thenReturn(source)
 
         service.formatSourceContent(sourceId, userId, ExtractionProviderId.YOUTUBE)
+
+        verify(youtubeFormatter, never()).format(any(), any(), any())
+        verify(sourceRepository).save(any())
+        assertEquals(FormattingState.NOT_REQUIRED, source.metadata?.formattingState)
+        assertNull(source.metadata?.formattingFailureReason)
+        val eventCaptor = argumentCaptor<SourceContentFinalizedEvent>()
+        verify(eventPublisher).publishEvent(eventCaptor.capture())
+        assertEquals(sourceId, eventCaptor.firstValue.sourceId)
+        assertEquals(userId, eventCaptor.firstValue.userId)
+    }
+
+    @Test
+    fun `skips supadata youtube formatting for whisper transcript`() {
+        val userId = UUID.randomUUID()
+        val sourceId = UUID.randomUUID()
+        val source = createActiveSource(
+            sourceId = sourceId,
+            userId = userId,
+            text = "whisper transcript text",
+            aiFormatted = false,
+            extractionProvider = "supadata_youtube",
+            platform = "youtube",
+            videoId = "xgpLjLHB5sA",
+            transcriptSource = "whisper"
+        )
+        whenever(sourceRepository.findByIdAndUserId(sourceId, userId)).thenReturn(source)
+
+        service.formatSourceContent(sourceId, userId, ExtractionProviderId.SUPADATA_YOUTUBE)
 
         verify(youtubeFormatter, never()).format(any(), any(), any())
         verify(sourceRepository).save(any())

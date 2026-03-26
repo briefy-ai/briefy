@@ -48,6 +48,9 @@ export interface Source {
   hasGeneratedCoverImage: boolean
   content: SourceContent | null
   metadata: SourceMetadata | null
+  extractionFailureReason: string | null
+  extractionFailureMessage: string | null
+  extractionFailureRetryable: boolean | null
   topicExtractionState: 'pending' | 'succeeded' | 'failed'
   topicExtractionFailureReason: string | null
   pendingSuggestedTopicsCount: number
@@ -171,7 +174,7 @@ export interface LoginRequest {
   password: string
 }
 
-export type ExtractionProviderType = 'firecrawl' | 'x_api' | 'jsoup'
+export type ExtractionProviderType = 'firecrawl' | 'supadata' | 'x_api' | 'jsoup'
 
 export interface ProviderSettingDto {
   type: ExtractionProviderType

@@ -56,13 +56,18 @@ function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [supadataSaving, setSupadataSaving] = useState(false)
   const [xApiSaving, setXApiSaving] = useState(false)
   const [savingAiUseCase, setSavingAiUseCase] = useState<AiUseCaseId | null>(null)
   const [removingKey, setRemovingKey] = useState(false)
+  const [supadataRemovingKey, setSupadataRemovingKey] = useState(false)
   const [xApiRemovingKey, setXApiRemovingKey] = useState(false)
   const [firecrawlEnabled, setFirecrawlEnabled] = useState(false)
   const [firecrawlApiKey, setFirecrawlApiKey] = useState('')
   const [showFirecrawlKey, setShowFirecrawlKey] = useState(false)
+  const [supadataEnabled, setSupadataEnabled] = useState(false)
+  const [supadataApiKey, setSupadataApiKey] = useState('')
+  const [showSupadataKey, setShowSupadataKey] = useState(false)
   const [xApiEnabled, setXApiEnabled] = useState(false)
   const [xApiToken, setXApiToken] = useState('')
   const [showXApiToken, setShowXApiToken] = useState(false)
@@ -119,8 +124,10 @@ function SettingsPage() {
         setAiUseCases(aiData.useCases)
         setTelegramStatus(telegramData)
         const firecrawl = extractionData.providers.find((provider) => provider.type === 'firecrawl')
+        const supadata = extractionData.providers.find((provider) => provider.type === 'supadata')
         const xApi = extractionData.providers.find((provider) => provider.type === 'x_api')
         setFirecrawlEnabled(firecrawl?.enabled ?? false)
+        setSupadataEnabled(supadata?.enabled ?? false)
         setXApiEnabled(xApi?.enabled ?? false)
         applyAiUseCaseState(aiData.useCases)
       } catch (e) {
@@ -146,6 +153,10 @@ function SettingsPage() {
   )
   const jsoupProvider = useMemo(
     () => providers.find((provider) => provider.type === 'jsoup'),
+    [providers]
+  )
+  const supadataProvider = useMemo(
+    () => providers.find((provider) => provider.type === 'supadata'),
     [providers]
   )
   const xApiProvider = useMemo(
@@ -230,6 +241,43 @@ function SettingsPage() {
       setError(e instanceof Error ? e.message : 'Failed to update X API settings')
     } finally {
       setXApiSaving(false)
+    }
+  }
+
+  const saveSupadataSettings = async () => {
+    setSupadataSaving(true)
+    setError(null)
+    setSuccessMessage(null)
+    try {
+      const data = await updateProvider('supadata', {
+        enabled: supadataEnabled,
+        apiKey: supadataApiKey.trim() ? supadataApiKey.trim() : undefined,
+      })
+      setProviders(data.providers)
+      setSupadataApiKey('')
+      setSuccessMessage('Supadata settings updated.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update Supadata settings')
+    } finally {
+      setSupadataSaving(false)
+    }
+  }
+
+  const removeSupadataKey = async () => {
+    setSupadataRemovingKey(true)
+    setError(null)
+    setSuccessMessage(null)
+    try {
+      const data = await deleteProviderKey('supadata')
+      setProviders(data.providers)
+      const supadata = data.providers.find((provider) => provider.type === 'supadata')
+      setSupadataEnabled(supadata?.enabled ?? false)
+      setSupadataApiKey('')
+      setSuccessMessage('Supadata key removed.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to remove Supadata key')
+    } finally {
+      setSupadataRemovingKey(false)
     }
   }
 
@@ -632,6 +680,82 @@ function SettingsPage() {
                 disabled={removingKey || !firecrawlProvider?.configured}
               >
                 {removingKey ? 'Removing...' : 'Remove key'}
+              </Button>
+            </CardFooter>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                Supadata
+                {supadataProvider?.configured && <Badge variant="secondary">Configured</Badge>}
+              </CardTitle>
+              <CardDescription>
+                Preferred for YouTube native captions when direct yt-dlp extraction is blocked.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <p className="text-sm font-medium">Enable Supadata</p>
+                  <p className="text-xs text-muted-foreground">Use your own API key for reliable YouTube transcript extraction.</p>
+                </div>
+                <Toggle
+                  pressed={supadataEnabled}
+                  onPressedChange={setSupadataEnabled}
+                  variant="outline"
+                  aria-label="Toggle Supadata provider"
+                  className="min-w-16"
+                >
+                  {supadataEnabled ? 'On' : 'Off'}
+                </Toggle>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Platforms</p>
+                <div className="flex flex-wrap gap-2">
+                  {(supadataProvider?.platforms ?? []).map((platform) => (
+                    <Badge key={platform} variant="outline">
+                      {platform}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="supadata-api-key" className="text-sm font-medium">
+                  API key
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="supadata-api-key"
+                    type={showSupadataKey ? 'text' : 'password'}
+                    placeholder={supadataProvider?.configured ? 'Configured (enter to replace)' : 'supadata_...'}
+                    value={supadataApiKey}
+                    onChange={(event) => setSupadataApiKey(event.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowSupadataKey((current) => !current)}
+                  >
+                    {showSupadataKey ? <EyeOff /> : <Eye />}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="gap-2">
+              <Button type="button" onClick={saveSupadataSettings} disabled={supadataSaving || loading}>
+                {supadataSaving ? 'Saving...' : 'Save'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={removeSupadataKey}
+                disabled={supadataRemovingKey || !supadataProvider?.configured}
+              >
+                {supadataRemovingKey ? 'Removing...' : 'Remove key'}
               </Button>
             </CardFooter>
           </Card>

@@ -49,20 +49,22 @@ class SourceTest {
     }
 
     @Test
-    fun `failExtraction transitions from EXTRACTING to FAILED`() {
+    fun `failExtraction transitions from EXTRACTING to FAILED and stores failure reason`() {
         val source = createSource()
         source.startExtraction()
-        source.failExtraction()
+        source.failExtraction("supadata_invalid_api_key")
         assertEquals(SourceStatus.FAILED, source.status)
+        assertEquals("supadata_invalid_api_key", source.extractionFailureReason)
     }
 
     @Test
-    fun `retry transitions from FAILED to SUBMITTED`() {
+    fun `retry transitions from FAILED to SUBMITTED and clears extraction failure reason`() {
         val source = createSource()
         source.startExtraction()
-        source.failExtraction()
+        source.failExtraction("supadata_invalid_api_key")
         source.retry()
         assertEquals(SourceStatus.SUBMITTED, source.status)
+        assertNull(source.extractionFailureReason)
     }
 
     @Test

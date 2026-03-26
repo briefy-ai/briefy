@@ -36,6 +36,13 @@ class UserSettingsService(
                     description = "Preferred for X posts, threads, and article content"
                 ),
                 ProviderSettingDto(
+                    type = SUPADATA,
+                    enabled = settings.supadataEnabled,
+                    configured = !settings.supadataApiKeyEncrypted.isNullOrBlank(),
+                    platforms = SUPADATA_PLATFORMS,
+                    description = "Preferred for YouTube native captions when yt-dlp is blocked"
+                ),
+                ProviderSettingDto(
                     type = JSOUP,
                     enabled = true,
                     configured = true,
@@ -68,6 +75,12 @@ class UserSettingsService(
                     settings.xApiBearerTokenEncrypted = apiKeyEncryptionService.encrypt(normalizedApiKey)
                 }
             }
+            SUPADATA -> {
+                settings.supadataEnabled = command.enabled
+                if (normalizedApiKey != null) {
+                    settings.supadataApiKeyEncrypted = apiKeyEncryptionService.encrypt(normalizedApiKey)
+                }
+            }
         }
 
         settings.updatedAt = Instant.now()
@@ -91,6 +104,10 @@ class UserSettingsService(
             X_API -> {
                 settings.xApiEnabled = false
                 settings.xApiBearerTokenEncrypted = null
+            }
+            SUPADATA -> {
+                settings.supadataEnabled = false
+                settings.supadataApiKeyEncrypted = null
             }
         }
         settings.updatedAt = Instant.now()
@@ -130,6 +147,21 @@ class UserSettingsService(
     }
 
     @Transactional
+    fun getSupadataApiKey(userId: UUID): String? {
+        val settings = getOrCreateSettings(userId)
+        if (!settings.supadataEnabled || settings.supadataApiKeyEncrypted.isNullOrBlank()) {
+            return null
+        }
+        return apiKeyEncryptionService.decrypt(settings.supadataApiKeyEncrypted!!)
+    }
+
+    @Transactional
+    fun isSupadataEnabled(userId: UUID): Boolean {
+        val settings = getOrCreateSettings(userId)
+        return settings.supadataEnabled && !settings.supadataApiKeyEncrypted.isNullOrBlank()
+    }
+
+    @Transactional
     fun getOrCreateSettings(userId: UUID): UserExtractionSettings {
         val existing = userExtractionSettingsRepository.findByUserId(userId)
         if (existing != null) {
@@ -145,6 +177,8 @@ class UserSettingsService(
                 firecrawlApiKeyEncrypted = null,
                 xApiEnabled = false,
                 xApiBearerTokenEncrypted = null,
+                supadataEnabled = false,
+                supadataApiKeyEncrypted = null,
                 elevenlabsEnabled = false,
                 elevenlabsApiKeyEncrypted = null,
                 elevenlabsModelId = null,
@@ -163,6 +197,7 @@ class UserSettingsService(
     companion object {
         const val FIRECRAWL = "firecrawl"
         const val X_API = "x_api"
+        const val SUPADATA = "supadata"
         const val JSOUP = "jsoup"
 
         private val FIRECRAWL_PLATFORMS = listOf(
@@ -175,7 +210,8 @@ class UserSettingsService(
             "github"
         )
         private val X_API_PLATFORMS = listOf("x", "twitter")
-        private val updatableProviders = setOf(FIRECRAWL, X_API)
-        private val keyDeletableProviders = setOf(FIRECRAWL, X_API)
+        private val SUPADATA_PLATFORMS = listOf("youtube")
+        private val updatableProviders = setOf(FIRECRAWL, X_API, SUPADATA)
+        private val keyDeletableProviders = setOf(FIRECRAWL, X_API, SUPADATA)
     }
 }

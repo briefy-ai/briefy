@@ -9,7 +9,7 @@ class YouTubeAiContentFormatter(
     private val aiAdapter: AiAdapter
 ) : ExtractionContentFormatter {
     override fun supports(extractorId: ExtractionProviderId): Boolean {
-        return extractorId == ExtractionProviderId.YOUTUBE
+        return extractorId == ExtractionProviderId.YOUTUBE || extractorId == ExtractionProviderId.SUPADATA_YOUTUBE
     }
 
     override fun format(extractedContent: String, provider: String, model: String): String {

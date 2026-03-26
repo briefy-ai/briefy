@@ -64,7 +64,7 @@ class SourceContentFormatterService(
             return
         }
 
-        if (extractorId == ExtractionProviderId.YOUTUBE && !metadata.transcriptSource.equals("captions", ignoreCase = true)) {
+        if (isYouTubeFormatterExtractor(extractorId) && !isParagraphFormattingTranscriptSource(metadata.transcriptSource)) {
             source.metadata = metadata.withFormattingState(FormattingState.NOT_REQUIRED)
             source.updatedAt = Instant.now()
             sourceRepository.save(source)
@@ -241,13 +241,22 @@ class SourceContentFormatterService(
     }
 
     private fun resolveModelSelection(extractorId: ExtractionProviderId, userId: UUID): AiModelSelection {
-        if (extractorId == ExtractionProviderId.YOUTUBE) {
+        if (isYouTubeFormatterExtractor(extractorId)) {
             return AiModelSelection(
                 provider = YOUTUBE_FORMATTER_PROVIDER,
                 model = YOUTUBE_FORMATTER_MODEL
             )
         }
         return userAiSettingsService.resolveUseCaseSelection(userId, UserAiSettingsService.SOURCE_FORMATTING)
+    }
+
+    private fun isYouTubeFormatterExtractor(extractorId: ExtractionProviderId): Boolean {
+        return extractorId == ExtractionProviderId.YOUTUBE || extractorId == ExtractionProviderId.SUPADATA_YOUTUBE
+    }
+
+    private fun isParagraphFormattingTranscriptSource(transcriptSource: String?): Boolean {
+        return transcriptSource.equals("captions", ignoreCase = true) ||
+            transcriptSource.equals("supadata", ignoreCase = true)
     }
 
     private fun publishSourceContentFinalizedEvent(sourceId: UUID, userId: UUID) {

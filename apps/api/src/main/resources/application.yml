@@ -83,6 +83,9 @@ extraction:
       max-duration-seconds: ${X_API_VIDEO_MAX_DURATION_SECONDS:900}
       max-download-bytes: ${X_API_VIDEO_MAX_DOWNLOAD_BYTES:104857600}
       download-timeout-ms: ${X_API_VIDEO_DOWNLOAD_TIMEOUT_MS:15000}
+  supadata:
+    base-url: ${SUPADATA_BASE_URL:https://api.supadata.ai}
+    timeout-ms: ${SUPADATA_TIMEOUT_MS:15000}
   youtube:
     enabled: ${YOUTUBE_EXTRACTION_ENABLED:true}
     yt-dlp-path: ${YOUTUBE_YT_DLP_PATH:yt-dlp}

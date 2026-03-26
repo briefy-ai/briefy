@@ -20,9 +20,22 @@ class ExtractionProviderResolverTest {
     private val firecrawlAgentProvider: ExtractionProvider = mock()
     private val xApiProvider: ExtractionProvider = mock()
     private val youtubeProvider: ExtractionProvider = mock()
+    private val supadataProvider: ExtractionProvider = mock()
 
     @Test
-    fun `returns youtube provider for youtube platform`() {
+    fun `returns supadata provider for youtube platform when enabled and configured`() {
+        whenever(settingsService.isSupadataEnabled(userId)).thenReturn(true)
+        whenever(settingsService.getSupadataApiKey(userId)).thenReturn("supadata-key")
+        whenever(factory.supadata("supadata-key")).thenReturn(supadataProvider)
+
+        val provider = resolver.resolveProvider(userId, "youtube")
+
+        assertSame(supadataProvider, provider)
+    }
+
+    @Test
+    fun `returns youtube provider for youtube platform when supadata disabled`() {
+        whenever(settingsService.isSupadataEnabled(userId)).thenReturn(false)
         whenever(factory.youtube()).thenReturn(youtubeProvider)
 
         val provider = resolver.resolveProvider(userId, "youtube")

@@ -31,6 +31,12 @@ class UserExtractionSettings(
     @Column(name = "x_api_bearer_token_encrypted", length = 1024)
     var xApiBearerTokenEncrypted: String? = null,
 
+    @Column(name = "supadata_enabled", nullable = false)
+    var supadataEnabled: Boolean = false,
+
+    @Column(name = "supadata_api_key_encrypted", columnDefinition = "TEXT")
+    var supadataApiKeyEncrypted: String? = null,
+
     @Column(name = "elevenlabs_enabled", nullable = false)
     var elevenlabsEnabled: Boolean = false,
 
