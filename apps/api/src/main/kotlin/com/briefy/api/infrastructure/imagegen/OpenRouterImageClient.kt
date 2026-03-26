@@ -7,9 +7,7 @@ import org.springframework.stereotype.Component
 import org.springframework.web.client.HttpStatusCodeException
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
-import java.io.ByteArrayOutputStream
 import java.util.Base64
-import javax.imageio.ImageIO
 
 class ImageGenerationException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
@@ -71,7 +69,8 @@ class OpenRouterImageClient(
             ),
             "modalities" to outputModalities(model),
             "image_config" to mapOf(
-                "aspect_ratio" to aspectRatio(size)
+                "aspect_ratio" to aspectRatio(size),
+                "image_size" to "1K"
             ),
             "stream" to false
         )
@@ -108,7 +107,7 @@ class OpenRouterImageClient(
             else -> throw ImageGenerationException("OpenRouter returned an unsupported remote image URL")
         }
 
-        return normalizeToPng(imageBytes)
+        return imageBytes
     }
 
     private fun outputModalities(model: String): List<String> {
@@ -147,16 +146,6 @@ class OpenRouterImageClient(
             Base64.getDecoder().decode(encoded)
         } catch (ex: IllegalArgumentException) {
             throw ImageGenerationException("OpenRouter returned invalid base64 image data", ex)
-        }
-    }
-
-    private fun normalizeToPng(imageBytes: ByteArray): ByteArray {
-        val image = ImageIO.read(imageBytes.inputStream())
-            ?: throw ImageGenerationException("Generated image could not be decoded")
-
-        return ByteArrayOutputStream().use { output ->
-            ImageIO.write(image, "png", output)
-            output.toByteArray()
         }
     }
 }
