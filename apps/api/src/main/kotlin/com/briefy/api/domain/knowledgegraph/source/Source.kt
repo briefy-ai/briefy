@@ -46,6 +46,9 @@ class Source(
     @Column(name = "topic_extraction_failure_reason", length = 255)
     var topicExtractionFailureReason: String? = null,
 
+    @Column(name = "extraction_failure_reason", length = 255)
+    var extractionFailureReason: String? = null,
+
     @Embedded
     var audioContent: AudioContent? = null,
 
@@ -63,23 +66,27 @@ class Source(
     var featuredImageKey: String? = null
 ) {
     fun startExtraction() {
+        extractionFailureReason = null
         transitionTo(SourceStatus.EXTRACTING)
     }
 
     fun completeExtraction(content: Content, metadata: Metadata) {
         this.content = content
         this.metadata = metadata
+        extractionFailureReason = null
         clearGeneratedImages()
         clearNarration()
         markUnread()
         transitionTo(SourceStatus.ACTIVE)
     }
 
-    fun failExtraction() {
+    fun failExtraction(reason: String? = null) {
+        extractionFailureReason = reason?.trim()?.take(255)?.ifBlank { null }
         transitionTo(SourceStatus.FAILED)
     }
 
     fun retry() {
+        extractionFailureReason = null
         transitionTo(SourceStatus.SUBMITTED)
     }
 
@@ -100,6 +107,7 @@ class Source(
         }
         this.content = content
         this.metadata = metadata
+        extractionFailureReason = null
         clearGeneratedImages()
         clearNarration()
         markUnread()

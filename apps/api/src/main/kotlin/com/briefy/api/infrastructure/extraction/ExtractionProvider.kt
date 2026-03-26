@@ -9,7 +9,8 @@ enum class ExtractionProviderId {
     FIRECRAWL,
     X_API,
     JSOUP,
-    YOUTUBE
+    YOUTUBE,
+    SUPADATA_YOUTUBE
 }
 
 enum class ExtractionFailureReason {

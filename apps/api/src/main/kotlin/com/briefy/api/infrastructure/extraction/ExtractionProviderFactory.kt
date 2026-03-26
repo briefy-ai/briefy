@@ -3,6 +3,7 @@ package com.briefy.api.infrastructure.extraction
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.web.client.RestClient
 
 @Component
@@ -22,10 +23,27 @@ class ExtractionProviderFactory(
     @param:Value("\${extraction.x-api.thread-max-results:100}") private val xApiThreadMaxResults: Int,
     @param:Value("\${extraction.x-api.video.max-duration-seconds:900}") private val xApiVideoMaxDurationSeconds: Int,
     @param:Value("\${extraction.x-api.video.max-download-bytes:104857600}") private val xApiVideoMaxDownloadBytes: Long,
-    @param:Value("\${extraction.x-api.video.download-timeout-ms:15000}") private val xApiVideoDownloadTimeoutMs: Int
+    @param:Value("\${extraction.x-api.video.download-timeout-ms:15000}") private val xApiVideoDownloadTimeoutMs: Int,
+    @param:Value("\${extraction.supadata.base-url:https://api.supadata.ai}") private val supadataBaseUrl: String,
+    @param:Value("\${extraction.supadata.timeout-ms:15000}") private val supadataTimeoutMs: Int
 ) {
     fun jsoup(): ExtractionProvider = jsoupExtractionProvider
     fun youtube(): ExtractionProvider = youTubeExtractionProvider
+
+    fun supadata(apiKey: String): ExtractionProvider {
+        return SupadataYouTubeExtractionProvider(
+            restClient = RestClient.builder()
+                .baseUrl(supadataBaseUrl)
+                .requestFactory(SimpleClientHttpRequestFactory().apply {
+                    setConnectTimeout(supadataTimeoutMs)
+                    setReadTimeout(supadataTimeoutMs)
+                })
+                .build(),
+            apiKey = apiKey,
+            fallbackProvider = youTubeExtractionProvider,
+            timeoutMs = supadataTimeoutMs
+        )
+    }
 
     fun firecrawl(apiKey: String): ExtractionProvider {
         return FirecrawlExtractionProvider(

@@ -26,9 +26,11 @@ import com.briefy.api.domain.knowledgegraph.topiclink.TopicLink
 import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkStatus
 import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkTargetType
 import com.briefy.api.infrastructure.extraction.ExtractionProvider
+import com.briefy.api.infrastructure.extraction.ExtractionProviderException
 import com.briefy.api.infrastructure.extraction.ExtractionProviderId
 import com.briefy.api.infrastructure.extraction.ExtractionProviderResolver
 import com.briefy.api.infrastructure.extraction.ExtractionResult
+import com.briefy.api.infrastructure.extraction.ExtractionFailureReason
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -616,6 +618,36 @@ class SourceServiceEventTest {
         verify(eventPublisher, atLeastOnce()).publishEvent(eventCaptor.capture())
         val formattingEvents = eventCaptor.allValues.filterIsInstance<SourceContentFormattingRequestedEvent>()
         assertTrue(formattingEvents.isEmpty())
+    }
+
+    @Test
+    fun `processQueuedExtraction stores extraction failure reason from provider exception`() {
+        val userId = UUID.randomUUID()
+        val source = Source.create(
+            id = UUID.randomUUID(),
+            rawUrl = "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            userId = userId,
+            sourceType = SourceType.VIDEO
+        )
+
+        whenever(sourceRepository.findByIdAndUserId(source.id, userId)).thenReturn(source)
+        whenever(sourceRepository.save(any())).thenAnswer { it.arguments[0] as Source }
+        whenever(extractionProviderResolver.resolveProvider(userId, "youtube")).thenReturn(extractionProvider)
+        whenever(extractionProvider.extract(source.url.normalized)).thenThrow(
+            ExtractionProviderException(
+                providerId = ExtractionProviderId.SUPADATA_YOUTUBE,
+                reason = ExtractionFailureReason.BLOCKED,
+                message = "supadata_invalid_api_key"
+            )
+        )
+
+        assertThrows<ExtractionFailedException> {
+            service.processQueuedExtraction(source.id, userId)
+        }
+
+        assertEquals(com.briefy.api.domain.knowledgegraph.source.SourceStatus.FAILED, source.status)
+        assertEquals("supadata_invalid_api_key", source.extractionFailureReason)
+        verify(sourceRepository, atLeastOnce()).save(source)
     }
 
     @Test

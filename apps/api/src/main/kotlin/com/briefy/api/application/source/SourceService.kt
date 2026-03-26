@@ -16,6 +16,7 @@ import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkStatus
 import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkTargetType
 import com.briefy.api.infrastructure.extraction.ExtractionProviderId
 import com.briefy.api.infrastructure.extraction.ExtractionProviderResolver
+import com.briefy.api.infrastructure.extraction.ExtractionProviderException
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import org.slf4j.LoggerFactory
@@ -685,11 +686,25 @@ class SourceService(
         } catch (e: Exception) {
             logger.error("[service] Failed to extract content url={}", source.url.normalized, e)
             if (source.status == SourceStatus.EXTRACTING) {
-                source.failExtraction()
+                source.failExtraction(resolveExtractionFailureReason(e))
                 sourceRepository.save(source)
             }
             throw ExtractionFailedException(source.url.normalized, e)
         }
+    }
+
+    private fun resolveExtractionFailureReason(error: Throwable): String? {
+        var current: Throwable? = error
+        while (current != null) {
+            if (current is ExtractionProviderException) {
+                return current.message?.take(255)
+            }
+            if (current.message?.contains("Sign in to confirm you're not a bot", ignoreCase = true) == true) {
+                return "youtube_bot_blocked"
+            }
+            current = current.cause
+        }
+        return null
     }
 
     private fun saveSharedSnapshot(source: Source, fetchedAt: Instant) {

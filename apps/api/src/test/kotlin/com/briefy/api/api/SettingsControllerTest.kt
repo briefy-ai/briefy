@@ -37,12 +37,13 @@ class SettingsControllerTest {
     }
 
     @Test
-    fun `GET extraction settings includes firecrawl x_api and jsoup without secrets`() {
+    fun `GET extraction settings includes firecrawl supadata x_api and jsoup without secrets`() {
         mockMvc.perform(get("/api/settings/extraction"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.providers[0].type").value("firecrawl"))
-            .andExpect(jsonPath("$.providers[1].type").value("x_api"))
-            .andExpect(jsonPath("$.providers[2].type").value("jsoup"))
+            .andExpect(jsonPath("$.providers[?(@.type=='firecrawl')]").isNotEmpty)
+            .andExpect(jsonPath("$.providers[?(@.type=='supadata')]").isNotEmpty)
+            .andExpect(jsonPath("$.providers[?(@.type=='x_api')]").isNotEmpty)
+            .andExpect(jsonPath("$.providers[?(@.type=='jsoup')]").isNotEmpty)
     }
 
     @Test
@@ -53,8 +54,18 @@ class SettingsControllerTest {
                 .content("""{"enabled":true,"apiKey":"fc-user-key"}""")
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.providers[0].enabled").value(true))
-            .andExpect(jsonPath("$.providers[0].configured").value(true))
+            .andExpect(jsonPath("$.providers[?(@.type=='firecrawl' && @.enabled==true && @.configured==true)]").isNotEmpty)
+    }
+
+    @Test
+    fun `PUT supadata updates enabled and configured state`() {
+        mockMvc.perform(
+            put("/api/settings/extraction/providers/supadata")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":true,"apiKey":"supadata-user-key"}""")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.providers[?(@.type=='supadata' && @.enabled==true && @.configured==true)]").isNotEmpty)
     }
 
     @Test
@@ -65,8 +76,7 @@ class SettingsControllerTest {
                 .content("""{"enabled":true,"apiKey":"x-user-token"}""")
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.providers[1].enabled").value(true))
-            .andExpect(jsonPath("$.providers[1].configured").value(true))
+            .andExpect(jsonPath("$.providers[?(@.type=='x_api' && @.enabled==true && @.configured==true)]").isNotEmpty)
     }
 
     @Test
@@ -80,8 +90,21 @@ class SettingsControllerTest {
 
         mockMvc.perform(delete("/api/settings/extraction/providers/firecrawl/key"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.providers[0].enabled").value(false))
-            .andExpect(jsonPath("$.providers[0].configured").value(false))
+            .andExpect(jsonPath("$.providers[?(@.type=='firecrawl' && @.enabled==false && @.configured==false)]").isNotEmpty)
+    }
+
+    @Test
+    fun `DELETE supadata key disables provider`() {
+        mockMvc.perform(
+            put("/api/settings/extraction/providers/supadata")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":true,"apiKey":"supadata-user-key"}""")
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(delete("/api/settings/extraction/providers/supadata/key"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.providers[?(@.type=='supadata' && @.enabled==false && @.configured==false)]").isNotEmpty)
     }
 
     @Test
@@ -95,8 +118,7 @@ class SettingsControllerTest {
 
         mockMvc.perform(delete("/api/settings/extraction/providers/x_api/key"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.providers[1].enabled").value(false))
-            .andExpect(jsonPath("$.providers[1].configured").value(false))
+            .andExpect(jsonPath("$.providers[?(@.type=='x_api' && @.enabled==false && @.configured==false)]").isNotEmpty)
     }
 
 }
