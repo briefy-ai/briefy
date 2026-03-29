@@ -80,6 +80,15 @@ function ExternalKeyLink({ href, label }: { href: string; label: string }) {
   )
 }
 
+function formatAiProviderLabel(provider: AiProviderDto) {
+  const suffixes = [
+    provider.deprecated ? 'deprecated' : null,
+    !provider.configured ? 'not configured' : null,
+  ].filter(Boolean)
+
+  return suffixes.length > 0 ? `${provider.label} (${suffixes.join(', ')})` : provider.label
+}
+
 function XApiCard() {
   const [apiKey, setApiKey] = useState('')
   const [saving, setSaving] = useState(false)
@@ -362,9 +371,9 @@ function AdvancedSection() {
 
   const [aiProviders, setAiProviders] = useState<AiProviderDto[]>([])
   const [aiLoading, setAiLoading] = useState(false)
-  const [topicProvider, setTopicProvider] = useState<AiProviderId>('zhipuai')
+  const [topicProvider, setTopicProvider] = useState<AiProviderId>('google_genai')
   const [topicModel, setTopicModel] = useState('')
-  const [formatterProvider, setFormatterProvider] = useState<AiProviderId>('zhipuai')
+  const [formatterProvider, setFormatterProvider] = useState<AiProviderId>('google_genai')
   const [formatterModel, setFormatterModel] = useState('')
   const [savingTopic, setSavingTopic] = useState(false)
   const [savingFormatter, setSavingFormatter] = useState(false)
@@ -507,6 +516,9 @@ function AdvancedSection() {
               <p className="text-xs text-muted-foreground mt-0.5">
                 LLM provider and model for content formatting and topic extraction. Defaults work well for most users.
               </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Zhipu remains available for existing setups, but it is deprecated upstream in Spring AI.
+              </p>
             </div>
 
             {aiLoading ? (
@@ -532,7 +544,7 @@ function AdvancedSection() {
                       <SelectContent>
                         {aiProviders.map((p) => (
                           <SelectItem key={p.id} value={p.id} disabled={!p.configured}>
-                            {p.label}{p.configured ? '' : ' (not configured)'}
+                            {formatAiProviderLabel(p)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -569,7 +581,7 @@ function AdvancedSection() {
                       <SelectContent>
                         {aiProviders.map((p) => (
                           <SelectItem key={p.id} value={p.id} disabled={!p.configured}>
-                            {p.label}{p.configured ? '' : ' (not configured)'}
+                            {formatAiProviderLabel(p)}
                           </SelectItem>
                         ))}
                       </SelectContent>

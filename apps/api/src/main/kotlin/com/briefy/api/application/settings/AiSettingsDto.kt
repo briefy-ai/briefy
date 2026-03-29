@@ -9,6 +9,7 @@ data class AiProviderDto(
     val id: String,
     val label: String,
     val configured: Boolean,
+    val deprecated: Boolean,
     val models: List<AiModelDto>
 )
 

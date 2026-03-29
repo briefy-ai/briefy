@@ -97,22 +97,25 @@ class UserAiSettingsService(
     private fun buildProviders(): List<AiProviderDto> {
         return listOf(
             AiProviderDto(
-                id = PROVIDER_ZHIPUAI,
-                label = "ZhipuAI",
-                configured = isProviderConfigured(PROVIDER_ZHIPUAI),
-                models = ZHIPU_MODELS.map { AiModelDto(id = it, label = it) }
-            ),
-            AiProviderDto(
                 id = PROVIDER_GOOGLE_GENAI,
                 label = "Google GenAI",
                 configured = isProviderConfigured(PROVIDER_GOOGLE_GENAI),
+                deprecated = false,
                 models = GOOGLE_GENAI_MODELS.map { AiModelDto(id = it, label = it) }
             ),
             AiProviderDto(
                 id = PROVIDER_MINIMAX,
                 label = "MiniMax",
                 configured = isProviderConfigured(PROVIDER_MINIMAX),
+                deprecated = false,
                 models = MINIMAX_MODELS.map { AiModelDto(id = it, label = it) }
+            ),
+            AiProviderDto(
+                id = PROVIDER_ZHIPUAI,
+                label = "ZhipuAI",
+                configured = isProviderConfigured(PROVIDER_ZHIPUAI),
+                deprecated = true,
+                models = ZHIPU_MODELS.map { AiModelDto(id = it, label = it) }
             )
         )
     }
@@ -147,18 +150,32 @@ class UserAiSettingsService(
         }
 
         val now = Instant.now()
+        val topicDefault = resolveDefaultSelection(TOPIC_EXTRACTION)
+        val sourceFormattingDefault = resolveDefaultSelection(SOURCE_FORMATTING)
         return userAiSettingsRepository.save(
             UserAiSettings(
                 id = idGenerator.newId(),
                 userId = userId,
-                topicExtractionProvider = DEFAULT_TOPIC_PROVIDER,
-                topicExtractionModel = DEFAULT_TOPIC_MODEL,
-                sourceFormattingProvider = DEFAULT_SOURCE_FORMATTING_PROVIDER,
-                sourceFormattingModel = DEFAULT_SOURCE_FORMATTING_MODEL,
+                topicExtractionProvider = topicDefault.provider,
+                topicExtractionModel = topicDefault.model,
+                sourceFormattingProvider = sourceFormattingDefault.provider,
+                sourceFormattingModel = sourceFormattingDefault.model,
                 createdAt = now,
                 updatedAt = now
             )
         )
+    }
+
+    private fun resolveDefaultSelection(useCase: String): AiModelSelection {
+        val preferredProviders = listOf(PROVIDER_GOOGLE_GENAI, PROVIDER_MINIMAX, PROVIDER_ZHIPUAI)
+        val provider = preferredProviders.firstOrNull(::isProviderConfigured) ?: PROVIDER_ZHIPUAI
+        val model = when (provider) {
+            PROVIDER_GOOGLE_GENAI -> DEFAULT_GOOGLE_MODEL
+            PROVIDER_MINIMAX -> DEFAULT_MINIMAX_MODEL
+            PROVIDER_ZHIPUAI -> if (useCase == TOPIC_EXTRACTION) DEFAULT_TOPIC_ZHIPU_MODEL else DEFAULT_SOURCE_FORMATTING_ZHIPU_MODEL
+            else -> throw IllegalArgumentException("Unsupported provider '$provider'")
+        }
+        return AiModelSelection(provider = provider, model = model)
     }
 
     companion object {
@@ -169,10 +186,10 @@ class UserAiSettingsService(
         const val PROVIDER_GOOGLE_GENAI = "google_genai"
         const val PROVIDER_MINIMAX = "minimax"
 
-        const val DEFAULT_TOPIC_PROVIDER = PROVIDER_ZHIPUAI
-        const val DEFAULT_TOPIC_MODEL = "glm-4.7-flash"
-        const val DEFAULT_SOURCE_FORMATTING_PROVIDER = PROVIDER_ZHIPUAI
-        const val DEFAULT_SOURCE_FORMATTING_MODEL = "glm-4.7"
+        const val DEFAULT_GOOGLE_MODEL = "gemini-2.5-flash"
+        const val DEFAULT_MINIMAX_MODEL = "MiniMax-M2.5"
+        const val DEFAULT_TOPIC_ZHIPU_MODEL = "glm-4.7-flash"
+        const val DEFAULT_SOURCE_FORMATTING_ZHIPU_MODEL = "glm-4.7"
 
         val GOOGLE_GENAI_MODELS = listOf(
             "gemini-2.5-flash",
