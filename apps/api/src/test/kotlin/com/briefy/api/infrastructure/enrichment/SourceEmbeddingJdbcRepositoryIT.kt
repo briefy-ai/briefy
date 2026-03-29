@@ -73,13 +73,61 @@ class SourceEmbeddingJdbcRepositoryIT {
             userId = userId,
             queryEmbedding = vectorOf(1.0, 0.0),
             limit = 10,
-            excludeSourceId = sourceA.id
+            excludeSourceIds = setOf(sourceA.id)
         )
 
         assertEquals(1, result.size)
         assertEquals(sourceB.id, result.first().sourceId)
         assertTrue(result.first().score > 0.0)
         assertEquals("Source B", result.first().title)
+    }
+
+    @Test
+    fun `findSimilar excludes multiple source ids`() {
+        val userId = UUID.randomUUID()
+        insertUser(userId, "owner@example.com")
+
+        val sourceA = createActiveSource(userId, "https://example.com/a", "Source A")
+        val sourceB = createActiveSource(userId, "https://example.com/b", "Source B")
+        val sourceC = createActiveSource(userId, "https://example.com/c", "Source C")
+
+        sourceEmbeddingRepository.upsert(sourceA.id, userId, vectorOf(1.0, 0.0), Instant.now())
+        sourceEmbeddingRepository.upsert(sourceB.id, userId, vectorOf(0.9, 0.1), Instant.now())
+        sourceEmbeddingRepository.upsert(sourceC.id, userId, vectorOf(0.8, 0.2), Instant.now())
+
+        val result = sourceEmbeddingRepository.findSimilar(
+            userId = userId,
+            queryEmbedding = vectorOf(1.0, 0.0),
+            limit = 10,
+            excludeSourceIds = setOf(sourceA.id, sourceB.id)
+        )
+
+        assertEquals(1, result.size)
+        assertEquals(sourceC.id, result.first().sourceId)
+    }
+
+    @Test
+    fun `findSimilarBySourceId uses stored embedding and exclusion list`() {
+        val userId = UUID.randomUUID()
+        insertUser(userId, "owner@example.com")
+
+        val anchor = createActiveSource(userId, "https://example.com/anchor", "Anchor")
+        val similar = createActiveSource(userId, "https://example.com/similar", "Similar")
+        val excluded = createActiveSource(userId, "https://example.com/excluded", "Excluded")
+
+        sourceEmbeddingRepository.upsert(anchor.id, userId, vectorOf(1.0, 0.0), Instant.now())
+        sourceEmbeddingRepository.upsert(similar.id, userId, vectorOf(0.95, 0.05), Instant.now())
+        sourceEmbeddingRepository.upsert(excluded.id, userId, vectorOf(0.9, 0.1), Instant.now())
+
+        val result = sourceEmbeddingRepository.findSimilarBySourceId(
+            userId = userId,
+            sourceId = anchor.id,
+            limit = 10,
+            excludeSourceIds = setOf(anchor.id, excluded.id)
+        )
+
+        assertEquals(1, result.size)
+        assertEquals(similar.id, result.first().sourceId)
     }
 
     private fun createActiveSource(userId: UUID, url: String, title: String): Source {

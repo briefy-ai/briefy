@@ -101,7 +101,7 @@ class BriefingGenerationService(
 
         persistSuccessResult(
             briefing = briefing,
-            orderedSources = orderedSources,
+            orderedSources = outcome.citationSources.ifEmpty { orderedSources },
             generationResult = outcome.generationResult
         )
     }

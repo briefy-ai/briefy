@@ -2,6 +2,8 @@ package com.briefy.api.application.briefing
 
 import com.briefy.api.domain.knowledgegraph.briefing.*
 import com.briefy.api.domain.knowledgegraph.source.Source
+import com.briefy.api.domain.knowledgegraph.source.SourceRepository
+import com.briefy.api.domain.knowledgegraph.source.SourceStatus
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.dao.DataIntegrityViolationException
@@ -20,6 +22,7 @@ class BriefingExecutionOrchestratorService(
     private val synthesisExecutionRunner: SynthesisExecutionRunner,
     private val executionFingerprintService: ExecutionFingerprintService,
     private val executionConfig: ExecutionConfigProperties,
+    private val sourceRepository: SourceRepository,
     private val idGenerator: IdGenerator,
     private val objectMapper: ObjectMapper
 ) {
@@ -185,12 +188,13 @@ class BriefingExecutionOrchestratorService(
         synthesisRun.updatedAt = Instant.now()
         synthesisRunRepository.save(synthesisRun)
 
+        val synthesisSources = buildSynthesisSources(briefing.userId, orderedSources, refreshedSubagentRuns)
         val successfulOutputs = buildSuccessfulSubagentOutputs(refreshedSubagentRuns, stepByPersonaKey)
         val synthesisRequest = BriefingGenerationRequest(
             briefingId = briefing.id,
             userId = briefing.userId,
             enrichmentIntent = briefing.enrichmentIntent.name,
-            sources = orderedSources.map { source ->
+            sources = synthesisSources.map { source ->
                 BriefingSourceInput(
                     sourceId = source.id,
                     title = source.metadata?.title ?: source.url.normalized,
@@ -232,7 +236,8 @@ class BriefingExecutionOrchestratorService(
 
             ExecutionOrchestrationOutcome.succeeded(
                 briefingRunId = refreshedBriefingRun.id,
-                generationResult = generationResult
+                generationResult = generationResult,
+                citationSources = synthesisSources
             )
         }.getOrElse { error ->
             val failedAt = Instant.now()
@@ -326,6 +331,7 @@ class BriefingExecutionOrchestratorService(
                     briefingId = briefing.id,
                     briefingRunId = runningSubagentRun.briefingRunId,
                     subagentRunId = runningSubagentRun.id,
+                    userId = briefing.userId,
                     personaKey = runningSubagentRun.personaKey,
                     personaName = step.personaName,
                     task = step.task,
@@ -605,6 +611,38 @@ class BriefingExecutionOrchestratorService(
             }
     }
 
+    private fun buildSynthesisSources(
+        userId: UUID,
+        orderedSources: List<Source>,
+        subagentRuns: List<SubagentRun>
+    ): List<Source> {
+        val sourcesById = linkedMapOf<UUID, Source>()
+        orderedSources.forEach { sourcesById[it.id] = it }
+
+        val additionalSourceIds = linkedSetOf<UUID>()
+        subagentRuns
+            .filter { it.status == SubagentRunStatus.SUCCEEDED }
+            .forEach { run ->
+                extractSourceIds(run.sourceIdsUsedJson)
+                    .filterNot { sourcesById.containsKey(it) }
+                    .forEach { additionalSourceIds += it }
+            }
+
+        if (additionalSourceIds.isEmpty()) {
+            return orderedSources
+        }
+
+        val loadedSourcesById = sourceRepository.findAllByUserIdAndIdIn(userId, additionalSourceIds)
+            .filter { it.status == SourceStatus.ACTIVE }
+            .associateBy { it.id }
+
+        additionalSourceIds.forEach { sourceId ->
+            loadedSourcesById[sourceId]?.let { sourcesById[sourceId] = it }
+        }
+
+        return sourcesById.values.toList()
+    }
+
     private fun extractReferenceCandidates(referencesUsedJson: String?): List<BriefingReferenceCandidate> {
         if (referencesUsedJson.isNullOrBlank()) {
             return emptyList()
@@ -641,6 +679,22 @@ class BriefingExecutionOrchestratorService(
         }
 
         return deduped.values.toList()
+    }
+
+    private fun extractSourceIds(sourceIdsUsedJson: String?): List<UUID> {
+        if (sourceIdsUsedJson.isNullOrBlank()) {
+            return emptyList()
+        }
+
+        val root = runCatching { objectMapper.readTree(sourceIdsUsedJson) }.getOrNull()
+            ?: return emptyList()
+        if (!root.isArray) {
+            return emptyList()
+        }
+
+        return root.mapNotNull { node ->
+            runCatching { UUID.fromString(node.asText().trim()) }.getOrNull()
+        }
     }
 
     private fun nextEventId(): UUID = idGenerator.newId()
@@ -715,6 +769,7 @@ data class ExecutionOrchestrationOutcome(
     val status: Status,
     val briefingRunId: UUID?,
     val generationResult: BriefingGenerationResult?,
+    val citationSources: List<Source> = emptyList(),
     val failureCode: BriefingRunFailureCode?,
     val failureMessage: String?
 ) {
@@ -726,12 +781,14 @@ data class ExecutionOrchestrationOutcome(
     companion object {
         fun succeeded(
             briefingRunId: UUID,
-            generationResult: BriefingGenerationResult
+            generationResult: BriefingGenerationResult,
+            citationSources: List<Source>
         ): ExecutionOrchestrationOutcome {
             return ExecutionOrchestrationOutcome(
                 status = Status.SUCCEEDED,
                 briefingRunId = briefingRunId,
                 generationResult = generationResult,
+                citationSources = citationSources,
                 failureCode = null,
                 failureMessage = null
             )

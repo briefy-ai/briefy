@@ -31,6 +31,7 @@ class ExecutionRetryLogicTest {
             synthesisExecutionRunner = mock(),
             executionFingerprintService = mock(),
             executionConfig = config,
+            sourceRepository = mock(),
             idGenerator = mock(),
             objectMapper = ObjectMapper()
         )

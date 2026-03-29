@@ -10,6 +10,7 @@ data class SubagentExecutionContext(
     val briefingId: UUID,
     val briefingRunId: UUID,
     val subagentRunId: UUID,
+    val userId: UUID,
     val personaKey: String,
     val personaName: String,
     val task: String,

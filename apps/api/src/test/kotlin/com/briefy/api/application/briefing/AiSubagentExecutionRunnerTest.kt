@@ -14,6 +14,7 @@ class AiSubagentExecutionRunnerTest {
     private val aiAdapter = mock<AiAdapter>()
     private val webSearchTool = mock<WebSearchTool>()
     private val webFetchTool = mock<WebFetchTool>()
+    private val sourceLookupTool = mock<SourceLookupTool>()
 
     private val config = AiSubagentExecutionRunner.AiRunnerConfig(
         provider = "google_genai",
@@ -25,6 +26,7 @@ class AiSubagentExecutionRunnerTest {
         aiAdapter = aiAdapter,
         webSearchTool = webSearchTool,
         webFetchTool = webFetchTool,
+        sourceLookupTool = sourceLookupTool,
         objectMapper = objectMapper,
         config = config
     )
@@ -33,6 +35,7 @@ class AiSubagentExecutionRunnerTest {
         briefingId = UUID.randomUUID(),
         briefingRunId = UUID.randomUUID(),
         subagentRunId = UUID.randomUUID(),
+        userId = UUID.randomUUID(),
         personaKey = "market_analyst",
         personaName = "Market Analyst",
         task = "Analyze market trends for AI adoption in healthcare",
@@ -72,6 +75,66 @@ Sources: Healthcare AI Report 2026
         assertNotNull(succeeded.toolStatsJson)
         verify(aiAdapter, times(1)).complete(any(), any(), any(), any(), any())
         verifyNoInteractions(webSearchTool)
+    }
+
+    @Test
+    fun `uses source lookup and tracks returned source ids`() {
+        val lookedUpSourceId = UUID.randomUUID()
+
+        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
+            .thenReturn(
+                """```tool
+{"tool": "source_lookup", "args": {"query": "related AI regulation sources", "limit": 3}}
+```"""
+            )
+            .thenReturn(
+                """```output
+Analysis using related internal sources.
+```"""
+            )
+
+        whenever(
+            sourceLookupTool.lookup(
+                query = "related AI regulation sources",
+                sourceId = null,
+                limit = 3,
+                userId = baseContext.userId,
+                excludeSourceIds = setOf(baseContext.sources.first().sourceId)
+            )
+        ).thenReturn(
+            ToolResult.Success(
+                SourceLookupResponse(
+                    results = listOf(
+                        SourceLookupResult(
+                            sourceId = lookedUpSourceId,
+                            title = "Related source",
+                            url = "https://example.com/related",
+                            score = 0.88,
+                            wordCount = 240,
+                            excerpt = "Helpful excerpt"
+                        )
+                    ),
+                    mode = "query",
+                    query = "related AI regulation sources",
+                    sourceId = null
+                )
+            )
+        )
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.Succeeded)
+        val succeeded = result as SubagentExecutionResult.Succeeded
+        val sourceIds = objectMapper.readTree(succeeded.sourceIdsUsedJson)
+        assertEquals(2, sourceIds.size())
+        assertTrue(sourceIds.any { it.asText() == lookedUpSourceId.toString() })
+        verify(sourceLookupTool).lookup(
+            query = "related AI regulation sources",
+            sourceId = null,
+            limit = 3,
+            userId = baseContext.userId,
+            excludeSourceIds = setOf(baseContext.sources.first().sourceId)
+        )
     }
 
     @Test
@@ -212,6 +275,7 @@ Analysis without the blocked URL.
             aiAdapter = aiAdapter,
             webSearchTool = webSearchTool,
             webFetchTool = webFetchTool,
+            sourceLookupTool = sourceLookupTool,
             objectMapper = objectMapper,
             config = config.copy(maxToolCalls = maxCalls)
         )
@@ -281,6 +345,7 @@ Budget-exhausted analysis.
             aiAdapter = aiAdapter,
             webSearchTool = null,
             webFetchTool = null,
+            sourceLookupTool = null,
             objectMapper = objectMapper,
             config = config
         )

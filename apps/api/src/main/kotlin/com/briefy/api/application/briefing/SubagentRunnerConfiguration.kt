@@ -1,5 +1,6 @@
 package com.briefy.api.application.briefing
 
+import com.briefy.api.application.briefing.tool.SourceLookupTool
 import com.briefy.api.application.briefing.tool.WebFetchTool
 import com.briefy.api.application.briefing.tool.WebSearchTool
 import com.briefy.api.infrastructure.ai.AiAdapter
@@ -19,7 +20,8 @@ class SubagentRunnerConfiguration {
         objectMapper: ObjectMapper,
         aiAdapter: AiAdapter,
         webSearchTool: WebSearchTool?,
-        webFetchTool: WebFetchTool?
+        webFetchTool: WebFetchTool?,
+        sourceLookupTool: SourceLookupTool?
     ): SubagentExecutionRunner {
         return when (executionConfig.runner) {
             ExecutionConfigProperties.RunnerType.AI -> {
@@ -29,6 +31,7 @@ class SubagentRunnerConfiguration {
                     aiAdapter = aiAdapter,
                     webSearchTool = webSearchTool,
                     webFetchTool = webFetchTool,
+                    sourceLookupTool = sourceLookupTool,
                     objectMapper = objectMapper,
                     config = AiSubagentExecutionRunner.AiRunnerConfig(
                         provider = executionConfig.ai.provider,

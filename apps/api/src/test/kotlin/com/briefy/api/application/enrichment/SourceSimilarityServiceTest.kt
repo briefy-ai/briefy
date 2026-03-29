@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
-import org.mockito.kotlin.isNull
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -28,6 +27,7 @@ class SourceSimilarityServiceTest {
     fun `findSimilarSources returns mapped results`() {
         val userId = UUID.randomUUID()
         val queryEmbedding = listOf(0.3, 0.5, 0.7)
+        val excludedSourceId = UUID.randomUUID()
         val expected = SourceSimilarityMatch(
             sourceId = UUID.randomUUID(),
             score = 0.91,
@@ -37,12 +37,20 @@ class SourceSimilarityServiceTest {
         )
 
         whenever(embeddingAdapter.embed("clean architecture notes")).thenReturn(queryEmbedding)
-        whenever(sourceEmbeddingRepository.findSimilar(userId, queryEmbedding, 5, null)).thenReturn(listOf(expected))
+        whenever(
+            sourceEmbeddingRepository.findSimilar(
+                userId = userId,
+                queryEmbedding = queryEmbedding,
+                limit = 5,
+                excludeSourceIds = setOf(excludedSourceId)
+            )
+        ).thenReturn(listOf(expected))
 
         val result = service.findSimilarSources(
             userId = userId,
             query = "clean architecture notes",
-            limit = 5
+            limit = 5,
+            excludeSourceIds = setOf(excludedSourceId)
         )
 
         assertEquals(1, result.size)
@@ -92,10 +100,68 @@ class SourceSimilarityServiceTest {
         val queryEmbedding = listOf(0.2, 0.4)
 
         whenever(embeddingAdapter.embed("query")).thenReturn(queryEmbedding)
-        whenever(sourceEmbeddingRepository.findSimilar(eq(userId), eq(queryEmbedding), eq(50), isNull())).thenReturn(emptyList())
+        whenever(
+            sourceEmbeddingRepository.findSimilar(
+                userId = eq(userId),
+                queryEmbedding = eq(queryEmbedding),
+                limit = eq(50),
+                excludeSourceIds = eq(emptySet())
+            )
+        ).thenReturn(emptyList())
 
         service.findSimilarSources(userId = userId, query = "query", limit = 500)
 
-        verify(sourceEmbeddingRepository).findSimilar(eq(userId), eq(queryEmbedding), eq(50), isNull())
+        verify(sourceEmbeddingRepository).findSimilar(
+            userId = eq(userId),
+            queryEmbedding = eq(queryEmbedding),
+            limit = eq(50),
+            excludeSourceIds = eq(emptySet())
+        )
+    }
+
+    @Test
+    fun `findSimilarSourcesBySourceId delegates to repository`() {
+        val userId = UUID.randomUUID()
+        val sourceId = UUID.randomUUID()
+        val excludedSourceId = UUID.randomUUID()
+        val expected = SourceSimilarityMatch(
+            sourceId = UUID.randomUUID(),
+            score = 0.82,
+            title = "Stored embedding match",
+            urlNormalized = "https://example.com/stored",
+            wordCount = 300
+        )
+
+        whenever(
+            sourceEmbeddingRepository.findSimilarBySourceId(
+                userId = userId,
+                sourceId = sourceId,
+                limit = 5,
+                excludeSourceIds = setOf(excludedSourceId)
+            )
+        ).thenReturn(listOf(expected))
+
+        val result = service.findSimilarSourcesBySourceId(
+            userId = userId,
+            sourceId = sourceId,
+            limit = 5,
+            excludeSourceIds = setOf(excludedSourceId)
+        )
+
+        assertEquals(1, result.size)
+        assertEquals(expected.sourceId, result.first().sourceId)
+        assertEquals(expected.urlNormalized, result.first().url)
+    }
+
+    @Test
+    fun `findSimilarSourcesBySourceId returns empty list when limit is non-positive`() {
+        val result = service.findSimilarSourcesBySourceId(
+            userId = UUID.randomUUID(),
+            sourceId = UUID.randomUUID(),
+            limit = 0
+        )
+
+        assertTrue(result.isEmpty())
+        verify(sourceEmbeddingRepository, never()).findSimilarBySourceId(any(), any(), any(), any())
     }
 }
