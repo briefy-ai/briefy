@@ -39,6 +39,9 @@ spring:
     google:
       genai:
         api-key: ${GOOGLE_GENAI_API_KEY:}
+        chat:
+          options:
+            model: ${GOOGLE_GENAI_CHAT_MODEL:gemini-2.5-flash}
     chat:
       observations:
         log-prompt: ${SPRING_AI_CHAT_OBSERVATIONS_LOG_PROMPT:true}
