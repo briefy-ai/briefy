@@ -1,5 +1,7 @@
 package com.briefy.api.application.briefing.tool
 
+import com.briefy.api.application.enrichment.SourceSimilarityService
+import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -35,6 +37,18 @@ class WebToolConfiguration {
         return HttpWebFetchProvider(
             timeoutMs = timeoutMs,
             maxBodyBytes = maxBodyBytes
+        )
+    }
+
+    @Bean
+    @ConditionalOnProperty("briefing.execution.tools.source-lookup.enabled", havingValue = "true")
+    fun sourceLookupTool(
+        sourceSimilarityService: SourceSimilarityService,
+        sourceRepository: SourceRepository
+    ): SourceLookupTool {
+        return SourceLookupToolProvider(
+            sourceSimilarityService = sourceSimilarityService,
+            sourceRepository = sourceRepository
         )
     }
 }

@@ -39,13 +39,14 @@ class SourceEmbeddingJdbcRepository(
         userId: UUID,
         queryEmbedding: List<Double>,
         limit: Int,
-        excludeSourceId: UUID?
+        excludeSourceIds: Set<UUID>
     ): List<SourceSimilarityMatch> {
         if (limit <= 0) {
             return emptyList()
         }
 
-        val sql = """
+        val sql = buildString {
+            appendLine("""
             SELECT
                 s.id AS source_id,
                 (1 - (se.embedding <=> CAST(:queryEmbedding AS vector))) AS similarity_score,
@@ -57,21 +58,82 @@ class SourceEmbeddingJdbcRepository(
             WHERE se.user_id = :userId
               AND s.user_id = :userId
               AND s.status = 'ACTIVE'
-              AND (:excludeSourceId IS NULL OR s.id <> :excludeSourceId)
+            """.trimIndent())
+            if (excludeSourceIds.isNotEmpty()) {
+                appendLine("  AND s.id NOT IN (:excludeSourceIds)")
+            }
+            appendLine("""
             ORDER BY se.embedding <=> CAST(:queryEmbedding AS vector)
             LIMIT :limit
-        """.trimIndent()
+            """.trimIndent())
+        }
 
         val params = MapSqlParameterSource()
             .addValue("userId", userId)
             .addValue("queryEmbedding", toVectorLiteral(queryEmbedding))
-            .addValue("excludeSourceId", excludeSourceId)
             .addValue("limit", limit)
+        if (excludeSourceIds.isNotEmpty()) {
+            params.addValue("excludeSourceIds", excludeSourceIds)
+        }
 
         return jdbcTemplate.query(sql, params) { rs, _ ->
-            SourceSimilarityMatch(
-                sourceId = UUID.fromString(rs.getString("source_id")),
-                score = rs.getDouble("similarity_score"),
+            mapSimilarityMatch(
+                sourceId = rs.getString("source_id"),
+                similarityScore = rs.getDouble("similarity_score"),
+                title = rs.getString("metadata_title"),
+                urlNormalized = rs.getString("url_normalized"),
+                wordCount = rs.getInt("content_word_count")
+            )
+        }
+    }
+
+    override fun findSimilarBySourceId(
+        userId: UUID,
+        sourceId: UUID,
+        limit: Int,
+        excludeSourceIds: Set<UUID>
+    ): List<SourceSimilarityMatch> {
+        if (limit <= 0) {
+            return emptyList()
+        }
+
+        val sql = buildString {
+            appendLine("""
+            SELECT
+                s.id AS source_id,
+                (1 - (se.embedding <=> anchor.embedding)) AS similarity_score,
+                s.metadata_title AS metadata_title,
+                s.url_normalized AS url_normalized,
+                COALESCE(s.content_word_count, 0) AS content_word_count
+            FROM source_embeddings anchor
+            JOIN source_embeddings se ON se.user_id = anchor.user_id
+            JOIN sources s ON s.id = se.source_id
+            WHERE anchor.user_id = :userId
+              AND anchor.source_id = :sourceId
+              AND s.user_id = :userId
+              AND s.status = 'ACTIVE'
+            """.trimIndent())
+            if (excludeSourceIds.isNotEmpty()) {
+                appendLine("  AND s.id NOT IN (:excludeSourceIds)")
+            }
+            appendLine("""
+            ORDER BY se.embedding <=> anchor.embedding
+            LIMIT :limit
+            """.trimIndent())
+        }
+
+        val params = MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("sourceId", sourceId)
+            .addValue("limit", limit)
+        if (excludeSourceIds.isNotEmpty()) {
+            params.addValue("excludeSourceIds", excludeSourceIds)
+        }
+
+        return jdbcTemplate.query(sql, params) { rs, _ ->
+            mapSimilarityMatch(
+                sourceId = rs.getString("source_id"),
+                similarityScore = rs.getDouble("similarity_score"),
                 title = rs.getString("metadata_title"),
                 urlNormalized = rs.getString("url_normalized"),
                 wordCount = rs.getInt("content_word_count")
@@ -83,5 +145,21 @@ class SourceEmbeddingJdbcRepository(
         require(values.isNotEmpty()) { "embedding must not be empty" }
         require(values.all { it.isFinite() }) { "embedding contains non-finite values" }
         return values.joinToString(prefix = "[", postfix = "]") { it.toString() }
+    }
+
+    private fun mapSimilarityMatch(
+        sourceId: String,
+        similarityScore: Double,
+        title: String?,
+        urlNormalized: String,
+        wordCount: Int
+    ): SourceSimilarityMatch {
+        return SourceSimilarityMatch(
+            sourceId = UUID.fromString(sourceId),
+            score = similarityScore,
+            title = title,
+            urlNormalized = urlNormalized,
+            wordCount = wordCount
+        )
     }
 }

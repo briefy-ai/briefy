@@ -205,6 +205,8 @@ briefing:
         enabled: ${BRIEFING_WEB_FETCH_ENABLED:false}
         timeout-ms: ${BRIEFING_WEB_FETCH_TIMEOUT_MS:15000}
         max-body-bytes: ${BRIEFING_WEB_FETCH_MAX_BODY_BYTES:512000}
+      source-lookup:
+        enabled: ${BRIEFING_SOURCE_LOOKUP_ENABLED:false}
   generation:
     enabled: ${BRIEFING_GENERATION_ENABLED:true}
     worker:

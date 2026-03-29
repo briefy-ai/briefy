@@ -10,6 +10,7 @@ class AiSubagentExecutionRunner(
     private val aiAdapter: AiAdapter,
     private val webSearchTool: WebSearchTool?,
     private val webFetchTool: WebFetchTool?,
+    private val sourceLookupTool: SourceLookupTool?,
     private val objectMapper: ObjectMapper,
     private val config: AiRunnerConfig
 ) : SubagentExecutionRunner {
@@ -39,13 +40,9 @@ class AiSubagentExecutionRunner(
         sourceIdsUsed.addAll(context.sources.map { it.sourceId })
 
         // Phase 2: LLM tool loop — the LLM decides whether to search/fetch
-        val collectedEvidence = StringBuilder()
-        collectedEvidence.append(sourceEvidence)
-
         var toolCallCount = 0
-        var phase = "initial_analysis"
 
-        // First LLM call: analyze sources and decide if web search is needed
+        // First LLM call: analyze sources and decide if tool use is needed
         var llmMessages = mutableListOf<LlmMessage>()
         llmMessages.add(LlmMessage("system", buildSystemPrompt(context)))
         llmMessages.add(LlmMessage("user", buildInitialUserPrompt(context, sourceEvidence)))
@@ -96,14 +93,12 @@ class AiSubagentExecutionRunner(
                 )
             }
 
-            // Track references from web tools
+            sourceIdsUsed.addAll(toolResult.sourceIdsUsed)
             toolResult.references?.let { referencesUsed.addAll(it) }
 
             // Add tool result to conversation and continue loop
             llmMessages.add(LlmMessage("assistant", llmResponse))
             llmMessages.add(LlmMessage("user", buildToolResultPrompt(toolRequest.tool, toolResult.content)))
-
-            phase = "tool_loop_${toolCallCount}"
         }
 
         // Budget exhausted — ask LLM for final output with what we have
@@ -140,6 +135,7 @@ class AiSubagentExecutionRunner(
             sources.forEachIndexed { i, source ->
                 appendLine()
                 appendLine("### Source ${i + 1}: ${source.title}")
+                appendLine("Source ID: ${source.sourceId}")
                 appendLine("URL: ${source.url}")
                 val text = source.text.trim()
                 if (text.isNotBlank()) {
@@ -153,6 +149,8 @@ class AiSubagentExecutionRunner(
     }
 
     private fun buildSystemPrompt(context: SubagentExecutionContext): String {
+        val availableTools = buildAvailableTools()
+        val rules = buildToolUsageRules()
         return """You are "${context.personaName}", an AI research persona working on a briefing.
 
 Your task is to investigate a specific angle and produce a curated analysis backed by evidence.
@@ -165,16 +163,12 @@ You can request tool calls by responding with a JSON block in this exact format:
 ```
 
 Available tools:
-- `web_search`: Search the web for information. Args: {"query": "search query", "maxResults": 5}
-- `web_fetch`: Fetch and read a specific web page. Args: {"url": "https://..."}
+$availableTools
 
 ## Rules
 1. Start by analyzing the provided internal sources carefully.
 2. If the internal sources provide sufficient evidence for your task, produce your output directly.
-3. If you need additional information, use `web_search` to discover relevant sources.
-4. Use `web_fetch` selectively — only for the most promising URLs from search results.
-5. Do NOT fetch more than 3 URLs per investigation.
-6. Always cite your sources — reference internal source titles and web URLs used.
+$rules
 
 ## Output Format
 
@@ -187,13 +181,14 @@ Do NOT include the tool call format in your final output. Either request a tool 
     }
 
     private fun buildInitialUserPrompt(context: SubagentExecutionContext, sourceEvidence: String): String {
+        val nextStep = buildInitialToolGuidance()
         return """## Your Assignment
 ${context.task}
 
 ## Evidence from Internal Sources
 $sourceEvidence
 
-Analyze the internal sources above. If they provide sufficient evidence for your task, produce your ```output``` block directly. If you need more information from the web, request a `web_search` tool call."""
+Analyze the internal sources above. If they provide sufficient evidence for your task, produce your ```output``` block directly.$nextStep"""
     }
 
     private fun buildToolResultPrompt(tool: String, content: String): String {
@@ -251,9 +246,10 @@ Continue your investigation. If you have enough evidence, produce your ```output
         return when (request.tool) {
             "web_search" -> executeWebSearch(request)
             "web_fetch" -> executeWebFetch(request)
+            "source_lookup" -> executeSourceLookup(request, context)
             else -> {
                 logger.warn("[ai-runner] Unknown tool requested: {}", request.tool)
-                ToolCallResult("Tool '${request.tool}' is not available. Use web_search or web_fetch.")
+                ToolCallResult("Tool '${request.tool}' is not available. Use source_lookup, web_search or web_fetch.")
             }
         }
     }
@@ -309,6 +305,46 @@ Continue your investigation. If you have enough evidence, produce your ```output
         }
     }
 
+    private fun executeSourceLookup(request: ToolRequest, context: SubagentExecutionContext): ToolCallResult {
+        if (sourceLookupTool == null) {
+            return ToolCallResult("source_lookup is not enabled on this server.")
+        }
+
+        val query = request.args.get("query")?.asText()?.trim()?.takeIf { it.isNotBlank() }
+        val sourceId = request.args.get("sourceId")?.asText()?.trim()?.takeIf { it.isNotBlank() }?.let { rawSourceId ->
+            runCatching { UUID.fromString(rawSourceId) }.getOrElse {
+                return ToolCallResult("Invalid 'sourceId' argument for source_lookup.")
+            }
+        }
+        val limit = request.args.get("limit")?.asInt() ?: 5
+
+        return when (
+            val result = sourceLookupTool.lookup(
+                query = query,
+                sourceId = sourceId,
+                limit = limit.coerceIn(1, 10),
+                userId = context.userId,
+                excludeSourceIds = context.sources.map { it.sourceId }.toSet()
+            )
+        ) {
+            is ToolResult.Success -> ToolCallResult(
+                content = formatSourceLookupResults(result.data),
+                sourceIdsUsed = result.data.results.map { it.sourceId }
+            )
+
+            is ToolResult.Error -> {
+                if (result.code.retryable) {
+                    ToolCallResult(
+                        "source_lookup failed: ${result.message}",
+                        error = ToolCallError(result.code.toRunnerErrorCode(), result.message)
+                    )
+                } else {
+                    ToolCallResult("source_lookup failed (non-retryable): ${result.message}")
+                }
+            }
+        }
+    }
+
     private fun isToolErrorRetryable(error: ToolCallError): Boolean {
         return error.code in setOf("timeout", "http_429", "http_5xx", "network_error")
     }
@@ -330,6 +366,7 @@ Continue your investigation. If you have enough evidence, produce your ```output
     private data class ToolCallResult(
         val content: String,
         val references: List<WebReference>? = null,
+        val sourceIdsUsed: List<UUID> = emptyList(),
         val error: ToolCallError? = null
     )
     private data class ToolCallError(val code: String, val message: String, val retryAfterSeconds: Long? = null)
@@ -338,5 +375,72 @@ Continue your investigation. If you have enough evidence, produce your ```output
     companion object {
         private const val MAX_SOURCE_CHARS = 4000
         private const val BUDGET_EXHAUSTED_PROMPT = "You have used all available tool calls. Based on the evidence collected so far, produce your final ```output``` block now."
+    }
+
+    private fun buildAvailableTools(): String {
+        val tools = mutableListOf<String>()
+        if (sourceLookupTool != null) {
+            tools += """- `source_lookup`: Search the user's internal source library by similarity. Args: {"query": "search text", "limit": 5} or {"sourceId": "<briefing source id>", "limit": 5}"""
+        }
+        if (webSearchTool != null) {
+            tools += """- `web_search`: Search the web for information. Args: {"query": "search query", "maxResults": 5}"""
+        }
+        if (webFetchTool != null) {
+            tools += """- `web_fetch`: Fetch and read a specific web page. Args: {"url": "https://..."}"""
+        }
+        return if (tools.isEmpty()) "- No tools are enabled." else tools.joinToString("\n")
+    }
+
+    private fun buildToolUsageRules(): String {
+        val rules = mutableListOf<String>()
+        var ruleNumber = 3
+        if (sourceLookupTool != null) {
+            rules += "${ruleNumber++}. If you need additional internal context, use `source_lookup`."
+            rules += "${ruleNumber++}. In source-based `source_lookup`, pass an explicit `sourceId` from the provided internal sources."
+        }
+        if (webSearchTool != null) {
+            rules += "${ruleNumber++}. If you need additional information, use `web_search` to discover relevant sources."
+        }
+        if (webFetchTool != null) {
+            rules += "${ruleNumber++}. Use `web_fetch` selectively — only for the most promising URLs from search results."
+            rules += "${ruleNumber++}. Do NOT fetch more than 3 URLs per investigation."
+        }
+        rules += "${ruleNumber}. Always cite your sources — reference internal source titles and web URLs used."
+        return rules.joinToString("\n")
+    }
+
+    private fun buildInitialToolGuidance(): String {
+        val guidance = mutableListOf<String>()
+        if (sourceLookupTool != null) {
+            guidance += "If you need more internal context, request a `source_lookup` tool call."
+        }
+        if (webSearchTool != null) {
+            guidance += "If you need more information from the web, request a `web_search` tool call."
+        }
+        return if (guidance.isEmpty()) "" else " ${guidance.joinToString(" ")}"
+    }
+
+    private fun formatSourceLookupResults(response: SourceLookupResponse): String {
+        if (response.results.isEmpty()) {
+            return "No similar internal sources found."
+        }
+
+        return buildString {
+            appendLine("## Similar Internal Sources")
+            appendLine("Mode: ${response.mode}")
+            response.query?.let { appendLine("Query: ${UntrustedContentWrapper.sanitizeMarkers(it)}") }
+            response.sourceId?.let { appendLine("Anchor Source ID: $it") }
+            response.results.forEachIndexed { index, result ->
+                appendLine()
+                appendLine("${index + 1}. ${UntrustedContentWrapper.sanitizeMarkers(result.title ?: result.url)}")
+                appendLine("   sourceId: ${result.sourceId}")
+                appendLine("   url: ${UntrustedContentWrapper.sanitizeMarkers(result.url)}")
+                appendLine("   score: ${"%.4f".format(result.score)}")
+                appendLine("   wordCount: ${result.wordCount}")
+                result.excerpt?.let {
+                    appendLine("   excerpt: ${UntrustedContentWrapper.sanitizeMarkers(it)}")
+                }
+            }
+        }.trim()
     }
 }

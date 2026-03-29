@@ -19,7 +19,7 @@ class SourceSimilarityService(
         userId: UUID,
         query: String,
         limit: Int,
-        excludeSourceId: UUID? = null
+        excludeSourceIds: Set<UUID> = emptySet()
     ): List<SimilarSourceResult> {
         if (query.isBlank() || limit <= 0) {
             return emptyList()
@@ -37,7 +37,35 @@ class SourceSimilarityService(
             userId = userId,
             queryEmbedding = queryEmbedding,
             limit = normalizedLimit,
-            excludeSourceId = excludeSourceId
+            excludeSourceIds = excludeSourceIds
+        ).map {
+            SimilarSourceResult(
+                sourceId = it.sourceId,
+                score = it.score,
+                title = it.title,
+                url = it.urlNormalized,
+                wordCount = it.wordCount
+            )
+        }
+    }
+
+    @Transactional(readOnly = true)
+    fun findSimilarSourcesBySourceId(
+        userId: UUID,
+        sourceId: UUID,
+        limit: Int,
+        excludeSourceIds: Set<UUID> = emptySet()
+    ): List<SimilarSourceResult> {
+        if (limit <= 0) {
+            return emptyList()
+        }
+        val normalizedLimit = limit.coerceAtMost(MAX_LIMIT)
+
+        return sourceEmbeddingRepository.findSimilarBySourceId(
+            userId = userId,
+            sourceId = sourceId,
+            limit = normalizedLimit,
+            excludeSourceIds = excludeSourceIds
         ).map {
             SimilarSourceResult(
                 sourceId = it.sourceId,

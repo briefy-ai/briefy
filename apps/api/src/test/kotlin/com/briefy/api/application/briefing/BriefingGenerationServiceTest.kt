@@ -139,6 +139,73 @@ class BriefingGenerationServiceTest {
         assertEquals(BriefingPlanStepStatus.FAILED, step.status)
     }
 
+    @Test
+    fun `execution path persists citations for expanded internal source set from orchestration outcome`() {
+        val userId = UUID.randomUUID()
+        val originalSource = createSource(userId)
+        val lookedUpSource = createSource(userId).copyForTest(
+            id = UUID.randomUUID(),
+            rawUrl = "https://example.com/looked-up-source",
+            title = "Looked Up Source"
+        )
+        val briefing = Briefing.create(UUID.randomUUID(), userId, BriefingEnrichmentIntent.DEEP_DIVE).apply {
+            approve()
+        }
+        val link = BriefingSource(UUID.randomUUID(), briefing.id, originalSource.id, userId)
+        val step = BriefingPlanStep(
+            id = UUID.randomUUID(),
+            briefingId = briefing.id,
+            personaId = null,
+            personaName = "Synthesis Writer",
+            stepOrder = 1,
+            task = "Write synthesis",
+            status = BriefingPlanStepStatus.PLANNED
+        )
+
+        val executionEnabledService = BriefingGenerationService(
+            briefingRepository = briefingRepository,
+            briefingSourceRepository = briefingSourceRepository,
+            briefingPlanStepRepository = briefingPlanStepRepository,
+            briefingReferenceRepository = briefingReferenceRepository,
+            sourceRepository = sourceRepository,
+            briefingGenerationEngine = briefingGenerationEngine,
+            briefingExecutionOrchestratorService = briefingExecutionOrchestratorService,
+            idGenerator = idGenerator,
+            objectMapper = objectMapper,
+            executionEnabled = true
+        )
+
+        whenever(briefingRepository.findByIdAndUserId(briefing.id, userId)).thenReturn(briefing)
+        whenever(briefingSourceRepository.findByBriefingIdOrderByCreatedAtAsc(briefing.id)).thenReturn(listOf(link))
+        whenever(sourceRepository.findAllByUserIdAndIdIn(userId, listOf(originalSource.id))).thenReturn(listOf(originalSource))
+        whenever(briefingPlanStepRepository.findByBriefingIdOrderByStepOrderAsc(briefing.id)).thenReturn(listOf(step))
+        whenever(briefingRepository.save(any())).thenAnswer { it.arguments[0] as Briefing }
+        whenever(briefingPlanStepRepository.saveAll(any<List<BriefingPlanStep>>())).thenAnswer { it.arguments[0] }
+        whenever(briefingReferenceRepository.saveAll(any<List<BriefingReference>>())).thenAnswer { it.arguments[0] }
+        whenever(
+            briefingExecutionOrchestratorService.executeApprovedBriefing(
+                briefing = briefing,
+                orderedSources = listOf(originalSource),
+                planSteps = listOf(step)
+            )
+        ).thenReturn(
+            ExecutionOrchestrationOutcome.succeeded(
+                briefingRunId = UUID.randomUUID(),
+                generationResult = BriefingGenerationResult(
+                    markdownBody = "## Generated briefing [1] [2]",
+                    references = emptyList(),
+                    conflictHighlights = emptyList()
+                ),
+                citationSources = listOf(originalSource, lookedUpSource)
+            )
+        )
+
+        executionEnabledService.generateApprovedBriefing(briefing.id, userId)
+
+        assertTrue(briefing.contentMarkdown!!.contains("Looked Up Source"))
+        assertTrue(briefing.citationsJson!!.contains("Looked Up Source"))
+    }
+
     private fun createSource(userId: UUID): Source {
         return Source(
             id = UUID.randomUUID(),
@@ -157,6 +224,19 @@ class BriefingGenerationServiceTest {
             userId = userId,
             createdAt = Instant.now(),
             updatedAt = Instant.now()
+        )
+    }
+
+    private fun Source.copyForTest(id: UUID, rawUrl: String, title: String): Source {
+        return Source(
+            id = id,
+            url = Url.from(rawUrl),
+            status = status,
+            content = content,
+            metadata = metadata?.copy(title = title),
+            userId = userId,
+            createdAt = createdAt,
+            updatedAt = updatedAt
         )
     }
 }
