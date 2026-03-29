@@ -67,6 +67,15 @@ class GoogleGenAiSpringSupportTest {
         assertSame(cause, unwrapped.cause)
     }
 
+    @Test
+    fun `unwrapFailure keeps a root exception without creating an extra wrapper`() {
+        val error = RuntimeException()
+
+        val unwrapped = GoogleGenAiSpringSupport.unwrapFailure(error)
+
+        assertSame(error, unwrapped)
+    }
+
     private fun generation(text: String, candidateIndex: Int? = null): Generation {
         val properties = candidateIndex?.let { mapOf("candidateIndex" to it) } ?: emptyMap()
         return Generation(

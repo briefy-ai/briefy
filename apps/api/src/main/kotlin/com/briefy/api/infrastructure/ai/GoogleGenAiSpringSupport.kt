@@ -51,9 +51,11 @@ internal object GoogleGenAiSpringSupport {
 
     fun unwrapFailure(error: RuntimeException): RuntimeException {
         val rootCause = rootCause(error)
-        val message = rootCause.message?.takeIf { it.isNotBlank() } ?: error.message ?: "Google GenAI call failed"
+        val message = rootCause.message?.takeIf { it.isNotBlank() }
+            ?: error.message?.takeIf { it.isNotBlank() }
+            ?: "Google GenAI call failed"
 
-        return if (rootCause === error && error.message == message) {
+        return if (rootCause === error) {
             error
         } else {
             RuntimeException(message, rootCause)
