@@ -1,27 +1,8 @@
 package com.briefy.api.infrastructure.ai
 
-import org.springframework.ai.chat.messages.SystemMessage
-import org.springframework.ai.chat.messages.UserMessage
 import org.springframework.ai.chat.model.ChatResponse
-import org.springframework.ai.chat.prompt.Prompt
-import org.springframework.ai.google.genai.GoogleGenAiChatOptions
 
 internal object GoogleGenAiSpringSupport {
-    fun buildPrompt(prompt: String, systemPrompt: String?, model: String): Prompt {
-        val messages = mutableListOf<org.springframework.ai.chat.messages.Message>()
-        if (!systemPrompt.isNullOrBlank()) {
-            messages.add(SystemMessage(systemPrompt))
-        }
-        messages.add(UserMessage(prompt))
-
-        return Prompt(
-            messages,
-            GoogleGenAiChatOptions.builder()
-                .model(model)
-                .build()
-        )
-    }
-
     fun extractText(response: ChatResponse): String {
         val generations = response.results
         if (generations.isEmpty()) {

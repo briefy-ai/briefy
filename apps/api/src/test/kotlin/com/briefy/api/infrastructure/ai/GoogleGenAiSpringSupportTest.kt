@@ -5,31 +5,11 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.ai.chat.messages.AssistantMessage
-import org.springframework.ai.chat.messages.MessageType
 import org.springframework.ai.chat.metadata.ChatGenerationMetadata
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
-import org.springframework.ai.google.genai.GoogleGenAiChatOptions
 
 class GoogleGenAiSpringSupportTest {
-    @Test
-    fun `buildPrompt uses provider-specific options and keeps system message separate`() {
-        val prompt = GoogleGenAiSpringSupport.buildPrompt(
-            prompt = "user prompt",
-            systemPrompt = "system prompt",
-            model = "gemini-2.5-flash"
-        )
-
-        assertEquals(2, prompt.instructions.size)
-        assertEquals(MessageType.SYSTEM, prompt.instructions[0].messageType)
-        assertEquals("system prompt", prompt.instructions[0].text)
-        assertEquals(MessageType.USER, prompt.instructions[1].messageType)
-        assertEquals("user prompt", prompt.instructions[1].text)
-
-        val options = prompt.options as GoogleGenAiChatOptions
-        assertEquals("gemini-2.5-flash", options.model)
-    }
-
     @Test
     fun `extractText joins multiple text parts from the first candidate only`() {
         val response = ChatResponse(
