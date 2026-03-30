@@ -1,9 +1,13 @@
 package com.briefy.api.infrastructure.ai
 
+import com.google.genai.Client
 import org.slf4j.LoggerFactory
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.model.ChatModel
+import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.DefaultChatOptions
+import org.springframework.ai.google.genai.GoogleGenAiChatModel
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions
 import org.springframework.ai.minimax.MiniMaxChatModel
 import org.springframework.ai.minimax.MiniMaxChatOptions
 import org.springframework.ai.minimax.api.MiniMaxApi
@@ -13,8 +17,6 @@ import org.springframework.ai.zhipuai.api.ZhiPuAiApi
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
 
 @Component
 class AiAdapter(
@@ -33,7 +35,9 @@ class AiAdapter(
     @param:Value("\${spring.ai.minimax.chat.options.model:MiniMax-M2.5}")
     private val minimaxDefaultModel: String,
     @param:Value("\${spring.ai.google.genai.api-key:}")
-    private val googleGenAiApiKey: String
+    private val googleGenAiApiKey: String,
+    @param:Value("\${spring.ai.google.genai.chat.options.model:gemini-2.5-flash}")
+    private val googleGenAiDefaultModel: String
 ) {
     private val logger = LoggerFactory.getLogger(AiAdapter::class.java)
     private val springChatModels: Map<String, ChatModel> by lazy {
@@ -52,6 +56,20 @@ class AiAdapter(
                 MiniMaxApi(minimaxChatApiKey, minimaxChatBaseUrl, restClientBuilder),
                 MiniMaxChatOptions.builder().model(minimaxDefaultModel).build()
             )
+        }
+        if (googleGenAiApiKey.isNotBlank()) {
+            models["google_genai"] = GoogleGenAiChatModel.builder()
+                .genAiClient(
+                    Client.builder()
+                        .apiKey(googleGenAiApiKey)
+                        .build()
+                )
+                .defaultOptions(
+                    GoogleGenAiChatOptions.builder()
+                        .model(googleGenAiDefaultModel)
+                        .build()
+                )
+                .build()
         }
         models
     }
@@ -83,13 +101,12 @@ class AiAdapter(
             systemPrompt = systemPrompt
         ) {
             when (provider.trim().lowercase()) {
-                "zhipuai", "minimax" -> completeWithSpringChatModel(
+                "zhipuai", "minimax", "google_genai" -> completeWithSpringChatModel(
                     provider = provider,
                     prompt = prompt,
                     systemPrompt = systemPrompt,
                     model = model
                 )
-                "google_genai" -> completeWithGoogleGenAi(prompt = prompt, systemPrompt = systemPrompt, model = model)
                 else -> throw IllegalArgumentException("Unsupported AI provider '$provider'")
             }
         }
@@ -101,64 +118,53 @@ class AiAdapter(
         systemPrompt: String?,
         model: String
     ): String {
-        val chatModel = springChatModels[provider.trim().lowercase()]
+        val normalizedProvider = provider.trim().lowercase()
+        val chatModel = springChatModels[normalizedProvider]
             ?: throw IllegalStateException(
                 "Spring AI chat model is not configured for provider '$provider'. " +
                     "Set the matching provider API key."
             )
 
-        val promptSpec = ChatClient.builder(chatModel).build().prompt().also {
-            if (!systemPrompt.isNullOrBlank()) {
-                it.system(systemPrompt)
-            }
-            val chatOptions = DefaultChatOptions()
-            chatOptions.setModel(model)
-            it.options(chatOptions)
-        }.user(prompt)
+        val promptSpec = buildPromptSpec(
+            requestSpec = ChatClient.builder(chatModel).build().prompt(),
+            prompt = prompt,
+            systemPrompt = systemPrompt,
+            model = model
+        )
 
-        return promptSpec.call().content()?.trim().orEmpty()
+        return if (normalizedProvider == "google_genai") {
+            try {
+                extractSpringResponse(normalizedProvider, promptSpec.call())
+            } catch (error: RuntimeException) {
+                throw GoogleGenAiSpringSupport.unwrapFailure(error)
+            }
+        } else {
+            extractSpringResponse(normalizedProvider, promptSpec.call())
+        }
     }
 
-    private fun completeWithGoogleGenAi(prompt: String, systemPrompt: String?, model: String): String {
-        require(googleGenAiApiKey.isNotBlank()) { "Google GenAI is not configured on this server" }
-
-        val requestBody = mutableMapOf<String, Any>(
-            "contents" to listOf(
-                mapOf(
-                    "role" to "user",
-                    "parts" to listOf(mapOf("text" to prompt))
-                )
-            )
-        )
+    internal fun buildPromptSpec(
+        requestSpec: ChatClient.ChatClientRequestSpec,
+        prompt: String,
+        systemPrompt: String?,
+        model: String
+    ): ChatClient.ChatClientRequestSpec {
         if (!systemPrompt.isNullOrBlank()) {
-            requestBody["systemInstruction"] = mapOf(
-                "parts" to listOf(mapOf("text" to systemPrompt))
-            )
+            requestSpec.system(systemPrompt)
         }
 
-        val encodedModel = URLEncoder.encode(model, StandardCharsets.UTF_8)
-        val encodedApiKey = URLEncoder.encode(googleGenAiApiKey, StandardCharsets.UTF_8)
-        val uri = "https://generativelanguage.googleapis.com/v1beta/models/$encodedModel:generateContent?key=$encodedApiKey"
+        val chatOptions = DefaultChatOptions()
+        chatOptions.setModel(model)
+        requestSpec.options(chatOptions)
 
-        val responseJson = restClientBuilder.build()
-            .post()
-            .uri(uri)
-            .body(requestBody)
-            .retrieve()
-            .body(Map::class.java) ?: emptyMap<String, Any>()
+        return requestSpec.user(prompt)
+    }
 
-        @Suppress("UNCHECKED_CAST")
-        val candidates = responseJson["candidates"] as? List<Map<String, Any>> ?: emptyList()
-        if (candidates.isEmpty()) {
-            return ""
+    internal fun extractSpringResponse(provider: String, responseSpec: ChatClient.CallResponseSpec): String {
+        return if (provider.trim().lowercase() == "google_genai") {
+            GoogleGenAiSpringSupport.extractText(responseSpec.chatResponse() ?: ChatResponse(emptyList()))
+        } else {
+            responseSpec.content()?.trim().orEmpty()
         }
-
-        @Suppress("UNCHECKED_CAST")
-        val firstCandidate = candidates.firstOrNull() ?: return ""
-        @Suppress("UNCHECKED_CAST")
-        val content = firstCandidate["content"] as? Map<String, Any> ?: return ""
-        @Suppress("UNCHECKED_CAST")
-        val parts = content["parts"] as? List<Map<String, Any>> ?: return ""
-        return parts.joinToString("\n") { (it["text"] as? String).orEmpty() }.trim()
     }
 }
