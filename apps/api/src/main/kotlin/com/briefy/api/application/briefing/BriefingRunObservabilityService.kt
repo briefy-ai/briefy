@@ -27,10 +27,12 @@ class BriefingRunObservabilityService(
         val briefingRun = loadAccessibleRun(runId)
         val subagentRuns = subagentRunRepository.findByBriefingRunIdOrderByCreatedAtAsc(briefingRun.id)
         val synthesisRun = synthesisRunRepository.findByBriefingRunId(briefingRun.id)
-        val toolCallsTotal = runEventRepository.countByBriefingRunIdAndEventType(
-            briefingRun.id,
-            SUBAGENT_TOOL_CALL_STARTED_EVENT
-        )
+        val toolCallsTotal = subagentRuns.sumOf { subagentRun ->
+            val stats = parseMap(subagentRun.toolStatsJson)
+            val direct = (stats?.get("toolCallCount") as? Number)?.toLong()
+            val fromTools = (stats?.get("tools") as? List<*>)?.size?.toLong()
+            direct ?: fromTools ?: 0L
+        }
 
         val now = Instant.now()
         val durationMs = if (briefingRun.startedAt == null) {
@@ -218,7 +220,6 @@ class BriefingRunObservabilityService(
     }
 
     companion object {
-        private const val SUBAGENT_TOOL_CALL_STARTED_EVENT = "subagent.tool_call.started"
         private const val DEFAULT_LIMIT = 50
         private const val MAX_LIMIT = 200
     }
