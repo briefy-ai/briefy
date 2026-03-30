@@ -354,6 +354,32 @@ Budget-exhausted analysis.
     }
 
     @Test
+    fun `handles bad request runner exception as non-retryable failure`() {
+        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
+            .thenThrow(RuntimeException("400 Bad Request"))
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.Failed)
+        val failed = result as SubagentExecutionResult.Failed
+        assertEquals("runner_error", failed.errorCode)
+        assertFalse(failed.retryable)
+    }
+
+    @Test
+    fun `handles unauthorized runner exception as non-retryable failure`() {
+        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
+            .thenThrow(RuntimeException("401 Unauthorized"))
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.Failed)
+        val failed = result as SubagentExecutionResult.Failed
+        assertEquals("runner_error", failed.errorCode)
+        assertFalse(failed.retryable)
+    }
+
+    @Test
     fun `handles LLM exception as non-retryable when not transient`() {
         whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
             .thenThrow(IllegalArgumentException("Invalid prompt format"))

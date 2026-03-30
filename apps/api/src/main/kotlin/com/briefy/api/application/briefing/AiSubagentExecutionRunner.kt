@@ -423,6 +423,15 @@ Continue your investigation. If you have enough evidence, produce your ```output
             "quota exceeded"
         )
         private val NON_RETRYABLE_RUNNER_MESSAGE_MARKERS = setOf(
+            "400",
+            "401",
+            "403",
+            "bad request",
+            "unauthorized",
+            "forbidden",
+            "invalid api key",
+            "api key not valid",
+            "authentication failed",
             "invalid prompt",
             "prompt must not be blank",
             "provider must not be blank",
