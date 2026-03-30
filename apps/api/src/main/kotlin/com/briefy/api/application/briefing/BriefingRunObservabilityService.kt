@@ -101,23 +101,24 @@ class BriefingRunObservabilityService(
     }
 
     @Transactional(readOnly = true)
-    fun listRunEvents(runId: UUID, limit: Int?, cursor: String?): BriefingRunEventsPageResponse {
+    fun listRunEvents(
+        runId: UUID,
+        limit: Int?,
+        cursor: String?,
+        subagentRunId: UUID? = null
+    ): BriefingRunEventsPageResponse {
         val briefingRun = loadAccessibleRun(runId)
+        validateSubagentRunFilter(briefingRun.id, subagentRunId)
         val normalizedLimit = normalizeLimit(limit)
         val pageSize = normalizedLimit + 1
         val pageable = PageRequest.of(0, pageSize)
         val cursorValue = cursor?.let { RunEventPageCursorCodec.decode(it) }
-
-        val orderedEvents = if (cursorValue == null) {
-            runEventRepository.findPageByBriefingRunId(briefingRun.id, pageable)
-        } else {
-            runEventRepository.findPageByBriefingRunIdAfterCursor(
-                briefingRunId = briefingRun.id,
-                cursorOccurredAt = cursorValue.occurredAt,
-                cursorSequenceId = cursorValue.sequenceId,
-                pageable = pageable
-            )
-        }
+        val orderedEvents = loadOrderedEvents(
+            briefingRunId = briefingRun.id,
+            subagentRunId = subagentRunId,
+            cursorValue = cursorValue,
+            pageable = pageable
+        )
 
         val hasMore = orderedEvents.size > normalizedLimit
         val pageEvents = if (hasMore) orderedEvents.take(normalizedLimit) else orderedEvents
@@ -149,6 +150,42 @@ class BriefingRunObservabilityService(
             hasMore = hasMore,
             limit = normalizedLimit
         )
+    }
+
+    private fun loadOrderedEvents(
+        briefingRunId: UUID,
+        subagentRunId: UUID?,
+        cursorValue: RunEventPageCursor?,
+        pageable: PageRequest
+    ): List<RunEvent> {
+        if (subagentRunId == null) {
+            return if (cursorValue == null) {
+                runEventRepository.findPageByBriefingRunId(briefingRunId, pageable)
+            } else {
+                runEventRepository.findPageByBriefingRunIdAfterCursor(
+                    briefingRunId = briefingRunId,
+                    cursorOccurredAt = cursorValue.occurredAt,
+                    cursorSequenceId = cursorValue.sequenceId,
+                    pageable = pageable
+                )
+            }
+        }
+
+        return if (cursorValue == null) {
+            runEventRepository.findPageByBriefingRunIdAndSubagentRunId(
+                briefingRunId = briefingRunId,
+                subagentRunId = subagentRunId,
+                pageable = pageable
+            )
+        } else {
+            runEventRepository.findPageByBriefingRunIdAndSubagentRunIdAfterCursor(
+                briefingRunId = briefingRunId,
+                subagentRunId = subagentRunId,
+                cursorOccurredAt = cursorValue.occurredAt,
+                cursorSequenceId = cursorValue.sequenceId,
+                pageable = pageable
+            )
+        }
     }
 
     private fun mapSynthesisRun(run: SynthesisRun?): SynthesisRunSnapshotResponse {
@@ -191,6 +228,15 @@ class BriefingRunObservabilityService(
             throw ExecutionRunNotFoundException("BriefingRun", runId)
         }
         return run
+    }
+
+    private fun validateSubagentRunFilter(briefingRunId: UUID, subagentRunId: UUID?) {
+        if (subagentRunId == null) {
+            return
+        }
+        if (!subagentRunRepository.existsByIdAndBriefingRunId(subagentRunId, briefingRunId)) {
+            throw IllegalArgumentException("subagentRunId does not belong to briefing run")
+        }
     }
 
     private fun parseMap(json: String?): Map<String, Any?>? {

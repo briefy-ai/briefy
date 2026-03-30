@@ -156,6 +156,7 @@ function toStepProgressPayload(
         task: step.task,
         status: step.status,
         stepOrder: step.stepOrder,
+        subagentRunId: subagent?.id ?? null,
         attempt: subagent?.attempt ?? null,
         maxAttempts: subagent?.maxAttempts ?? null,
         reused: subagent?.reused ?? false,

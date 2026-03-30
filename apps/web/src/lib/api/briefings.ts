@@ -29,6 +29,7 @@ export async function getBriefingRunSummary(runId: string): Promise<BriefingRunS
 interface ListBriefingRunEventsParams {
   cursor?: string
   limit?: number
+  subagentRunId?: string
 }
 
 export async function listBriefingRunEvents(
@@ -41,6 +42,9 @@ export async function listBriefingRunEvents(
   }
   if (params.limit) {
     searchParams.set('limit', String(params.limit))
+  }
+  if (params.subagentRunId) {
+    searchParams.set('subagentRunId', params.subagentRunId)
   }
   const query = searchParams.toString()
   const path = query
