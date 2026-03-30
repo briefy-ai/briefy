@@ -292,7 +292,7 @@ class BriefingControllerTest {
                     maxAttempts = 3,
                     startedAt = now.minusSeconds(35),
                     endedAt = now.minusSeconds(20),
-                    toolStatsJson = """{"toolCallsTotal": 2}""",
+                    toolStatsJson = """{"toolCallCount": 2}""",
                     reused = true,
                     createdAt = now.minusSeconds(35),
                     updatedAt = now.minusSeconds(20)
