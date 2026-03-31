@@ -466,13 +466,47 @@ class BriefingExecutionOrchestratorService(
                 }
 
                 SubagentExecutionResult.EmptyOutput -> {
-                    executionStateTransitionService.markSubagentCompletedEmpty(
+                    executionStateTransitionService.recordSubagentAttemptFailed(
                         subagentRunId = runningSubagentRun.id,
                         eventId = nextEventId(),
+                        errorCode = ERROR_EMPTY_OUTPUT,
+                        errorMessage = "AI produced no usable output",
+                        retryable = true,
+                        attempt = runningSubagentRun.attempt,
                         occurredAt = occurredAt
                     )
-                    step.markFailed(occurredAt)
-                    return
+
+                    val exhausted = runningSubagentRun.attempt >= runningSubagentRun.maxAttempts
+                    val retryDelaySeconds = when (runningSubagentRun.attempt) {
+                        1 -> executionConfig.retry.transientDelayFirstSeconds
+                        else -> executionConfig.retry.transientDelaySecondSeconds
+                    }
+                    val attemptDeadline = runningSubagentRun.deadlineAt
+                        ?: occurredAt.plusSeconds(executionConfig.subagentTimeoutSeconds)
+                    val retryAt = occurredAt.plusSeconds(retryDelaySeconds)
+
+                    if (exhausted || retryAt.isAfter(attemptDeadline)) {
+                        executionStateTransitionService.markSubagentCompletedEmpty(
+                            subagentRunId = runningSubagentRun.id,
+                            eventId = nextEventId(),
+                            occurredAt = occurredAt
+                        )
+                        step.markFailed(occurredAt)
+                        return
+                    }
+
+                    executionStateTransitionService.markSubagentTransientFailedToRetryWait(
+                        subagentRunId = runningSubagentRun.id,
+                        eventId = nextEventId(),
+                        errorCode = ERROR_EMPTY_OUTPUT,
+                        errorMessage = "AI produced no usable output",
+                        occurredAt = occurredAt
+                    )
+                    executionStateTransitionService.markSubagentRetryDelayElapsed(
+                        subagentRunId = runningSubagentRun.id,
+                        eventId = nextEventId(),
+                        occurredAt = retryAt
+                    )
                 }
 
                 is SubagentExecutionResult.Failed -> {
@@ -939,6 +973,7 @@ class BriefingExecutionOrchestratorService(
     private fun sanitizePayload(value: String): String = sanitizer.sanitize(value)
 
     companion object {
+        private const val ERROR_EMPTY_OUTPUT = "empty_output"
         private const val ERROR_HTTP_429 = "http_429"
         private val ACTIVE_RUN_STATUSES = listOf(
             BriefingRunStatus.QUEUED,

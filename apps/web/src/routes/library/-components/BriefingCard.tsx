@@ -70,7 +70,7 @@ export function BriefingCard({
             <h3 className="flex items-center gap-1.5 text-sm font-medium leading-snug group-hover:text-primary transition-colors">
               <IntentIcon className="size-3.5 shrink-0 opacity-60" strokeWidth={1.8} />
               <span className="truncate">
-                {intent?.label ?? briefing.enrichmentIntent}
+                {briefing.title ?? (intent?.label ?? briefing.enrichmentIntent)}
                 <span className="ml-1.5 font-normal text-muted-foreground">
                   · {briefing.sourceCount} {briefing.sourceCount === 1 ? 'source' : 'sources'}
                 </span>

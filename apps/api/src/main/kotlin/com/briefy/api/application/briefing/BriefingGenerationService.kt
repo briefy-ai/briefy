@@ -184,7 +184,7 @@ class BriefingGenerationService(
         }
 
         val contentWithCitations = appendCitationsBlock(generationResult.markdownBody, citations)
-        briefing.completeGeneration(contentWithCitations, citationsJson, conflictHighlightsJson)
+        briefing.completeGeneration(contentWithCitations, citationsJson, conflictHighlightsJson, title = generationResult.title)
         briefingRepository.save(briefing)
     }
 

@@ -142,7 +142,7 @@ function BriefingDetailPage() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Briefing {briefing.id.slice(0, 8)}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{briefing.title ?? `Briefing ${briefing.id.slice(0, 8)}`}</h1>
         <p className="text-xs text-muted-foreground">
           Updated {new Date(briefing.updatedAt).toLocaleString('en-US')}
         </p>

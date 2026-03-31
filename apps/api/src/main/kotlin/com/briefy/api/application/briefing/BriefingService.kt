@@ -119,6 +119,7 @@ class BriefingService(
                 id = briefing.id,
                 status = briefing.status.name.lowercase(),
                 enrichmentIntent = briefing.enrichmentIntent.name.lowercase(),
+                title = briefing.title,
                 sourceCount = briefingSourceRepository.countByBriefingId(briefing.id),
                 contentSnippet = briefing.contentMarkdown?.take(200),
                 createdAt = briefing.createdAt,
@@ -315,6 +316,7 @@ class BriefingService(
             executionRunId = latestExecutionRunId,
             status = briefing.status.name.lowercase(),
             enrichmentIntent = briefing.enrichmentIntent.name.lowercase(),
+            title = briefing.title,
             sourceIds = links.map { it.sourceId },
             plan = planSteps.map { step ->
                 BriefingPlanStepResponse(

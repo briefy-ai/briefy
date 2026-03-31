@@ -75,4 +75,40 @@ interface RunEventRepository : JpaRepository<RunEvent, UUID> {
         @Param("cursorSequenceId") cursorSequenceId: Long,
         pageable: Pageable
     ): List<RunEvent>
+
+    @Query(
+        """
+        SELECT event
+        FROM RunEvent event
+        WHERE event.briefingRunId = :briefingRunId
+          AND event.subagentRunId = :subagentRunId
+        ORDER BY event.occurredAt ASC, event.sequenceId ASC
+        """
+    )
+    fun findPageByBriefingRunIdAndSubagentRunId(
+        @Param("briefingRunId") briefingRunId: UUID,
+        @Param("subagentRunId") subagentRunId: UUID,
+        pageable: Pageable
+    ): List<RunEvent>
+
+    @Query(
+        """
+        SELECT event
+        FROM RunEvent event
+        WHERE event.briefingRunId = :briefingRunId
+          AND event.subagentRunId = :subagentRunId
+          AND (
+            event.occurredAt > :cursorOccurredAt
+            OR (event.occurredAt = :cursorOccurredAt AND event.sequenceId > :cursorSequenceId)
+          )
+        ORDER BY event.occurredAt ASC, event.sequenceId ASC
+        """
+    )
+    fun findPageByBriefingRunIdAndSubagentRunIdAfterCursor(
+        @Param("briefingRunId") briefingRunId: UUID,
+        @Param("subagentRunId") subagentRunId: UUID,
+        @Param("cursorOccurredAt") cursorOccurredAt: Instant,
+        @Param("cursorSequenceId") cursorSequenceId: Long,
+        pageable: Pageable
+    ): List<RunEvent>
 }
