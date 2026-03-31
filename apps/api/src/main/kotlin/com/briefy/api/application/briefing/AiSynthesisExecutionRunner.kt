@@ -131,7 +131,7 @@ Return JSON only with the required schema."""
         }
 
         return StructuredSynthesisResponse(
-            title = nullableText(root.path("title")),
+            title = nullableText(root.path("title"))?.take(MAX_TITLE_LENGTH),
             markdownBody = markdownBody,
             references = parseReferences(root.path("references")),
             conflictHighlights = parseConflictHighlights(root.path("conflictHighlights"))
@@ -288,6 +288,7 @@ Return JSON only with the required schema."""
     )
 
     companion object {
+        private const val MAX_TITLE_LENGTH = 300
         private const val MAX_PERSONA_OUTPUT_CHARS = 5_000
         private val JSON_BLOCK_REGEX = Regex("```json\\s*\\n(.*?)\\n```", RegexOption.DOT_MATCHES_ALL)
         private val OUTPUT_BLOCK_REGEX = Regex("```output\\s*\\n(.*?)\\n```", RegexOption.DOT_MATCHES_ALL)
