@@ -328,6 +328,58 @@ Budget-exhausted analysis.
     }
 
     @Test
+    fun `handles provider unavailable exception as retryable failure`() {
+        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
+            .thenThrow(RuntimeException("503 Service Unavailable"))
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.Failed)
+        val failed = result as SubagentExecutionResult.Failed
+        assertEquals("runner_error", failed.errorCode)
+        assertTrue(failed.retryable)
+    }
+
+    @Test
+    fun `handles generic runner exception as retryable failure`() {
+        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
+            .thenThrow(RuntimeException("boom"))
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.Failed)
+        val failed = result as SubagentExecutionResult.Failed
+        assertEquals("runner_error", failed.errorCode)
+        assertTrue(failed.retryable)
+    }
+
+    @Test
+    fun `handles bad request runner exception as non-retryable failure`() {
+        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
+            .thenThrow(RuntimeException("400 Bad Request"))
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.Failed)
+        val failed = result as SubagentExecutionResult.Failed
+        assertEquals("runner_error", failed.errorCode)
+        assertFalse(failed.retryable)
+    }
+
+    @Test
+    fun `handles unauthorized runner exception as non-retryable failure`() {
+        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
+            .thenThrow(RuntimeException("401 Unauthorized"))
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.Failed)
+        val failed = result as SubagentExecutionResult.Failed
+        assertEquals("runner_error", failed.errorCode)
+        assertFalse(failed.retryable)
+    }
+
+    @Test
     fun `handles LLM exception as non-retryable when not transient`() {
         whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
             .thenThrow(IllegalArgumentException("Invalid prompt format"))
