@@ -271,6 +271,7 @@ export interface AiProviderDto {
   id: AiProviderId
   label: string
   configured: boolean
+  deprecated: boolean
   models: AiModelDto[]
 }
 

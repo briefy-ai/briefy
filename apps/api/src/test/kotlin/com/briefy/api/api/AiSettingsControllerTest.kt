@@ -45,13 +45,20 @@ class AiSettingsControllerTest {
 
     @Test
     fun `GET ai settings includes providers and use cases`() {
+        val freshUserId = UUID.randomUUID()
+        `when`(currentUserProvider.requireUserId()).thenReturn(freshUserId)
+
         mockMvc.perform(get("/api/settings/ai"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.providers[?(@.id=='zhipuai')]").isNotEmpty)
-            .andExpect(jsonPath("$.providers[?(@.id=='google_genai')]").isNotEmpty)
-            .andExpect(jsonPath("$.providers[?(@.id=='minimax')]").isNotEmpty)
+            .andExpect(jsonPath("$.providers[?(@.id=='zhipuai' && @.deprecated==true)]").isNotEmpty)
+            .andExpect(jsonPath("$.providers[?(@.id=='google_genai' && @.deprecated==false)]").isNotEmpty)
+            .andExpect(jsonPath("$.providers[?(@.id=='minimax' && @.deprecated==false)]").isNotEmpty)
             .andExpect(jsonPath("$.useCases[0].id").value("topic_extraction"))
+            .andExpect(jsonPath("$.useCases[0].provider").value("google_genai"))
+            .andExpect(jsonPath("$.useCases[0].model").value("gemini-2.5-flash"))
             .andExpect(jsonPath("$.useCases[1].id").value("source_formatting"))
+            .andExpect(jsonPath("$.useCases[1].provider").value("google_genai"))
+            .andExpect(jsonPath("$.useCases[1].model").value("gemini-2.5-flash"))
     }
 
     @Test
