@@ -213,10 +213,25 @@ Analysis based on fetched content.
     }
 
     @Test
-    fun `returns EmptyOutput when LLM produces empty output`() {
+    fun `returns EmptyOutput when LLM produces empty output block`() {
         whenever(aiAdapter.complete(any(), any(), any(), any(), any())).thenReturn(
             """```output
 
+```"""
+        )
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.EmptyOutput)
+    }
+
+    @Test
+    fun `returns EmptyOutput when LLM produces malformed tool block without output`() {
+        whenever(aiAdapter.complete(any(), any(), any(), any(), any())).thenReturn(
+            """I need to investigate further.
+
+```tool
+{invalid json here
 ```"""
         )
 
