@@ -69,6 +69,7 @@ export const StepProgressMessage = memo(function StepProgressMessage({
   const execution = message.payload.execution
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null)
   const [expandedEvents, setExpandedEvents] = useState<BriefingRunEventResponse[]>([])
+  const [hasMoreEvents, setHasMoreEvents] = useState(false)
   const [eventsLoading, setEventsLoading] = useState(false)
   const [eventsError, setEventsError] = useState<string | null>(null)
   const [refreshNonce, setRefreshNonce] = useState(0)
@@ -95,6 +96,7 @@ export const StepProgressMessage = memo(function StepProgressMessage({
     let cancelled = false
 
     async function loadExpandedEvents() {
+      setEventsLoading(true)
       try {
         const page = await listBriefingRunEvents(runId, {
           limit: 50,
@@ -102,6 +104,8 @@ export const StepProgressMessage = memo(function StepProgressMessage({
         })
         if (!cancelled) {
           setExpandedEvents(page.items)
+          setHasMoreEvents(page.hasMore)
+          setEventsError(null)
         }
       } catch (error) {
         if (!cancelled) {
@@ -128,11 +132,13 @@ export const StepProgressMessage = memo(function StepProgressMessage({
     if (expandedStepId === stepId) {
       setExpandedStepId(null)
       setExpandedEvents([])
+      setHasMoreEvents(false)
       setEventsError(null)
       setEventsLoading(false)
       return
     }
     setExpandedEvents([])
+    setHasMoreEvents(false)
     setEventsLoading(true)
     setEventsError(null)
     setRefreshNonce(0)
@@ -225,19 +231,27 @@ export const StepProgressMessage = memo(function StepProgressMessage({
                   <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     Specialist events
                   </p>
-                  {execution && !isTerminalRunStatus(execution.runStatus) && (
-                    <span className="text-[11px] text-muted-foreground">Refreshes with run updates</span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {eventsLoading && expandedEvents.length > 0 && (
+                      <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+                        Refreshing...
+                      </span>
+                    )}
+                    {execution && !isTerminalRunStatus(execution.runStatus) && (
+                      <span className="text-[11px] text-muted-foreground">Refreshes with run updates</span>
+                    )}
+                  </div>
                 </div>
 
-                {eventsLoading && (
+                {eventsLoading && expandedEvents.length === 0 && (
                   <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                     <Loader2 className="size-3 animate-spin" aria-hidden="true" />
                     Loading events...
                   </div>
                 )}
 
-                {!eventsLoading && eventsError && (
+                {eventsError && (
                   <div className="space-y-2 text-[11px] text-destructive">
                     <p>{eventsError}</p>
                     <button
@@ -258,8 +272,13 @@ export const StepProgressMessage = memo(function StepProgressMessage({
                   <p className="text-[11px] text-muted-foreground">No events yet.</p>
                 )}
 
-                {!eventsLoading && !eventsError && expandedEvents.length > 0 && (
+                {expandedEvents.length > 0 && (
                   <div className="space-y-2">
+                    {hasMoreEvents && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Showing the first 50 events for this specialist.
+                      </p>
+                    )}
                     {expandedEvents.map((event) => {
                       const eventDetail = buildEventDetail(event)
                       return (
