@@ -1,9 +1,16 @@
 package com.briefy.api.application.briefing
 
-import com.briefy.api.application.briefing.tool.*
+import com.briefy.api.application.briefing.tool.SourceLookupResponse
+import com.briefy.api.application.briefing.tool.SourceLookupTool
+import com.briefy.api.application.briefing.tool.ToolErrorCode
+import com.briefy.api.application.briefing.tool.ToolResult
+import com.briefy.api.application.briefing.tool.UntrustedContentWrapper
+import com.briefy.api.application.briefing.tool.WebFetchTool
+import com.briefy.api.application.briefing.tool.WebSearchTool
 import com.briefy.api.infrastructure.ai.AiAdapter
 import com.briefy.api.infrastructure.ai.AiErrorCategory
 import com.briefy.api.infrastructure.ai.AiPayloadSanitizer
+import com.briefy.api.infrastructure.ai.RetryableToolExecutionException
 import com.briefy.api.infrastructure.ai.setAttributeIfNotBlank
 import com.briefy.api.infrastructure.ai.withSpan
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -11,7 +18,10 @@ import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import org.slf4j.LoggerFactory
+import org.springframework.ai.tool.ToolCallback
+import org.springframework.ai.tool.function.FunctionToolCallback
 import java.util.UUID
+import java.util.function.Function
 
 class AiSubagentExecutionRunner(
     private val aiAdapter: AiAdapter,
@@ -28,9 +38,23 @@ class AiSubagentExecutionRunner(
 
     override fun execute(context: SubagentExecutionContext): SubagentExecutionResult {
         return try {
-            executeToolLoop(context)
+            executeWithNativeTools(context)
         } catch (e: Exception) {
-            logger.error("[ai-runner] Unexpected error for persona={} subagentRun={}", context.personaKey, context.subagentRunId, e)
+            findRetryableToolFailure(e)?.let { failure ->
+                return SubagentExecutionResult.Failed(
+                    errorCode = failure.errorCode,
+                    errorMessage = failure.message,
+                    retryable = true,
+                    retryAfterSeconds = failure.retryAfterSeconds
+                )
+            }
+
+            logger.error(
+                "[ai-runner] Unexpected error for persona={} subagentRun={}",
+                context.personaKey,
+                context.subagentRunId,
+                e
+            )
             val failure = classifyRunnerFailure(e)
             SubagentExecutionResult.Failed(
                 errorCode = failure.errorCode,
@@ -40,120 +64,117 @@ class AiSubagentExecutionRunner(
         }
     }
 
-    private fun executeToolLoop(context: SubagentExecutionContext): SubagentExecutionResult {
-        val sourceIdsUsed = mutableSetOf<UUID>()
-        val referencesUsed = mutableListOf<WebReference>()
-        val toolCalls = mutableListOf<ToolCallRecord>()
-
-        // Phase 1: Source lookup — build evidence from internal sources
+    private fun executeWithNativeTools(context: SubagentExecutionContext): SubagentExecutionResult {
+        val toolSession = ToolSession(context)
         val sourceEvidence = buildSourceEvidence(context.sources)
-        sourceIdsUsed.addAll(context.sources.map { it.sourceId })
+        val systemPrompt = buildSystemPrompt(context)
+        val prompt = buildInitialUserPrompt(context, sourceEvidence)
+        val toolCallbacks = buildToolCallbacks(context, toolSession)
 
-        // Phase 2: LLM tool loop — the LLM decides whether to search/fetch
-        var toolCallCount = 0
-
-        // First LLM call: analyze sources and decide if tool use is needed
-        var llmMessages = mutableListOf<LlmMessage>()
-        llmMessages.add(LlmMessage("system", buildSystemPrompt(context)))
-        llmMessages.add(LlmMessage("user", buildInitialUserPrompt(context, sourceEvidence)))
-
-        while (toolCallCount < config.maxToolCalls) {
-            val llmResponse = callLlm(context, llmMessages)
-
-            val toolRequest = parseToolRequest(llmResponse)
-            if (toolRequest == null) {
-                // LLM produced final output — extract curated text
-                val curatedText = extractCuratedText(llmResponse)
-                if (curatedText.isBlank()) {
-                    logger.warn("[ai-runner] EmptyOutput persona={} subagentRun={} toolCalls={} response={}",
-                        context.personaKey, context.subagentRunId, toolCallCount, llmResponse.take(500))
-                    return SubagentExecutionResult.EmptyOutput
-                }
-                return SubagentExecutionResult.Succeeded(
-                    curatedText = curatedText,
-                    sourceIdsUsedJson = objectMapper.writeValueAsString(sourceIdsUsed),
-                    referencesUsedJson = if (referencesUsed.isNotEmpty())
-                        objectMapper.writeValueAsString(referencesUsed)
-                    else null,
-                    toolStatsJson = objectMapper.writeValueAsString(
-                        mapOf(
-                            "runner" to "ai_subagent",
-                            "toolCallCount" to toolCallCount,
-                            "sourceCount" to sourceIdsUsed.size,
-                            "webReferencesCount" to referencesUsed.size,
-                            "tools" to toolCalls.map { mapOf("tool" to it.tool, "durationMs" to it.durationMs, "success" to it.success) }
-                        )
-                    )
-                )
-            }
-
-            // Execute the requested tool
-            toolCallCount++
-            val toolStart = System.currentTimeMillis()
-            val toolResult = executeTool(toolRequest, context)
-            val toolDurationMs = System.currentTimeMillis() - toolStart
-            val toolSuccess = toolResult.error == null
-
-            toolCalls.add(ToolCallRecord(toolRequest.tool, toolDurationMs, toolSuccess))
-
-            if (toolResult.error != null && isToolErrorRetryable(toolResult.error)) {
-                return SubagentExecutionResult.Failed(
-                    errorCode = toolResult.error.code,
-                    errorMessage = toolResult.error.message,
-                    retryable = true,
-                    retryAfterSeconds = toolResult.error.retryAfterSeconds
-                )
-            }
-
-            sourceIdsUsed.addAll(toolResult.sourceIdsUsed)
-            toolResult.references?.let { referencesUsed.addAll(it) }
-
-            // Add tool result to conversation and continue loop
-            llmMessages.add(LlmMessage("assistant", llmResponse))
-            llmMessages.add(LlmMessage("user", buildToolResultPrompt(toolRequest.tool, toolResult.content)))
+        val llmResponse = if (toolCallbacks.isEmpty()) {
+            aiAdapter.complete(
+                provider = config.provider,
+                model = config.model,
+                prompt = prompt,
+                systemPrompt = systemPrompt,
+                useCase = "subagent_execution_${context.personaKey}"
+            )
+        } else {
+            aiAdapter.completeWithTools(
+                provider = config.provider,
+                model = config.model,
+                prompt = prompt,
+                systemPrompt = systemPrompt,
+                useCase = "subagent_execution_${context.personaKey}",
+                toolCallbacks = toolCallbacks
+            )
         }
 
-        // Budget exhausted — ask LLM for final output with what we have
-        llmMessages.add(LlmMessage("user", BUDGET_EXHAUSTED_PROMPT))
-        val finalResponse = callLlm(context, llmMessages)
-        val curatedText = extractCuratedText(finalResponse)
+        val curatedText = extractCuratedText(llmResponse)
         if (curatedText.isBlank()) {
-            logger.warn("[ai-runner] EmptyOutput (budget exhausted) persona={} subagentRun={} toolCalls={} response={}",
-                context.personaKey, context.subagentRunId, toolCallCount, finalResponse.take(500))
+            logger.warn(
+                "[ai-runner] EmptyOutput persona={} subagentRun={} toolCalls={} response={}",
+                context.personaKey,
+                context.subagentRunId,
+                toolSession.toolCallCount,
+                llmResponse.take(500)
+            )
             return SubagentExecutionResult.EmptyOutput
         }
 
-        return SubagentExecutionResult.Succeeded(
-            curatedText = curatedText,
-            sourceIdsUsedJson = objectMapper.writeValueAsString(sourceIdsUsed),
-            referencesUsedJson = if (referencesUsed.isNotEmpty())
-                objectMapper.writeValueAsString(referencesUsed)
-            else null,
-            toolStatsJson = objectMapper.writeValueAsString(
-                mapOf(
-                    "runner" to "ai_subagent",
-                    "toolCallCount" to toolCallCount,
-                    "sourceCount" to sourceIdsUsed.size,
-                    "webReferencesCount" to referencesUsed.size,
-                    "budgetExhausted" to true,
-                    "tools" to toolCalls.map { mapOf("tool" to it.tool, "durationMs" to it.durationMs, "success" to it.success) }
-                )
+        return toolSession.succeeded(curatedText)
+    }
+
+    private fun buildToolCallbacks(
+        context: SubagentExecutionContext,
+        toolSession: ToolSession
+    ): List<ToolCallback> {
+        val callbacks = mutableListOf<ToolCallback>()
+
+        if (sourceLookupTool != null) {
+            callbacks += FunctionToolCallback.builder(
+                "source_lookup",
+                Function<SourceLookupToolRequest, String> { request ->
+                    toolSession.execute("source_lookup") {
+                        executeSourceLookup(context, request.query, request.sourceId, request.limit)
+                    }
+                }
             )
-        )
+                .description(
+                    "Search the user's internal source library by similarity. " +
+                        "Provide either query text or a sourceId from the current briefing sources."
+                )
+                .inputType(SourceLookupToolRequest::class.java)
+                .build()
+        }
+
+        if (webSearchTool != null) {
+            callbacks += FunctionToolCallback.builder(
+                "web_search",
+                Function<WebSearchToolRequest, String> { request ->
+                    toolSession.execute("web_search") {
+                        executeWebSearch(context, request.query, request.maxResults)
+                    }
+                }
+            )
+                .description("Search the public web for relevant information and candidate URLs.")
+                .inputType(WebSearchToolRequest::class.java)
+                .build()
+        }
+
+        if (webFetchTool != null) {
+            callbacks += FunctionToolCallback.builder(
+                "web_fetch",
+                Function<WebFetchToolRequest, String> { request ->
+                    toolSession.execute("web_fetch", countsTowardWebFetchLimit = true) {
+                        executeWebFetch(context, request.url)
+                    }
+                }
+            )
+                .description("Fetch and read a specific public web page. Use sparingly and only for promising URLs.")
+                .inputType(WebFetchToolRequest::class.java)
+                .build()
+        }
+
+        return callbacks
     }
 
     private fun buildSourceEvidence(sources: List<BriefingSourceInput>): String {
         if (sources.isEmpty()) return "No internal sources available."
         return buildString {
             appendLine("## Internal Sources")
-            sources.forEachIndexed { i, source ->
+            sources.forEachIndexed { index, source ->
                 appendLine()
-                appendLine("### Source ${i + 1}: ${source.title}")
+                appendLine("### Source ${index + 1}: ${source.title}")
                 appendLine("Source ID: ${source.sourceId}")
                 appendLine("URL: ${source.url}")
                 val text = source.text.trim()
                 if (text.isNotBlank()) {
-                    val truncated = if (text.length > MAX_SOURCE_CHARS) text.take(MAX_SOURCE_CHARS) + "..." else text
+                    val truncated = if (text.length > MAX_SOURCE_CHARS) {
+                        text.take(MAX_SOURCE_CHARS) + "..."
+                    } else {
+                        text
+                    }
                     appendLine(truncated)
                 } else {
                     appendLine("(no text content)")
@@ -170,14 +191,9 @@ class AiSubagentExecutionRunner(
 Your task is to investigate a specific angle and produce a curated analysis backed by evidence.
 
 ## Available Tools
-
-You can request tool calls by responding with a JSON block in this exact format:
-```tool
-{"tool": "<tool_name>", "args": {<args>}}
-```
-
-Available tools:
 $availableTools
+
+Use native tool calling when you need more evidence. Do not print tool calls in your answer.
 
 ## Rules
 1. Start by analyzing the provided internal sources carefully.
@@ -191,7 +207,7 @@ When you have enough evidence, produce your final output in this exact format:
 <your curated analysis here, in markdown>
 ```
 
-Do NOT include the tool call format in your final output. Either request a tool OR produce output, not both."""
+Do not include anything after the output block."""
     }
 
     private fun buildInitialUserPrompt(context: SubagentExecutionContext, sourceEvidence: String): String {
@@ -205,75 +221,26 @@ $sourceEvidence
 Analyze the internal sources above. If they provide sufficient evidence for your task, produce your ```output``` block directly.$nextStep"""
     }
 
-    private fun buildToolResultPrompt(tool: String, content: String): String {
-        return """## Tool Result: $tool
-$content
-
-Continue your investigation. If you have enough evidence, produce your ```output``` block. Otherwise, request another tool call."""
-    }
-
-    private fun callLlm(context: SubagentExecutionContext, messages: List<LlmMessage>): String {
-        val prompt = messages.filter { it.role != "system" }
-            .joinToString("\n\n---\n\n") { it.content }
-        val systemPrompt = messages.firstOrNull { it.role == "system" }?.content
-
-        return aiAdapter.complete(
-            provider = config.provider,
-            model = config.model,
-            prompt = prompt,
-            systemPrompt = systemPrompt,
-            useCase = "subagent_execution_${context.personaKey}"
-        )
-    }
-
-    private fun parseToolRequest(llmResponse: String): ToolRequest? {
-        val toolBlockRegex = Regex("```tool\\s*\\n(\\{.*?})\\s*\\n```", RegexOption.DOT_MATCHES_ALL)
-        val match = toolBlockRegex.find(llmResponse) ?: return null
-
-        return try {
-            val json = objectMapper.readTree(match.groupValues[1])
-            val tool = json.get("tool")?.asText() ?: return null
-            val args = json.get("args") ?: objectMapper.createObjectNode()
-            ToolRequest(tool, args)
-        } catch (e: Exception) {
-            logger.warn("[ai-runner] Failed to parse tool request from LLM response", e)
-            null
-        }
-    }
-
     private fun extractCuratedText(llmResponse: String): String {
         val outputBlockRegex = Regex("```output\\s*\\n(.*?)\\n```", RegexOption.DOT_MATCHES_ALL)
         val match = outputBlockRegex.find(llmResponse)
-        if (match != null) {
-            return match.groupValues[1].trim()
-        }
-        // If no output block but no tool request either, treat the whole response as output
-        // (graceful fallback for LLMs that don't follow format perfectly)
-        val toolBlockRegex = Regex("```tool\\s*\\n", RegexOption.DOT_MATCHES_ALL)
-        if (!toolBlockRegex.containsMatchIn(llmResponse)) {
-            return llmResponse.trim()
-        }
-        return ""
+        return match?.groupValues?.get(1)?.trim() ?: llmResponse.trim()
     }
 
-    private fun executeTool(request: ToolRequest, context: SubagentExecutionContext): ToolCallResult {
-        return when (request.tool) {
-            "web_search" -> executeWebSearch(request, context)
-            "web_fetch" -> executeWebFetch(request, context)
-            "source_lookup" -> executeSourceLookup(request, context)
-            else -> {
-                logger.warn("[ai-runner] Unknown tool requested: {}", request.tool)
-                ToolCallResult("Tool '${request.tool}' is not available. Use source_lookup, web_search or web_fetch.")
-            }
-        }
-    }
-
-    private fun executeWebSearch(request: ToolRequest, context: SubagentExecutionContext): ToolCallResult {
+    private fun executeWebSearch(
+        context: SubagentExecutionContext,
+        query: String?,
+        maxResults: Int?
+    ): ToolCallResult {
         return tracer.withSpan(
             name = "tool.web_search",
             configure = { span ->
                 setToolSpanAttributes(span, context, "web_search")
-                captureToolInput(span, "web_search", request.args)
+                captureToolInput(
+                    span,
+                    "web_search",
+                    mapOf("query" to query, "maxResults" to maxResults)
+                )
             }
         ) { span ->
             if (webSearchTool == null) {
@@ -284,11 +251,11 @@ Continue your investigation. If you have enough evidence, produce your ```output
                 }
             }
 
-            val query = request.args.get("query")?.asText()
-                ?: return@withSpan missingToolArgument(span, "web_search", "query")
-            val maxResults = request.args.get("maxResults")?.asInt() ?: 5
-            val clampedMaxResults = maxResults.coerceIn(1, 10)
+            if (query.isNullOrBlank()) {
+                return@withSpan missingToolArgument(span, "web_search", "query")
+            }
 
+            val clampedMaxResults = (maxResults ?: 5).coerceIn(1, 10)
             span.setAttribute("tool.query", query)
             span.setAttribute("tool.max_results", clampedMaxResults.toLong())
 
@@ -298,7 +265,9 @@ Continue your investigation. If you have enough evidence, produce your ```output
                     span.setAttribute("tool.success", true)
                     span.setAttribute("tool.results_count", result.data.results.size.toLong())
                     val wrapped = UntrustedContentWrapper.wrapSearchResults(result.data.results, result.data.query)
-                    val references = result.data.results.map { WebReference(it.url, it.title, it.snippet) }
+                    val references = result.data.results.map {
+                        WebReference(it.url, it.title, it.snippet)
+                    }
                     ToolCallResult(wrapped, references = references).also {
                         captureToolOutput(span, it.content)
                     }
@@ -310,7 +279,7 @@ Continue your investigation. If you have enough evidence, produce your ```output
                     span.setAttribute("tool.error.code", result.code.toRunnerErrorCode())
                     if (result.code.retryable) {
                         ToolCallResult(
-                            "web_search failed: ${result.message}",
+                            content = "web_search failed: ${result.message}",
                             error = ToolCallError(result.code.toRunnerErrorCode(), result.message)
                         ).also {
                             captureToolOutput(span, it.content)
@@ -325,12 +294,19 @@ Continue your investigation. If you have enough evidence, produce your ```output
         }
     }
 
-    private fun executeWebFetch(request: ToolRequest, context: SubagentExecutionContext): ToolCallResult {
+    private fun executeWebFetch(
+        context: SubagentExecutionContext,
+        url: String?
+    ): ToolCallResult {
         return tracer.withSpan(
             name = "tool.web_fetch",
             configure = { span ->
                 setToolSpanAttributes(span, context, "web_fetch")
-                captureToolInput(span, "web_fetch", request.args)
+                captureToolInput(
+                    span,
+                    "web_fetch",
+                    mapOf("url" to url)
+                )
             }
         ) { span ->
             if (webFetchTool == null) {
@@ -341,8 +317,9 @@ Continue your investigation. If you have enough evidence, produce your ```output
                 }
             }
 
-            val url = request.args.get("url")?.asText()
-                ?: return@withSpan missingToolArgument(span, "web_fetch", "url")
+            if (url.isNullOrBlank()) {
+                return@withSpan missingToolArgument(span, "web_fetch", "url")
+            }
 
             span.setAttribute("tool.url", url)
 
@@ -352,8 +329,8 @@ Continue your investigation. If you have enough evidence, produce your ```output
                     span.setAttribute("tool.success", true)
                     span.setAttribute("tool.content_length_bytes", result.data.contentLengthBytes.toLong())
                     val wrapped = UntrustedContentWrapper.wrap(result.data.content, result.data.url)
-                    val reference = WebReference(result.data.url, result.data.title, null)
-                    ToolCallResult(wrapped, references = listOf(reference)).also {
+                    val references = listOf(WebReference(result.data.url, result.data.title, null))
+                    ToolCallResult(wrapped, references = references).also {
                         captureToolOutput(span, it.content)
                     }
                 }
@@ -364,7 +341,7 @@ Continue your investigation. If you have enough evidence, produce your ```output
                     span.setAttribute("tool.error.code", result.code.toRunnerErrorCode())
                     if (result.code.retryable) {
                         ToolCallResult(
-                            "web_fetch failed: ${result.message}",
+                            content = "web_fetch failed: ${result.message}",
                             error = ToolCallError(result.code.toRunnerErrorCode(), result.message)
                         ).also {
                             captureToolOutput(span, it.content)
@@ -379,48 +356,87 @@ Continue your investigation. If you have enough evidence, produce your ```output
         }
     }
 
-    private fun executeSourceLookup(request: ToolRequest, context: SubagentExecutionContext): ToolCallResult {
-        if (sourceLookupTool == null) {
-            return ToolCallResult("source_lookup is not enabled on this server.")
-        }
-
-        val query = request.args.get("query")?.asText()?.trim()?.takeIf { it.isNotBlank() }
-        val sourceId = request.args.get("sourceId")?.asText()?.trim()?.takeIf { it.isNotBlank() }?.let { rawSourceId ->
-            runCatching { UUID.fromString(rawSourceId) }.getOrElse {
-                return ToolCallResult("Invalid 'sourceId' argument for source_lookup.")
+    private fun executeSourceLookup(
+        context: SubagentExecutionContext,
+        query: String?,
+        sourceIdRaw: String?,
+        limit: Int?
+    ): ToolCallResult {
+        return tracer.withSpan(
+            name = "tool.source_lookup",
+            configure = { span ->
+                setToolSpanAttributes(span, context, "source_lookup")
+                captureToolInput(
+                    span,
+                    "source_lookup",
+                    mapOf("query" to query, "sourceId" to sourceIdRaw, "limit" to limit)
+                )
             }
-        }
-        val limit = request.args.get("limit")?.asInt() ?: 5
+        ) { span ->
+            if (sourceLookupTool == null) {
+                span.setStatus(StatusCode.ERROR, "disabled")
+                span.setAttribute("tool.success", false)
+                return@withSpan ToolCallResult("source_lookup is not enabled on this server.").also {
+                    captureToolOutput(span, it.content)
+                }
+            }
 
-        return when (
-            val result = sourceLookupTool.lookup(
-                query = query,
-                sourceId = sourceId,
-                limit = limit.coerceIn(1, 10),
-                userId = context.userId,
-                excludeSourceIds = context.sources.map { it.sourceId }.toSet()
-            )
-        ) {
-            is ToolResult.Success -> ToolCallResult(
-                content = formatSourceLookupResults(result.data),
-                sourceIdsUsed = result.data.results.map { it.sourceId }
-            )
+            val sourceId = sourceIdRaw?.trim()?.takeIf { it.isNotBlank() }?.let { rawSourceId ->
+                runCatching { UUID.fromString(rawSourceId) }.getOrElse {
+                    span.setStatus(StatusCode.ERROR, "invalid_source_id")
+                    span.setAttribute("tool.success", false)
+                    span.setAttribute("tool.error.code", "invalid_source_id")
+                    return@withSpan ToolCallResult("Invalid 'sourceId' argument for source_lookup.").also {
+                        captureToolOutput(span, it.content)
+                    }
+                }
+            }
 
-            is ToolResult.Error -> {
-                if (result.code.retryable) {
+            val clampedLimit = (limit ?: 5).coerceIn(1, 10)
+            sourceId?.let { span.setAttribute("tool.source_id", it.toString()) }
+            query?.takeIf { it.isNotBlank() }?.let { span.setAttribute("tool.query", it) }
+            span.setAttribute("tool.limit", clampedLimit.toLong())
+
+            when (
+                val result = sourceLookupTool.lookup(
+                    query = query?.trim()?.takeIf { it.isNotBlank() },
+                    sourceId = sourceId,
+                    limit = clampedLimit,
+                    userId = context.userId,
+                    excludeSourceIds = context.sources.map { it.sourceId }.toSet()
+                )
+            ) {
+                is ToolResult.Success -> {
+                    span.setStatus(StatusCode.OK)
+                    span.setAttribute("tool.success", true)
+                    span.setAttribute("tool.results_count", result.data.results.size.toLong())
                     ToolCallResult(
-                        "source_lookup failed: ${result.message}",
-                        error = ToolCallError(result.code.toRunnerErrorCode(), result.message)
-                    )
-                } else {
-                    ToolCallResult("source_lookup failed (non-retryable): ${result.message}")
+                        content = formatSourceLookupResults(result.data),
+                        sourceIdsUsed = result.data.results.map { it.sourceId }
+                    ).also {
+                        captureToolOutput(span, it.content)
+                    }
+                }
+
+                is ToolResult.Error -> {
+                    span.setStatus(StatusCode.ERROR, result.code.toRunnerErrorCode())
+                    span.setAttribute("tool.success", false)
+                    span.setAttribute("tool.error.code", result.code.toRunnerErrorCode())
+                    if (result.code.retryable) {
+                        ToolCallResult(
+                            content = "source_lookup failed: ${result.message}",
+                            error = ToolCallError(result.code.toRunnerErrorCode(), result.message)
+                        ).also {
+                            captureToolOutput(span, it.content)
+                        }
+                    } else {
+                        ToolCallResult("source_lookup failed (non-retryable): ${result.message}").also {
+                            captureToolOutput(span, it.content)
+                        }
+                    }
                 }
             }
         }
-    }
-
-    private fun isToolErrorRetryable(error: ToolCallError): Boolean {
-        return error.code in setOf("timeout", "http_429", "http_5xx", "network_error")
     }
 
     private fun classifyRunnerFailure(error: Exception): RunnerFailure {
@@ -443,6 +459,17 @@ Continue your investigation. If you have enough evidence, produce your ```output
             errorMessage = errorMessage,
             retryable = retryable
         )
+    }
+
+    private fun findRetryableToolFailure(error: Throwable): RetryableToolExecutionException? {
+        var current: Throwable? = error
+        while (current != null && current.cause !== current) {
+            if (current is RetryableToolExecutionException) {
+                return current
+            }
+            current = current.cause
+        }
+        return null
     }
 
     private fun isExplicitNonRetryableRunnerError(error: Exception, message: String): Boolean {
@@ -471,8 +498,96 @@ Continue your investigation. If you have enough evidence, produce your ```output
         val maxToolCalls: Int = 8
     )
 
-    private data class LlmMessage(val role: String, val content: String)
-    private data class ToolRequest(val tool: String, val args: com.fasterxml.jackson.databind.JsonNode)
+    private inner class ToolSession(context: SubagentExecutionContext) {
+        private val sourceIdsUsed = mutableSetOf<UUID>().apply {
+            addAll(context.sources.map { it.sourceId })
+        }
+        private val referencesUsed = mutableListOf<WebReference>()
+        private val toolCalls = mutableListOf<ToolCallRecord>()
+        private var webFetchCount = 0
+
+        var toolCallCount = 0
+            private set
+
+        var budgetExhausted = false
+            private set
+
+        var webFetchLimitReached = false
+            private set
+
+        fun execute(
+            toolName: String,
+            countsTowardWebFetchLimit: Boolean = false,
+            block: () -> ToolCallResult
+        ): String {
+            if (toolCallCount >= config.maxToolCalls) {
+                budgetExhausted = true
+                return TOOL_BUDGET_EXHAUSTED_MESSAGE
+            }
+
+            if (countsTowardWebFetchLimit && webFetchCount >= MAX_WEB_FETCH_CALLS) {
+                webFetchLimitReached = true
+                return WEB_FETCH_LIMIT_REACHED_MESSAGE
+            }
+
+            toolCallCount++
+            if (countsTowardWebFetchLimit) {
+                webFetchCount++
+            }
+
+            val startedAt = System.currentTimeMillis()
+            val result = block()
+            val durationMs = System.currentTimeMillis() - startedAt
+            toolCalls += ToolCallRecord(toolName, durationMs, result.error == null)
+
+            if (result.error != null) {
+                throw RetryableToolExecutionException(
+                    errorCode = result.error.code,
+                    message = result.error.message,
+                    retryAfterSeconds = result.error.retryAfterSeconds
+                )
+            }
+
+            sourceIdsUsed.addAll(result.sourceIdsUsed)
+            result.references?.let { referencesUsed.addAll(it) }
+            return result.content
+        }
+
+        fun succeeded(curatedText: String): SubagentExecutionResult.Succeeded {
+            return SubagentExecutionResult.Succeeded(
+                curatedText = curatedText,
+                sourceIdsUsedJson = objectMapper.writeValueAsString(sourceIdsUsed),
+                referencesUsedJson = referencesUsed
+                    .takeIf { it.isNotEmpty() }
+                    ?.let(objectMapper::writeValueAsString),
+                toolStatsJson = objectMapper.writeValueAsString(buildToolStats())
+            )
+        }
+
+        private fun buildToolStats(): Map<String, Any> {
+            val stats = linkedMapOf<String, Any>(
+                "runner" to "ai_subagent",
+                "toolCallCount" to toolCallCount,
+                "sourceCount" to sourceIdsUsed.size,
+                "webReferencesCount" to referencesUsed.size,
+                "tools" to toolCalls.map {
+                    mapOf(
+                        "tool" to it.tool,
+                        "durationMs" to it.durationMs,
+                        "success" to it.success
+                    )
+                }
+            )
+            if (budgetExhausted) {
+                stats["budgetExhausted"] = true
+            }
+            if (webFetchLimitReached) {
+                stats["webFetchLimitReached"] = true
+            }
+            return stats
+        }
+    }
+
     private data class ToolCallRecord(val tool: String, val durationMs: Long, val success: Boolean)
     private data class ToolCallResult(
         val content: String,
@@ -484,6 +599,21 @@ Continue your investigation. If you have enough evidence, produce your ```output
     private data class RunnerFailure(val errorCode: String, val errorMessage: String, val retryable: Boolean)
     data class WebReference(val url: String, val title: String?, val snippet: String?)
 
+    private data class WebSearchToolRequest(
+        val query: String? = null,
+        val maxResults: Int? = null
+    )
+
+    private data class WebFetchToolRequest(
+        val url: String? = null
+    )
+
+    private data class SourceLookupToolRequest(
+        val query: String? = null,
+        val sourceId: String? = null,
+        val limit: Int? = null
+    )
+
     companion object {
         internal fun subagentSpanName(personaName: String, personaKey: String): String {
             val displayName = personaName.trim().takeIf { it.isNotBlank() } ?: personaKey
@@ -491,7 +621,12 @@ Continue your investigation. If you have enough evidence, produce your ```output
         }
 
         private const val MAX_SOURCE_CHARS = 4000
-        private const val BUDGET_EXHAUSTED_PROMPT = "You have used all available tool calls. Based on the evidence collected so far, produce your final ```output``` block now."
+        private const val MAX_WEB_FETCH_CALLS = 3
+        private const val TOOL_BUDGET_EXHAUSTED_MESSAGE =
+            "No further tool calls are available. Produce the final answer with the evidence already collected."
+        private const val WEB_FETCH_LIMIT_REACHED_MESSAGE =
+            "No further web_fetch calls are available. Use the evidence already collected and finish the analysis."
+
         private val RATE_LIMIT_MESSAGE_MARKERS = setOf(
             "429",
             "rate limit",
@@ -524,13 +659,13 @@ Continue your investigation. If you have enough evidence, produce your ```output
     private fun buildAvailableTools(): String {
         val tools = mutableListOf<String>()
         if (sourceLookupTool != null) {
-            tools += """- `source_lookup`: Search the user's internal source library by similarity. Args: {"query": "search text", "limit": 5} or {"sourceId": "<briefing source id>", "limit": 5}"""
+            tools += """- `source_lookup`: Search the user's internal source library by similarity using `query` or `sourceId`."""
         }
         if (webSearchTool != null) {
-            tools += """- `web_search`: Search the web for information. Args: {"query": "search query", "maxResults": 5}"""
+            tools += """- `web_search`: Search the web for relevant information using `query` and optional `maxResults`."""
         }
         if (webFetchTool != null) {
-            tools += """- `web_fetch`: Fetch and read a specific web page. Args: {"url": "https://..."}"""
+            tools += """- `web_fetch`: Fetch a specific public web page using `url`."""
         }
         return if (tools.isEmpty()) "- No tools are enabled." else tools.joinToString("\n")
     }
@@ -540,26 +675,26 @@ Continue your investigation. If you have enough evidence, produce your ```output
         var ruleNumber = 3
         if (sourceLookupTool != null) {
             rules += "${ruleNumber++}. If you need additional internal context, use `source_lookup`."
-            rules += "${ruleNumber++}. In source-based `source_lookup`, pass an explicit `sourceId` from the provided internal sources."
+            rules += "${ruleNumber++}. In source-based lookups, pass an explicit `sourceId` from the provided internal sources."
         }
         if (webSearchTool != null) {
-            rules += "${ruleNumber++}. If you need additional information, use `web_search` to discover relevant sources."
+            rules += "${ruleNumber++}. If you need external context, use `web_search` before `web_fetch`."
         }
         if (webFetchTool != null) {
             rules += "${ruleNumber++}. Use `web_fetch` selectively — only for the most promising URLs from search results."
-            rules += "${ruleNumber++}. Do NOT fetch more than 3 URLs per investigation."
+            rules += "${ruleNumber++}. Do not rely on more than 3 web fetches."
         }
-        rules += "${ruleNumber}. Always cite your sources — reference internal source titles and web URLs used."
+        rules += "${ruleNumber}. Always cite internal source titles and web URLs that you used."
         return rules.joinToString("\n")
     }
 
     private fun buildInitialToolGuidance(): String {
         val guidance = mutableListOf<String>()
         if (sourceLookupTool != null) {
-            guidance += "If you need more internal context, request a `source_lookup` tool call."
+            guidance += "If you need more internal context, use the `source_lookup` tool."
         }
         if (webSearchTool != null) {
-            guidance += "If you need more information from the web, request a `web_search` tool call."
+            guidance += "If you need external context, use the `web_search` tool."
         }
         return if (guidance.isEmpty()) "" else " ${guidance.joinToString(" ")}"
     }

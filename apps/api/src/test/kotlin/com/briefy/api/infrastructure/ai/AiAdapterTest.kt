@@ -2,6 +2,7 @@ package com.briefy.api.infrastructure.ai
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.any
@@ -15,6 +16,8 @@ import org.springframework.ai.chat.metadata.ChatGenerationMetadata
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.DefaultChatOptions
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions
+import org.springframework.ai.tool.ToolCallback
 import org.springframework.web.client.RestClient
 
 class AiAdapterTest {
@@ -71,6 +74,37 @@ class AiAdapterTest {
         verify(requestSpec).options(optionsCaptor.capture())
         verify(requestSpec).user("user prompt")
         assertEquals("gemini-2.5-flash", optionsCaptor.firstValue.model)
+    }
+
+    @Test
+    fun `buildPromptSpec applies tool callbacks for provider specific options`() {
+        val requestSpec = mock<ChatClient.ChatClientRequestSpec>()
+        val toolCallback = mock<ToolCallback>()
+        whenever(requestSpec.system(any<String>())).thenReturn(requestSpec)
+        whenever(requestSpec.options(any<GoogleGenAiChatOptions>())).thenReturn(requestSpec)
+        whenever(requestSpec.toolCallbacks(any<List<ToolCallback>>())).thenReturn(requestSpec)
+        whenever(requestSpec.user(any<String>())).thenReturn(requestSpec)
+
+        val result = aiAdapter.buildPromptSpec(
+            requestSpec = requestSpec,
+            prompt = "user prompt",
+            systemPrompt = "system prompt",
+            chatOptions = GoogleGenAiChatOptions.builder()
+                .model("gemini-2.5-flash")
+                .internalToolExecutionEnabled(true)
+                .build(),
+            toolCallbacks = listOf(toolCallback)
+        )
+
+        val optionsCaptor = argumentCaptor<GoogleGenAiChatOptions>()
+        val callbackCaptor = argumentCaptor<List<ToolCallback>>()
+
+        assertSame(requestSpec, result)
+        verify(requestSpec).options(optionsCaptor.capture())
+        verify(requestSpec).toolCallbacks(callbackCaptor.capture())
+        assertEquals("gemini-2.5-flash", optionsCaptor.firstValue.model)
+        assertTrue(optionsCaptor.firstValue.internalToolExecutionEnabled == true)
+        assertEquals(listOf(toolCallback), callbackCaptor.firstValue)
     }
 
     @Test

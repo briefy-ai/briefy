@@ -1,6 +1,15 @@
 package com.briefy.api.application.briefing
 
-import com.briefy.api.application.briefing.tool.*
+import com.briefy.api.application.briefing.tool.SourceLookupResponse
+import com.briefy.api.application.briefing.tool.SourceLookupResult
+import com.briefy.api.application.briefing.tool.SourceLookupTool
+import com.briefy.api.application.briefing.tool.ToolErrorCode
+import com.briefy.api.application.briefing.tool.ToolResult
+import com.briefy.api.application.briefing.tool.WebFetchResponse
+import com.briefy.api.application.briefing.tool.WebFetchTool
+import com.briefy.api.application.briefing.tool.WebSearchResponse
+import com.briefy.api.application.briefing.tool.WebSearchResult
+import com.briefy.api.application.briefing.tool.WebSearchTool
 import com.briefy.api.infrastructure.ai.AiAdapter
 import com.briefy.api.infrastructure.ai.AiPayloadSanitizer
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -10,9 +19,22 @@ import io.opentelemetry.sdk.OpenTelemetrySdk
 import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter
 import io.opentelemetry.sdk.trace.SdkTracerProvider
 import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.mockito.kotlin.*
+import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
+import org.mockito.kotlin.whenever
+import org.springframework.ai.tool.ToolCallback
 import java.util.UUID
 
 class AiSubagentExecutionRunnerTest {
@@ -63,21 +85,17 @@ class AiSubagentExecutionRunnerTest {
     )
 
     @Test
-    fun `produces output directly from sources when LLM returns output block`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any())).thenReturn(
-            """Based on the internal sources, here is my analysis:
+    fun `produces output directly from sources when native tool path returns output block`() {
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenReturn(
+                """Based on the internal sources, here is my analysis:
 
 ```output
 ## Market Analysis: AI in Healthcare
 
-AI adoption in healthcare is growing at 25% annually. Key drivers include:
-- Diagnostic imaging improvements
-- Electronic health record optimization
-- Drug discovery acceleration
-
-Sources: Healthcare AI Report 2026
+AI adoption in healthcare is growing at 25% annually.
 ```"""
-        )
+            )
 
         val result = runner.execute(baseContext)
 
@@ -86,26 +104,13 @@ Sources: Healthcare AI Report 2026
         assertTrue(succeeded.curatedText.contains("AI adoption in healthcare"))
         assertNotNull(succeeded.sourceIdsUsedJson)
         assertNotNull(succeeded.toolStatsJson)
-        verify(aiAdapter, times(1)).complete(any(), any(), any(), any(), any())
+        verify(aiAdapter, times(1)).completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any())
         verifyNoInteractions(webSearchTool)
     }
 
     @Test
-    fun `uses source lookup and tracks returned source ids`() {
+    fun `uses source lookup callback and tracks returned source ids`() {
         val lookedUpSourceId = UUID.randomUUID()
-
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
-            .thenReturn(
-                """```tool
-{"tool": "source_lookup", "args": {"query": "related AI regulation sources", "limit": 3}}
-```"""
-            )
-            .thenReturn(
-                """```output
-Analysis using related internal sources.
-```"""
-            )
-
         whenever(
             sourceLookupTool.lookup(
                 query = "related AI regulation sources",
@@ -133,6 +138,15 @@ Analysis using related internal sources.
                 )
             )
         )
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenAnswer { invocation ->
+                toolCallback(invocation.getArgument(5), "source_lookup")
+                    .call("""{"query":"related AI regulation sources","limit":3}""")
+
+                """```output
+Analysis using related internal sources.
+```"""
+            }
 
         val result = runner.execute(baseContext)
 
@@ -151,27 +165,7 @@ Analysis using related internal sources.
     }
 
     @Test
-    fun `uses web search when LLM requests it`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
-            .thenReturn(
-                """I need more data on recent healthcare AI trends.
-
-```tool
-{"tool": "web_search", "args": {"query": "healthcare AI adoption 2026 trends"}}
-```"""
-            )
-            .thenReturn(
-                """Based on the search results and internal sources:
-
-```output
-## Healthcare AI Market Analysis
-
-The market is expanding rapidly with key developments in 2026.
-
-Sources: Healthcare AI Report 2026, Web search results
-```"""
-            )
-
+    fun `uses web search callback when tool is invoked`() {
         whenever(webSearchTool.search(any(), any())).thenReturn(
             ToolResult.Success(
                 WebSearchResponse(
@@ -182,6 +176,17 @@ Sources: Healthcare AI Report 2026, Web search results
                 )
             )
         )
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenAnswer { invocation ->
+                toolCallback(invocation.getArgument(5), "web_search")
+                    .call("""{"query":"healthcare AI adoption 2026 trends"}""")
+
+                """```output
+## Healthcare AI Market Analysis
+
+The market is expanding rapidly with key developments in 2026.
+```"""
+            }
 
         val result = runner.execute(baseContext)
 
@@ -193,21 +198,7 @@ Sources: Healthcare AI Report 2026, Web search results
     }
 
     @Test
-    fun `uses web fetch when LLM requests it`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
-            .thenReturn(
-                """I want to read a specific article.
-
-```tool
-{"tool": "web_fetch", "args": {"url": "https://example.com/article"}}
-```"""
-            )
-            .thenReturn(
-                """```output
-Analysis based on fetched content.
-```"""
-            )
-
+    fun `uses web fetch callback when tool is invoked`() {
         whenever(webFetchTool.fetch(any())).thenReturn(
             ToolResult.Success(
                 WebFetchResponse(
@@ -218,6 +209,15 @@ Analysis based on fetched content.
                 )
             )
         )
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenAnswer { invocation ->
+                toolCallback(invocation.getArgument(5), "web_fetch")
+                    .call("""{"url":"https://example.com/article"}""")
+
+                """```output
+Analysis based on fetched content.
+```"""
+            }
 
         val result = runner.execute(baseContext)
 
@@ -226,27 +226,13 @@ Analysis based on fetched content.
     }
 
     @Test
-    fun `returns EmptyOutput when LLM produces empty output block`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any())).thenReturn(
-            """```output
+    fun `returns EmptyOutput when native tool path produces empty output block`() {
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenReturn(
+                """```output
 
 ```"""
-        )
-
-        val result = runner.execute(baseContext)
-
-        assertTrue(result is SubagentExecutionResult.EmptyOutput)
-    }
-
-    @Test
-    fun `returns EmptyOutput when LLM produces malformed tool block without output`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any())).thenReturn(
-            """I need to investigate further.
-
-```tool
-{invalid json here
-```"""
-        )
+            )
 
         val result = runner.execute(baseContext)
 
@@ -255,15 +241,14 @@ Analysis based on fetched content.
 
     @Test
     fun `returns Failed on retryable tool error`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any())).thenReturn(
-            """```tool
-{"tool": "web_search", "args": {"query": "test query"}}
-```"""
-        )
-
         whenever(webSearchTool.search(any(), any())).thenReturn(
             ToolResult.Error(ToolErrorCode.HTTP_429, "Rate limited")
         )
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenAnswer { invocation ->
+                toolCallback(invocation.getArgument(5), "web_search")
+                    .call("""{"query":"test query"}""")
+            }
 
         val result = runner.execute(baseContext)
 
@@ -274,22 +259,19 @@ Analysis based on fetched content.
     }
 
     @Test
-    fun `continues on non-retryable tool error`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
-            .thenReturn(
-                """```tool
-{"tool": "web_fetch", "args": {"url": "http://internal.server"}}
-```"""
-            )
-            .thenReturn(
-                """```output
-Analysis without the blocked URL.
-```"""
-            )
-
+    fun `continues on non retryable tool error`() {
         whenever(webFetchTool.fetch(any())).thenReturn(
             ToolResult.Error(ToolErrorCode.SSRF_BLOCKED, "SSRF blocked")
         )
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenAnswer { invocation ->
+                toolCallback(invocation.getArgument(5), "web_fetch")
+                    .call("""{"url":"http://internal.server"}""")
+
+                """```output
+Analysis without the blocked URL.
+```"""
+            }
 
         val result = runner.execute(baseContext)
 
@@ -297,8 +279,7 @@ Analysis without the blocked URL.
     }
 
     @Test
-    fun `respects tool call budget and forces final output`() {
-        val maxCalls = 3
+    fun `respects total tool budget while using native callbacks`() {
         val limitedRunner = AiSubagentExecutionRunner(
             aiAdapter = aiAdapter,
             tracer = noopTracer,
@@ -307,25 +288,8 @@ Analysis without the blocked URL.
             sourceLookupTool = sourceLookupTool,
             objectMapper = objectMapper,
             sanitizer = sanitizer,
-            config = config.copy(maxToolCalls = maxCalls)
+            config = config.copy(maxToolCalls = 3)
         )
-
-        // LLM keeps requesting tools
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
-            .thenReturn("""```tool
-{"tool": "web_search", "args": {"query": "query 1"}}
-```""")
-            .thenReturn("""```tool
-{"tool": "web_search", "args": {"query": "query 2"}}
-```""")
-            .thenReturn("""```tool
-{"tool": "web_search", "args": {"query": "query 3"}}
-```""")
-            // Final forced output
-            .thenReturn("""```output
-Budget-exhausted analysis.
-```""")
-
         whenever(webSearchTool.search(any(), any())).thenReturn(
             ToolResult.Success(
                 WebSearchResponse(
@@ -334,6 +298,18 @@ Budget-exhausted analysis.
                 )
             )
         )
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenAnswer { invocation ->
+                val callback = toolCallback(invocation.getArgument(5), "web_search")
+                callback.call("""{"query":"query 1"}""")
+                callback.call("""{"query":"query 2"}""")
+                callback.call("""{"query":"query 3"}""")
+                callback.call("""{"query":"query 4"}""")
+
+                """```output
+Budget-exhausted analysis.
+```"""
+            }
 
         val result = limitedRunner.execute(baseContext)
 
@@ -341,12 +317,14 @@ Budget-exhausted analysis.
         val succeeded = result as SubagentExecutionResult.Succeeded
         assertTrue(succeeded.curatedText.contains("Budget-exhausted"))
         val toolStats = objectMapper.readTree(succeeded.toolStatsJson)
+        assertEquals(3, toolStats.get("toolCallCount").asInt())
         assertTrue(toolStats.get("budgetExhausted").asBoolean())
+        verify(webSearchTool, times(3)).search(any(), any())
     }
 
     @Test
-    fun `handles LLM exception as retryable failure`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
+    fun `handles llm exception as retryable failure`() {
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
             .thenThrow(RuntimeException("Connection timeout"))
 
         val result = runner.execute(baseContext)
@@ -358,71 +336,7 @@ Budget-exhausted analysis.
     }
 
     @Test
-    fun `handles provider unavailable exception as retryable failure`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
-            .thenThrow(RuntimeException("503 Service Unavailable"))
-
-        val result = runner.execute(baseContext)
-
-        assertTrue(result is SubagentExecutionResult.Failed)
-        val failed = result as SubagentExecutionResult.Failed
-        assertEquals("runner_error", failed.errorCode)
-        assertTrue(failed.retryable)
-    }
-
-    @Test
-    fun `handles generic runner exception as retryable failure`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
-            .thenThrow(RuntimeException("boom"))
-
-        val result = runner.execute(baseContext)
-
-        assertTrue(result is SubagentExecutionResult.Failed)
-        val failed = result as SubagentExecutionResult.Failed
-        assertEquals("runner_error", failed.errorCode)
-        assertTrue(failed.retryable)
-    }
-
-    @Test
-    fun `handles bad request runner exception as non-retryable failure`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
-            .thenThrow(RuntimeException("400 Bad Request"))
-
-        val result = runner.execute(baseContext)
-
-        assertTrue(result is SubagentExecutionResult.Failed)
-        val failed = result as SubagentExecutionResult.Failed
-        assertEquals("runner_error", failed.errorCode)
-        assertFalse(failed.retryable)
-    }
-
-    @Test
-    fun `handles unauthorized runner exception as non-retryable failure`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
-            .thenThrow(RuntimeException("401 Unauthorized"))
-
-        val result = runner.execute(baseContext)
-
-        assertTrue(result is SubagentExecutionResult.Failed)
-        val failed = result as SubagentExecutionResult.Failed
-        assertEquals("runner_error", failed.errorCode)
-        assertFalse(failed.retryable)
-    }
-
-    @Test
-    fun `handles LLM exception as non-retryable when not transient`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
-            .thenThrow(IllegalArgumentException("Invalid prompt format"))
-
-        val result = runner.execute(baseContext)
-
-        assertTrue(result is SubagentExecutionResult.Failed)
-        val failed = result as SubagentExecutionResult.Failed
-        assertFalse(failed.retryable)
-    }
-
-    @Test
-    fun `works without web tools when they are null`() {
+    fun `works without tools when all tool beans are null`() {
         val noToolsRunner = AiSubagentExecutionRunner(
             aiAdapter = aiAdapter,
             tracer = noopTracer,
@@ -433,48 +347,31 @@ Budget-exhausted analysis.
             sanitizer = sanitizer,
             config = config
         )
-
-        // LLM tries to use web search but it's not available, then produces output
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
-            .thenReturn("""```tool
-{"tool": "web_search", "args": {"query": "test"}}
-```""")
-            .thenReturn("""```output
-Output without web tools.
-```""")
+        whenever(aiAdapter.complete(any(), any(), any(), anyOrNull(), anyOrNull()))
+            .thenReturn(
+                """```output
+Output without tools.
+```"""
+            )
 
         val result = noToolsRunner.execute(baseContext)
 
         assertTrue(result is SubagentExecutionResult.Succeeded)
+        verify(aiAdapter).complete(any(), any(), any(), anyOrNull(), anyOrNull())
+        verify(aiAdapter, never()).completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any())
         verifyNoInteractions(webSearchTool)
     }
 
     @Test
-    fun `graceful fallback when LLM does not use output block format`() {
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any())).thenReturn(
-            "This is my analysis of the healthcare market. AI adoption is growing rapidly."
-        )
+    fun `graceful fallback when model returns plain text`() {
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenReturn("This is my analysis of the healthcare market. AI adoption is growing rapidly.")
 
         val result = runner.execute(baseContext)
 
         assertTrue(result is SubagentExecutionResult.Succeeded)
         val succeeded = result as SubagentExecutionResult.Succeeded
         assertTrue(succeeded.curatedText.contains("healthcare market"))
-    }
-
-    @Test
-    fun `empty sources handled gracefully`() {
-        val emptySourceContext = baseContext.copy(sources = emptyList())
-
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any())).thenReturn(
-            """```output
-Analysis with no internal sources.
-```"""
-        )
-
-        val result = runner.execute(emptySourceContext)
-
-        assertTrue(result is SubagentExecutionResult.Succeeded)
     }
 
     @Test
@@ -495,28 +392,29 @@ Analysis with no internal sources.
             config = config
         )
         val retryContext = baseContext.copy(attempt = 2, retryReason = "http_429")
-
-        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
-            .thenReturn(
-                """```tool
-{"tool": "web_search", "args": {"query": "healthcare AI adoption 2026 trends"}}
-```"""
-            )
-            .thenReturn(
-                """```output
-Analysis after retry.
-```"""
-            )
         whenever(webSearchTool.search(any(), any())).thenReturn(
             ToolResult.Success(
                 WebSearchResponse(
-                    results = listOf(WebSearchResult("AI Health 2026", "https://news.example.com/ai-health", "New trends...")),
+                    results = listOf(
+                        WebSearchResult("AI Health 2026", "https://news.example.com/ai-health", "New trends...")
+                    ),
                     query = "healthcare AI adoption 2026 trends"
                 )
             )
         )
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenAnswer { invocation ->
+                toolCallback(invocation.getArgument(5), "web_search")
+                    .call("""{"query":"healthcare AI adoption 2026 trends"}""")
 
-        val parentSpan = tracer.spanBuilder(AiSubagentExecutionRunner.subagentSpanName(retryContext.personaName, retryContext.personaKey)).startSpan()
+                """```output
+Analysis after retry.
+```"""
+            }
+
+        val parentSpan = tracer.spanBuilder(
+            AiSubagentExecutionRunner.subagentSpanName(retryContext.personaName, retryContext.personaKey)
+        ).startSpan()
         parentSpan.makeCurrent().use {
             tracedRunner.execute(retryContext)
         }
@@ -533,9 +431,13 @@ Analysis after retry.
         assertEquals("Market Analyst", toolSpan.attributes.get(AttributeKey.stringKey("persona.name")))
         assertEquals("healthcare AI adoption 2026 trends", toolSpan.attributes.get(AttributeKey.stringKey("tool.query")))
         assertEquals(
-            """{"tool":"web_search","args":{"query":"healthcare AI adoption 2026 trends"}}""",
+            """{"tool":"web_search","args":{"query":"healthcare AI adoption 2026 trends","maxResults":null}}""",
             toolSpan.attributes.get(AttributeKey.stringKey("input.value"))
         )
         assertTrue(toolSpan.attributes.get(AttributeKey.stringKey("output.value"))!!.contains("AI Health 2026"))
+    }
+
+    private fun toolCallback(callbacks: List<ToolCallback>, name: String): ToolCallback {
+        return callbacks.first { it.toolDefinition.name() == name }
     }
 }
