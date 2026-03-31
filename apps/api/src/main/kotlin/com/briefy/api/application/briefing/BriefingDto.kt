@@ -13,6 +13,7 @@ data class BriefingResponse(
     val executionRunId: UUID?,
     val status: String,
     val enrichmentIntent: String,
+    val title: String?,
     val sourceIds: List<UUID>,
     val plan: List<BriefingPlanStepResponse>,
     val references: List<BriefingReferenceResponse>,
@@ -115,13 +116,15 @@ data class BriefingReferenceCandidate(
 data class BriefingGenerationResult(
     val markdownBody: String,
     val references: List<BriefingReferenceCandidate>,
-    val conflictHighlights: List<BriefingConflictHighlightResponse>
+    val conflictHighlights: List<BriefingConflictHighlightResponse>,
+    val title: String? = null
 )
 
 data class BriefingSummaryResponse(
     val id: UUID,
     val status: String,
     val enrichmentIntent: String,
+    val title: String?,
     val sourceCount: Int,
     val contentSnippet: String?,
     val createdAt: Instant,

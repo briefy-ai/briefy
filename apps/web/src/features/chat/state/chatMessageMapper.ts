@@ -174,7 +174,7 @@ function toBriefingResultPayload(briefing: BriefingResponse): BriefingResultPayl
   return {
     briefingId: briefing.id,
     status: briefing.status,
-    title: `Briefing ${briefing.id.slice(0, 8)}`,
+    title: briefing.title ?? `Briefing ${briefing.id.slice(0, 8)}`,
   }
 }
 
