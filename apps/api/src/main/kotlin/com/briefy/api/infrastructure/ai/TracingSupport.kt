@@ -17,8 +17,8 @@ inline fun <T> Tracer.withSpan(
 
     val span = builder.startSpan()
     return span.makeCurrent().use {
-        configure(span)
         try {
+            configure(span)
             block(span)
         } catch (error: Throwable) {
             span.recordException(error)
