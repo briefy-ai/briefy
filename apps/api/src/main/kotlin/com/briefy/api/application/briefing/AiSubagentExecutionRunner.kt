@@ -57,6 +57,8 @@ class AiSubagentExecutionRunner(
                 // LLM produced final output — extract curated text
                 val curatedText = extractCuratedText(llmResponse)
                 if (curatedText.isBlank()) {
+                    logger.warn("[ai-runner] EmptyOutput persona={} subagentRun={} toolCalls={} response={}",
+                        context.personaKey, context.subagentRunId, toolCallCount, llmResponse.take(500))
                     return SubagentExecutionResult.EmptyOutput
                 }
                 return SubagentExecutionResult.Succeeded(
@@ -108,6 +110,8 @@ class AiSubagentExecutionRunner(
         val finalResponse = callLlm(context, llmMessages)
         val curatedText = extractCuratedText(finalResponse)
         if (curatedText.isBlank()) {
+            logger.warn("[ai-runner] EmptyOutput (budget exhausted) persona={} subagentRun={} toolCalls={} response={}",
+                context.personaKey, context.subagentRunId, toolCallCount, finalResponse.take(500))
             return SubagentExecutionResult.EmptyOutput
         }
 
