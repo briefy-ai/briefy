@@ -4,6 +4,7 @@ import com.briefy.api.application.briefing.tool.SourceLookupTool
 import com.briefy.api.application.briefing.tool.WebFetchTool
 import com.briefy.api.application.briefing.tool.WebSearchTool
 import com.briefy.api.infrastructure.ai.AiAdapter
+import com.briefy.api.infrastructure.ai.AiPayloadSanitizer
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.opentelemetry.api.trace.Tracer
 import org.slf4j.LoggerFactory
@@ -23,7 +24,8 @@ class SubagentRunnerConfiguration {
         tracer: Tracer,
         webSearchTool: WebSearchTool?,
         webFetchTool: WebFetchTool?,
-        sourceLookupTool: SourceLookupTool?
+        sourceLookupTool: SourceLookupTool?,
+        sanitizer: AiPayloadSanitizer
     ): SubagentExecutionRunner {
         return when (executionConfig.runner) {
             ExecutionConfigProperties.RunnerType.AI -> {
@@ -36,6 +38,7 @@ class SubagentRunnerConfiguration {
                     webFetchTool = webFetchTool,
                     sourceLookupTool = sourceLookupTool,
                     objectMapper = objectMapper,
+                    sanitizer = sanitizer,
                     config = AiSubagentExecutionRunner.AiRunnerConfig(
                         provider = executionConfig.ai.provider,
                         model = executionConfig.ai.model,

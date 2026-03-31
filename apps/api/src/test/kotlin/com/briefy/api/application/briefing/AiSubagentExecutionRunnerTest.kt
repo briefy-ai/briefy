@@ -2,6 +2,7 @@ package com.briefy.api.application.briefing
 
 import com.briefy.api.application.briefing.tool.*
 import com.briefy.api.infrastructure.ai.AiAdapter
+import com.briefy.api.infrastructure.ai.AiPayloadSanitizer
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.common.AttributeKey
@@ -21,6 +22,7 @@ class AiSubagentExecutionRunnerTest {
     private val webSearchTool = mock<WebSearchTool>()
     private val webFetchTool = mock<WebFetchTool>()
     private val sourceLookupTool = mock<SourceLookupTool>()
+    private val sanitizer = AiPayloadSanitizer()
 
     private val config = AiSubagentExecutionRunner.AiRunnerConfig(
         provider = "google_genai",
@@ -36,6 +38,7 @@ class AiSubagentExecutionRunnerTest {
         webFetchTool = webFetchTool,
         sourceLookupTool = sourceLookupTool,
         objectMapper = objectMapper,
+        sanitizer = sanitizer,
         config = config
     )
 
@@ -288,6 +291,7 @@ Analysis without the blocked URL.
             webFetchTool = webFetchTool,
             sourceLookupTool = sourceLookupTool,
             objectMapper = objectMapper,
+            sanitizer = sanitizer,
             config = config.copy(maxToolCalls = maxCalls)
         )
 
@@ -411,6 +415,7 @@ Budget-exhausted analysis.
             webFetchTool = null,
             sourceLookupTool = null,
             objectMapper = objectMapper,
+            sanitizer = sanitizer,
             config = config
         )
 
@@ -471,6 +476,7 @@ Analysis with no internal sources.
             webFetchTool = webFetchTool,
             sourceLookupTool = sourceLookupTool,
             objectMapper = objectMapper,
+            sanitizer = sanitizer,
             config = config
         )
         val retryContext = baseContext.copy(attempt = 2, retryReason = "http_429")
@@ -495,7 +501,7 @@ Analysis after retry.
             )
         )
 
-        val parentSpan = tracer.spanBuilder("subagent.market_analyst").startSpan()
+        val parentSpan = tracer.spanBuilder(AiSubagentExecutionRunner.subagentSpanName(retryContext.personaName, retryContext.personaKey)).startSpan()
         parentSpan.makeCurrent().use {
             tracedRunner.execute(retryContext)
         }
@@ -503,12 +509,18 @@ Analysis after retry.
 
         val spans = spanExporter.finishedSpanItems.associateBy { it.name }
         val toolSpan = spans.getValue("tool.web_search")
-        val subagentSpan = spans.getValue("subagent.market_analyst")
+        val subagentSpan = spans.getValue("subagent.Market Analyst")
 
         assertEquals(subagentSpan.spanContext.spanId, toolSpan.parentSpanContext.spanId)
         assertEquals(2L, toolSpan.attributes.get(AttributeKey.longKey("attempt.number")))
         assertEquals(true, toolSpan.attributes.get(AttributeKey.booleanKey("retry")))
         assertEquals("http_429", toolSpan.attributes.get(AttributeKey.stringKey("retry.reason")))
+        assertEquals("Market Analyst", toolSpan.attributes.get(AttributeKey.stringKey("persona.name")))
         assertEquals("healthcare AI adoption 2026 trends", toolSpan.attributes.get(AttributeKey.stringKey("tool.query")))
+        assertEquals(
+            """{"tool":"web_search","args":{"query":"healthcare AI adoption 2026 trends"}}""",
+            toolSpan.attributes.get(AttributeKey.stringKey("input.value"))
+        )
+        assertTrue(toolSpan.attributes.get(AttributeKey.stringKey("output.value"))!!.contains("AI Health 2026"))
     }
 }

@@ -4,6 +4,7 @@ import com.briefy.api.domain.knowledgegraph.briefing.*
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
+import com.briefy.api.infrastructure.ai.AiPayloadSanitizer
 import com.briefy.api.infrastructure.ai.setAttributeIfNotBlank
 import com.briefy.api.infrastructure.ai.setAttributeIfNotNull
 import com.briefy.api.infrastructure.ai.withSpan
@@ -30,7 +31,8 @@ class BriefingExecutionOrchestratorService(
     private val sourceRepository: SourceRepository,
     private val idGenerator: IdGenerator,
     private val objectMapper: ObjectMapper,
-    private val tracer: Tracer
+    private val tracer: Tracer,
+    private val sanitizer: AiPayloadSanitizer
 ) {
 
     fun executeApprovedBriefing(
@@ -47,6 +49,7 @@ class BriefingExecutionOrchestratorService(
                 span.setAttribute("briefing.execution.total_personas", planSteps.size.toLong())
                 span.setAttribute("briefing.execution.required_for_synthesis", computeRequiredForSynthesis(planSteps.size).toLong())
                 span.setAttribute("briefing.source_count", orderedSources.size.toLong())
+                span.setAttribute("input.value", buildGenerationTraceInput(briefing, orderedSources, planSteps))
             }
         ) { span ->
             val outcome = executeApprovedBriefingInTrace(briefing, orderedSources, planSteps)
@@ -54,6 +57,7 @@ class BriefingExecutionOrchestratorService(
             span.setAttribute("briefing.execution.outcome", outcome.status.name.lowercase())
             span.setAttributeIfNotBlank("briefing.execution.failure_code", outcome.failureCode?.dbValue)
             span.setAttributeIfNotBlank("briefing.execution.failure_message", outcome.failureMessage)
+            span.setAttribute("output.value", buildGenerationTraceOutput(outcome))
             if (outcome.status == ExecutionOrchestrationOutcome.Status.SUCCEEDED) {
                 span.setStatus(StatusCode.OK)
             } else {
@@ -405,26 +409,30 @@ class BriefingExecutionOrchestratorService(
             )
 
             val result = tracer.withSpan(
-                name = "subagent.${runningSubagentRun.personaKey}",
+                name = AiSubagentExecutionRunner.subagentSpanName(step.personaName, runningSubagentRun.personaKey),
                 configure = { span ->
                     span.setAttribute("briefing.run.id", runningSubagentRun.briefingRunId.toString())
                     span.setAttribute("subagent.run.id", runningSubagentRun.id.toString())
                     span.setAttribute("persona.key", runningSubagentRun.personaKey)
+                    span.setAttribute("persona.name", step.personaName)
                     span.setAttribute("attempt.number", runningSubagentRun.attempt.toLong())
                     span.setAttribute("attempt.max", runningSubagentRun.maxAttempts.toLong())
                     span.setAttribute("retry", runningSubagentRun.attempt > 1)
                     span.setAttributeIfNotBlank("retry.reason", runningSubagentRun.lastErrorCode)
+                    span.setAttribute("input.value", buildSubagentSpanInput(executionContext))
                 }
             ) { span ->
                 subagentExecutionRunner.execute(executionContext).also { executionResult ->
                     when (executionResult) {
                         is SubagentExecutionResult.Succeeded -> {
                             span.setAttribute("subagent.result", "succeeded")
+                            span.setAttribute("output.value", sanitizePayload(executionResult.curatedText))
                             span.setStatus(StatusCode.OK)
                         }
 
                         SubagentExecutionResult.EmptyOutput -> {
                             span.setAttribute("subagent.result", "empty_output")
+                            span.setAttribute("output.value", sanitizePayload("Subagent produced no output."))
                             span.setStatus(StatusCode.ERROR, "empty_output")
                         }
 
@@ -434,6 +442,7 @@ class BriefingExecutionOrchestratorService(
                             span.setAttribute("subagent.error.code", executionResult.errorCode)
                             span.setAttributeIfNotBlank("subagent.error.message", executionResult.errorMessage)
                             span.setAttributeIfNotNull("subagent.retry_after_seconds", executionResult.retryAfterSeconds)
+                            span.setAttribute("output.value", sanitizePayload(buildSubagentFailureOutput(executionResult)))
                             span.setStatus(StatusCode.ERROR, executionResult.errorCode)
                         }
                     }
@@ -842,6 +851,92 @@ class BriefingExecutionOrchestratorService(
             else -> retryConfig.transientDelaySecondSeconds
         }
     }
+
+    private fun buildSubagentSpanInput(context: SubagentExecutionContext): String {
+        val sourceSummaries = context.sources.map { source ->
+            mapOf(
+                "sourceId" to source.sourceId.toString(),
+                "title" to source.title,
+                "url" to source.url
+            )
+        }
+        return sanitizePayload(
+            objectMapper.writeValueAsString(
+                mapOf(
+                    "personaName" to context.personaName,
+                    "personaKey" to context.personaKey,
+                    "task" to context.task,
+                    "sourceCount" to context.sources.size,
+                    "sources" to sourceSummaries
+                )
+            )
+        )
+    }
+
+    private fun buildGenerationTraceInput(
+        briefing: Briefing,
+        orderedSources: List<Source>,
+        planSteps: List<BriefingPlanStep>
+    ): String {
+        val sourceSummaries = orderedSources.map { source ->
+            mapOf(
+                "sourceId" to source.id.toString(),
+                "title" to (source.metadata?.title ?: source.url.normalized),
+                "url" to source.url.normalized
+            )
+        }
+        val planSummary = planSteps.map { step ->
+            mapOf(
+                "personaName" to step.personaName,
+                "task" to step.task
+            )
+        }
+        return sanitizePayload(
+            objectMapper.writeValueAsString(
+                mapOf(
+                    "briefingId" to briefing.id.toString(),
+                    "userId" to briefing.userId.toString(),
+                    "enrichmentIntent" to briefing.enrichmentIntent.name,
+                    "sourceCount" to orderedSources.size,
+                    "sources" to sourceSummaries,
+                    "planSteps" to planSummary
+                )
+            )
+        )
+    }
+
+    private fun buildGenerationTraceOutput(outcome: ExecutionOrchestrationOutcome): String {
+        val payload = if (outcome.status == ExecutionOrchestrationOutcome.Status.SUCCEEDED) {
+            mapOf(
+                "status" to outcome.status.name.lowercase(),
+                "briefingRunId" to outcome.briefingRunId?.toString(),
+                "markdownBody" to outcome.generationResult?.markdownBody.orEmpty(),
+                "referenceCount" to (outcome.generationResult?.references?.size ?: 0),
+                "conflictHighlightCount" to (outcome.generationResult?.conflictHighlights?.size ?: 0)
+            )
+        } else {
+            mapOf(
+                "status" to outcome.status.name.lowercase(),
+                "briefingRunId" to outcome.briefingRunId?.toString(),
+                "failureCode" to outcome.failureCode?.dbValue,
+                "failureMessage" to outcome.failureMessage
+            )
+        }
+        return sanitizePayload(objectMapper.writeValueAsString(payload))
+    }
+
+    private fun buildSubagentFailureOutput(result: SubagentExecutionResult.Failed): String {
+        return buildString {
+            append("Subagent failed with errorCode=")
+            append(result.errorCode)
+            result.errorMessage?.takeIf { it.isNotBlank() }?.let {
+                append(": ")
+                append(it)
+            }
+        }
+    }
+
+    private fun sanitizePayload(value: String): String = sanitizer.sanitize(value)
 
     companion object {
         private const val ERROR_HTTP_429 = "http_429"

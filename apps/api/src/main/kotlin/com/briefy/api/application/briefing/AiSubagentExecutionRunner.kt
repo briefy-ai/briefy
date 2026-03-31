@@ -3,6 +3,7 @@ package com.briefy.api.application.briefing
 import com.briefy.api.application.briefing.tool.*
 import com.briefy.api.infrastructure.ai.AiAdapter
 import com.briefy.api.infrastructure.ai.AiErrorCategory
+import com.briefy.api.infrastructure.ai.AiPayloadSanitizer
 import com.briefy.api.infrastructure.ai.setAttributeIfNotBlank
 import com.briefy.api.infrastructure.ai.withSpan
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -19,6 +20,7 @@ class AiSubagentExecutionRunner(
     private val webFetchTool: WebFetchTool?,
     private val sourceLookupTool: SourceLookupTool?,
     private val objectMapper: ObjectMapper,
+    private val sanitizer: AiPayloadSanitizer,
     private val config: AiRunnerConfig
 ) : SubagentExecutionRunner {
 
@@ -265,12 +267,17 @@ Continue your investigation. If you have enough evidence, produce your ```output
     private fun executeWebSearch(request: ToolRequest, context: SubagentExecutionContext): ToolCallResult {
         return tracer.withSpan(
             name = "tool.web_search",
-            configure = { span -> setToolSpanAttributes(span, context, "web_search") }
+            configure = { span ->
+                setToolSpanAttributes(span, context, "web_search")
+                captureToolInput(span, "web_search", request.args)
+            }
         ) { span ->
             if (webSearchTool == null) {
                 span.setStatus(StatusCode.ERROR, "disabled")
                 span.setAttribute("tool.success", false)
-                return@withSpan ToolCallResult("web_search is not enabled on this server.")
+                return@withSpan ToolCallResult("web_search is not enabled on this server.").also {
+                    captureToolOutput(span, it.content)
+                }
             }
 
             val query = request.args.get("query")?.asText()
@@ -288,7 +295,9 @@ Continue your investigation. If you have enough evidence, produce your ```output
                     span.setAttribute("tool.results_count", result.data.results.size.toLong())
                     val wrapped = UntrustedContentWrapper.wrapSearchResults(result.data.results, result.data.query)
                     val references = result.data.results.map { WebReference(it.url, it.title, it.snippet) }
-                    ToolCallResult(wrapped, references = references)
+                    ToolCallResult(wrapped, references = references).also {
+                        captureToolOutput(span, it.content)
+                    }
                 }
 
                 is ToolResult.Error -> {
@@ -299,9 +308,13 @@ Continue your investigation. If you have enough evidence, produce your ```output
                         ToolCallResult(
                             "web_search failed: ${result.message}",
                             error = ToolCallError(result.code.toRunnerErrorCode(), result.message)
-                        )
+                        ).also {
+                            captureToolOutput(span, it.content)
+                        }
                     } else {
-                        ToolCallResult("web_search failed (non-retryable): ${result.message}")
+                        ToolCallResult("web_search failed (non-retryable): ${result.message}").also {
+                            captureToolOutput(span, it.content)
+                        }
                     }
                 }
             }
@@ -311,12 +324,17 @@ Continue your investigation. If you have enough evidence, produce your ```output
     private fun executeWebFetch(request: ToolRequest, context: SubagentExecutionContext): ToolCallResult {
         return tracer.withSpan(
             name = "tool.web_fetch",
-            configure = { span -> setToolSpanAttributes(span, context, "web_fetch") }
+            configure = { span ->
+                setToolSpanAttributes(span, context, "web_fetch")
+                captureToolInput(span, "web_fetch", request.args)
+            }
         ) { span ->
             if (webFetchTool == null) {
                 span.setStatus(StatusCode.ERROR, "disabled")
                 span.setAttribute("tool.success", false)
-                return@withSpan ToolCallResult("web_fetch is not enabled on this server.")
+                return@withSpan ToolCallResult("web_fetch is not enabled on this server.").also {
+                    captureToolOutput(span, it.content)
+                }
             }
 
             val url = request.args.get("url")?.asText()
@@ -331,7 +349,9 @@ Continue your investigation. If you have enough evidence, produce your ```output
                     span.setAttribute("tool.content_length_bytes", result.data.contentLengthBytes.toLong())
                     val wrapped = UntrustedContentWrapper.wrap(result.data.content, result.data.url)
                     val reference = WebReference(result.data.url, result.data.title, null)
-                    ToolCallResult(wrapped, references = listOf(reference))
+                    ToolCallResult(wrapped, references = listOf(reference)).also {
+                        captureToolOutput(span, it.content)
+                    }
                 }
 
                 is ToolResult.Error -> {
@@ -342,9 +362,13 @@ Continue your investigation. If you have enough evidence, produce your ```output
                         ToolCallResult(
                             "web_fetch failed: ${result.message}",
                             error = ToolCallError(result.code.toRunnerErrorCode(), result.message)
-                        )
+                        ).also {
+                            captureToolOutput(span, it.content)
+                        }
                     } else {
-                        ToolCallResult("web_fetch failed (non-retryable): ${result.message}")
+                        ToolCallResult("web_fetch failed (non-retryable): ${result.message}").also {
+                            captureToolOutput(span, it.content)
+                        }
                     }
                 }
             }
@@ -457,6 +481,11 @@ Continue your investigation. If you have enough evidence, produce your ```output
     data class WebReference(val url: String, val title: String?, val snippet: String?)
 
     companion object {
+        internal fun subagentSpanName(personaName: String, personaKey: String): String {
+            val displayName = personaName.trim().takeIf { it.isNotBlank() } ?: personaKey
+            return "subagent.$displayName"
+        }
+
         private const val MAX_SOURCE_CHARS = 4000
         private const val BUDGET_EXHAUSTED_PROMPT = "You have used all available tool calls. Based on the evidence collected so far, produce your final ```output``` block now."
         private val RATE_LIMIT_MESSAGE_MARKERS = setOf(
@@ -558,6 +587,7 @@ Continue your investigation. If you have enough evidence, produce your ```output
     private fun setToolSpanAttributes(span: Span, context: SubagentExecutionContext, toolName: String) {
         span.setAttribute("tool.name", toolName)
         span.setAttribute("persona.key", context.personaKey)
+        span.setAttribute("persona.name", context.personaName)
         span.setAttribute("subagent.run.id", context.subagentRunId.toString())
         span.setAttribute("attempt.number", context.attempt.toLong())
         span.setAttribute("attempt.max", context.maxAttempts.toLong())
@@ -569,6 +599,21 @@ Continue your investigation. If you have enough evidence, produce your ```output
         span.setStatus(StatusCode.ERROR, "missing_argument")
         span.setAttribute("tool.success", false)
         span.setAttribute("tool.error.code", "missing_argument")
-        return ToolCallResult("Missing '$argumentName' argument for $toolName.")
+        return ToolCallResult("Missing '$argumentName' argument for $toolName.").also {
+            captureToolOutput(span, it.content)
+        }
     }
+
+    private fun captureToolInput(span: Span, toolName: String, args: Any) {
+        span.setAttribute(
+            "input.value",
+            sanitizePayload("""{"tool":"$toolName","args":${objectMapper.writeValueAsString(args)}}""")
+        )
+    }
+
+    private fun captureToolOutput(span: Span, content: String) {
+        span.setAttribute("output.value", sanitizePayload(content))
+    }
+
+    private fun sanitizePayload(value: String): String = sanitizer.sanitize(value)
 }
