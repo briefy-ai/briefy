@@ -29,7 +29,8 @@ class AiSynthesisExecutionRunner(
             return BriefingGenerationResult(
                 markdownBody = structured.markdownBody,
                 references = mergeReferences(structured.references, aggregatedReferences),
-                conflictHighlights = structured.conflictHighlights
+                conflictHighlights = structured.conflictHighlights,
+                title = structured.title
             )
         }
 
@@ -37,7 +38,8 @@ class AiSynthesisExecutionRunner(
         return BriefingGenerationResult(
             markdownBody = markdownBody,
             references = aggregatedReferences,
-            conflictHighlights = emptyList()
+            conflictHighlights = emptyList(),
+            title = null
         )
     }
 
@@ -50,6 +52,7 @@ Requirements:
 3. Return valid JSON only, no prose before/after.
 4. JSON schema:
 {
+  "title": "string",
   "markdownBody": "string",
   "references": [{"url":"string","title":"string","snippet":"string|null"}],
   "conflictHighlights": [{
@@ -61,6 +64,7 @@ Requirements:
 }
 
 Notes:
+- `title` is a concise, descriptive title for the briefing (max 120 chars). Do not use generic titles like "Briefing" or "Summary".
 - `markdownBody` must be non-empty markdown.
 - `references` should include external references used in the synthesis.
 - `confidence` is between 0 and 1.
@@ -127,6 +131,7 @@ Return JSON only with the required schema."""
         }
 
         return StructuredSynthesisResponse(
+            title = nullableText(root.path("title")),
             markdownBody = markdownBody,
             references = parseReferences(root.path("references")),
             conflictHighlights = parseConflictHighlights(root.path("conflictHighlights"))
@@ -276,6 +281,7 @@ Return JSON only with the required schema."""
     )
 
     private data class StructuredSynthesisResponse(
+        val title: String?,
         val markdownBody: String,
         val references: List<BriefingReferenceCandidate>,
         val conflictHighlights: List<BriefingConflictHighlightResponse>

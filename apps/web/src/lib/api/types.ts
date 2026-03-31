@@ -349,6 +349,7 @@ export interface BriefingResponse {
   executionRunId: string | null
   status: BriefingStatus
   enrichmentIntent: string
+  title: string | null
   sourceIds: string[]
   plan: BriefingPlanStepResponse[]
   references: BriefingReferenceResponse[]
@@ -369,6 +370,7 @@ export interface BriefingSummaryResponse {
   id: string
   status: BriefingStatus
   enrichmentIntent: 'deep_dive' | 'contextual_expansion' | 'truth_grounding'
+  title: string | null
   sourceCount: number
   contentSnippet: string | null
   createdAt: string
