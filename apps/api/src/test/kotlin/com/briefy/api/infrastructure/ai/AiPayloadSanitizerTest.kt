@@ -11,7 +11,7 @@ class AiPayloadSanitizerTest {
     fun `redacts secret-like values`() {
         val input = "Authorization: Bearer abcdefghijklmnop token=abc1234567890 sk-lf-abcdefghijklmnop"
 
-        val sanitized = sanitizer.sanitize(input, maxChars = 500)
+        val sanitized = sanitizer.sanitize(input)
 
         assertFalse(sanitized.contains("abcdefghijklmnop"))
         assertFalse(sanitized.contains("abc1234567890"))
@@ -19,10 +19,11 @@ class AiPayloadSanitizerTest {
     }
 
     @Test
-    fun `truncates payload with marker`() {
-        val sanitized = sanitizer.sanitize("abcdefghijklmnopqrstuvwxyz", maxChars = 10)
+    fun `keeps full sanitized payload without truncation`() {
+        val sanitized = sanitizer.sanitize("abcdefghijklmnopqrstuvwxyz")
 
         assertTrue(sanitized.startsWith("abcdefghij"))
-        assertTrue(sanitized.endsWith("...[truncated]"))
+        assertTrue(sanitized.endsWith("uvwxyz"))
+        assertFalse(sanitized.contains("[truncated]"))
     }
 }

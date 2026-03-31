@@ -61,6 +61,7 @@ class BriefingService(
         briefingSourceRepository.saveAll(links)
 
         val planDrafts = briefingPlannerService.buildPlan(
+            briefingId = briefing.id,
             userId = userId,
             enrichmentIntent = intent.name,
             sources = sources
@@ -226,6 +227,7 @@ class BriefingService(
         briefingRepository.save(briefing)
 
         val planDrafts = briefingPlannerService.buildPlan(
+            briefingId = briefing.id,
             userId = userId,
             enrichmentIntent = briefing.enrichmentIntent.name,
             sources = sources

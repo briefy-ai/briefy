@@ -2,6 +2,7 @@ package com.briefy.api.application.briefing
 
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.opentelemetry.api.OpenTelemetry
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
@@ -33,7 +34,8 @@ class ExecutionRetryLogicTest {
             executionConfig = config,
             sourceRepository = mock(),
             idGenerator = mock(),
-            objectMapper = ObjectMapper()
+            objectMapper = ObjectMapper(),
+            tracer = OpenTelemetry.noop().getTracer("test")
         )
         assertNotNull(orchestrator)
         assertEquals(300L, config.globalTimeoutSeconds)

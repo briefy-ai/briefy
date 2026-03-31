@@ -5,6 +5,7 @@ import com.briefy.api.application.briefing.tool.WebFetchTool
 import com.briefy.api.application.briefing.tool.WebSearchTool
 import com.briefy.api.infrastructure.ai.AiAdapter
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.opentelemetry.api.trace.Tracer
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -19,6 +20,7 @@ class SubagentRunnerConfiguration {
         executionConfig: ExecutionConfigProperties,
         objectMapper: ObjectMapper,
         aiAdapter: AiAdapter,
+        tracer: Tracer,
         webSearchTool: WebSearchTool?,
         webFetchTool: WebFetchTool?,
         sourceLookupTool: SourceLookupTool?
@@ -29,6 +31,7 @@ class SubagentRunnerConfiguration {
                     executionConfig.ai.provider, executionConfig.ai.model)
                 AiSubagentExecutionRunner(
                     aiAdapter = aiAdapter,
+                    tracer = tracer,
                     webSearchTool = webSearchTool,
                     webFetchTool = webFetchTool,
                     sourceLookupTool = sourceLookupTool,

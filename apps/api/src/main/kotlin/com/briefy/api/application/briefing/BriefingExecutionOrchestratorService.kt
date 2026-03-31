@@ -4,8 +4,13 @@ import com.briefy.api.domain.knowledgegraph.briefing.*
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
+import com.briefy.api.infrastructure.ai.setAttributeIfNotBlank
+import com.briefy.api.infrastructure.ai.setAttributeIfNotNull
+import com.briefy.api.infrastructure.ai.withSpan
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.opentelemetry.api.trace.StatusCode
+import io.opentelemetry.api.trace.Tracer
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.time.Instant
@@ -24,10 +29,41 @@ class BriefingExecutionOrchestratorService(
     private val executionConfig: ExecutionConfigProperties,
     private val sourceRepository: SourceRepository,
     private val idGenerator: IdGenerator,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val tracer: Tracer
 ) {
 
     fun executeApprovedBriefing(
+        briefing: Briefing,
+        orderedSources: List<Source>,
+        planSteps: List<BriefingPlanStep>
+    ): ExecutionOrchestrationOutcome {
+        return tracer.withSpan(
+            name = "briefing.generation",
+            noParent = true,
+            configure = { span ->
+                span.setAttribute("briefing.id", briefing.id.toString())
+                span.setAttribute("langfuse.user.id", briefing.userId.toString())
+                span.setAttribute("briefing.execution.total_personas", planSteps.size.toLong())
+                span.setAttribute("briefing.execution.required_for_synthesis", computeRequiredForSynthesis(planSteps.size).toLong())
+                span.setAttribute("briefing.source_count", orderedSources.size.toLong())
+            }
+        ) { span ->
+            val outcome = executeApprovedBriefingInTrace(briefing, orderedSources, planSteps)
+            outcome.briefingRunId?.let { span.setAttribute("briefing.run.id", it.toString()) }
+            span.setAttribute("briefing.execution.outcome", outcome.status.name.lowercase())
+            span.setAttributeIfNotBlank("briefing.execution.failure_code", outcome.failureCode?.dbValue)
+            span.setAttributeIfNotBlank("briefing.execution.failure_message", outcome.failureMessage)
+            if (outcome.status == ExecutionOrchestrationOutcome.Status.SUCCEEDED) {
+                span.setStatus(StatusCode.OK)
+            } else {
+                span.setStatus(StatusCode.ERROR, outcome.failureCode?.dbValue ?: "failed")
+            }
+            outcome
+        }
+    }
+
+    private fun executeApprovedBriefingInTrace(
         briefing: Briefing,
         orderedSources: List<Source>,
         planSteps: List<BriefingPlanStep>
@@ -47,6 +83,7 @@ class BriefingExecutionOrchestratorService(
         if (isRunPastDeadline(bootstrapped.briefingRun)) {
             handleGlobalTimeout(bootstrapped)
             return ExecutionOrchestrationOutcome.failed(
+                briefingRunId = bootstrapped.briefingRun.id,
                 failureCode = BriefingRunFailureCode.GLOBAL_TIMEOUT,
                 failureMessage = "Execution run exceeded global timeout"
             )
@@ -54,6 +91,7 @@ class BriefingExecutionOrchestratorService(
         if (bootstrapped.briefingRun.status == BriefingRunStatus.CANCELLING) {
             finalizeCancellingRun(bootstrapped)
             return ExecutionOrchestrationOutcome.failed(
+                briefingRunId = bootstrapped.briefingRun.id,
                 failureCode = BriefingRunFailureCode.CANCELLED,
                 failureMessage = "Execution run is cancelling; refusing to dispatch additional work"
             )
@@ -95,6 +133,7 @@ class BriefingExecutionOrchestratorService(
             }
         } catch (ex: ExecutionDeadlineExceededException) {
             return ExecutionOrchestrationOutcome.failed(
+                briefingRunId = bootstrapped.briefingRun.id,
                 failureCode = BriefingRunFailureCode.GLOBAL_TIMEOUT,
                 failureMessage = "Execution run exceeded global timeout"
             )
@@ -114,6 +153,7 @@ class BriefingExecutionOrchestratorService(
         val allTerminal = refreshedSubagentRuns.all { it.status.isTerminal() }
         if (!allTerminal) {
             return ExecutionOrchestrationOutcome.failed(
+                briefingRunId = refreshedBriefingRun.id,
                 failureCode = BriefingRunFailureCode.ORCHESTRATION_ERROR,
                 failureMessage = "Subagent fan-out finished with non-terminal runs"
             )
@@ -121,6 +161,7 @@ class BriefingExecutionOrchestratorService(
 
         val synthesisRun = synthesisRunRepository.findByBriefingRunId(refreshedBriefingRun.id)
             ?: return ExecutionOrchestrationOutcome.failed(
+                briefingRunId = refreshedBriefingRun.id,
                 failureCode = BriefingRunFailureCode.ORCHESTRATION_ERROR,
                 failureMessage = "Synthesis run missing for briefingRunId=${refreshedBriefingRun.id}"
             )
@@ -133,6 +174,7 @@ class BriefingExecutionOrchestratorService(
                 )
             )
             return ExecutionOrchestrationOutcome.failed(
+                briefingRunId = refreshedBriefingRun.id,
                 failureCode = BriefingRunFailureCode.GLOBAL_TIMEOUT,
                 failureMessage = "Execution run exceeded global timeout before synthesis"
             )
@@ -146,6 +188,7 @@ class BriefingExecutionOrchestratorService(
                 )
             )
             return ExecutionOrchestrationOutcome.failed(
+                briefingRunId = refreshedBriefingRun.id,
                 failureCode = BriefingRunFailureCode.CANCELLED,
                 failureMessage = "Execution run cancelled before synthesis"
             )
@@ -170,6 +213,7 @@ class BriefingExecutionOrchestratorService(
                 occurredAt = now
             )
             return ExecutionOrchestrationOutcome.failed(
+                briefingRunId = refreshedBriefingRun.id,
                 failureCode = BriefingRunFailureCode.SYNTHESIS_GATE_NOT_MET,
                 failureMessage = "Synthesis gate not met"
             )
@@ -220,7 +264,19 @@ class BriefingExecutionOrchestratorService(
         )
 
         return runCatching {
-            val generationResult = synthesisExecutionRunner.run(synthesisRequest)
+            tracer.withSpan(
+                name = "synthesis",
+                configure = { span ->
+                    span.setAttribute("briefing.run.id", refreshedBriefingRun.id.toString())
+                    span.setAttribute("input.persona.count", succeededPersonaKeys.size.toLong())
+                    span.setAttribute("synthesis.excluded_persona_count", excludedPersonaKeys.size.toLong())
+                }
+            ) { span ->
+                val generationResult = synthesisExecutionRunner.run(synthesisRequest)
+                span.setStatus(StatusCode.OK)
+                generationResult
+            }
+        }.map { generationResult ->
             val completedAt = Instant.now()
             executionStateTransitionService.markSynthesisCompleted(
                 synthesisRunId = synthesisRun.id,
@@ -256,6 +312,7 @@ class BriefingExecutionOrchestratorService(
                 occurredAt = failedAt
             )
             ExecutionOrchestrationOutcome.failed(
+                briefingRunId = refreshedBriefingRun.id,
                 failureCode = BriefingRunFailureCode.SYNTHESIS_FAILED,
                 failureMessage = error.message ?: "Synthesis failed"
             )
@@ -326,25 +383,62 @@ class BriefingExecutionOrchestratorService(
             runningSubagentRun.updatedAt = attemptStart
             subagentRunRepository.save(runningSubagentRun)
 
-            val result = subagentExecutionRunner.execute(
-                SubagentExecutionContext(
-                    briefingId = briefing.id,
-                    briefingRunId = runningSubagentRun.briefingRunId,
-                    subagentRunId = runningSubagentRun.id,
-                    userId = briefing.userId,
-                    personaKey = runningSubagentRun.personaKey,
-                    personaName = step.personaName,
-                    task = step.task,
-                    sources = orderedSources.map { source ->
-                        BriefingSourceInput(
-                            sourceId = source.id,
-                            title = source.metadata?.title ?: source.url.normalized,
-                            url = source.url.normalized,
-                            text = source.content?.text.orEmpty()
-                        )
-                    }
-                )
+            val executionContext = SubagentExecutionContext(
+                briefingId = briefing.id,
+                briefingRunId = runningSubagentRun.briefingRunId,
+                subagentRunId = runningSubagentRun.id,
+                userId = briefing.userId,
+                attempt = runningSubagentRun.attempt,
+                maxAttempts = runningSubagentRun.maxAttempts,
+                retryReason = runningSubagentRun.lastErrorCode,
+                personaKey = runningSubagentRun.personaKey,
+                personaName = step.personaName,
+                task = step.task,
+                sources = orderedSources.map { source ->
+                    BriefingSourceInput(
+                        sourceId = source.id,
+                        title = source.metadata?.title ?: source.url.normalized,
+                        url = source.url.normalized,
+                        text = source.content?.text.orEmpty()
+                    )
+                }
             )
+
+            val result = tracer.withSpan(
+                name = "subagent.${runningSubagentRun.personaKey}",
+                configure = { span ->
+                    span.setAttribute("briefing.run.id", runningSubagentRun.briefingRunId.toString())
+                    span.setAttribute("subagent.run.id", runningSubagentRun.id.toString())
+                    span.setAttribute("persona.key", runningSubagentRun.personaKey)
+                    span.setAttribute("attempt.number", runningSubagentRun.attempt.toLong())
+                    span.setAttribute("attempt.max", runningSubagentRun.maxAttempts.toLong())
+                    span.setAttribute("retry", runningSubagentRun.attempt > 1)
+                    span.setAttributeIfNotBlank("retry.reason", runningSubagentRun.lastErrorCode)
+                }
+            ) { span ->
+                subagentExecutionRunner.execute(executionContext).also { executionResult ->
+                    when (executionResult) {
+                        is SubagentExecutionResult.Succeeded -> {
+                            span.setAttribute("subagent.result", "succeeded")
+                            span.setStatus(StatusCode.OK)
+                        }
+
+                        SubagentExecutionResult.EmptyOutput -> {
+                            span.setAttribute("subagent.result", "empty_output")
+                            span.setStatus(StatusCode.ERROR, "empty_output")
+                        }
+
+                        is SubagentExecutionResult.Failed -> {
+                            span.setAttribute("subagent.result", "failed")
+                            span.setAttribute("subagent.retryable", executionResult.retryable)
+                            span.setAttribute("subagent.error.code", executionResult.errorCode)
+                            span.setAttributeIfNotBlank("subagent.error.message", executionResult.errorMessage)
+                            span.setAttributeIfNotNull("subagent.retry_after_seconds", executionResult.retryAfterSeconds)
+                            span.setStatus(StatusCode.ERROR, executionResult.errorCode)
+                        }
+                    }
+                }
+            }
 
             val occurredAt = Instant.now()
             when (result) {
@@ -795,12 +889,13 @@ data class ExecutionOrchestrationOutcome(
         }
 
         fun failed(
+            briefingRunId: UUID? = null,
             failureCode: BriefingRunFailureCode,
             failureMessage: String
         ): ExecutionOrchestrationOutcome {
             return ExecutionOrchestrationOutcome(
                 status = Status.FAILED,
-                briefingRunId = null,
+                briefingRunId = briefingRunId,
                 generationResult = null,
                 failureCode = failureCode,
                 failureMessage = failureMessage

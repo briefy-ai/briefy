@@ -83,9 +83,10 @@ class BriefingServiceTest {
         whenever(briefingPlanStepRepository.saveAll(any<List<BriefingPlanStep>>())).thenAnswer { it.arguments[0] }
         whenever(
             briefingPlannerService.buildPlan(
-                userId = userId,
-                enrichmentIntent = "DEEP_DIVE",
-                sources = listOf(source)
+                any(),
+                eq(userId),
+                eq("DEEP_DIVE"),
+                eq(listOf(source))
             )
         ).thenReturn(
             listOf(
@@ -142,9 +143,10 @@ class BriefingServiceTest {
         whenever(idGenerator.newId()).thenReturn(UUID.randomUUID())
         whenever(
             briefingPlannerService.buildPlan(
-                userId = userId,
-                enrichmentIntent = "TRUTH_GROUNDING",
-                sources = listOf(source)
+                eq(briefing.id),
+                eq(userId),
+                eq("TRUTH_GROUNDING"),
+                eq(listOf(source))
             )
         ).thenReturn(
             listOf(

@@ -3,6 +3,12 @@ package com.briefy.api.application.briefing
 import com.briefy.api.application.briefing.tool.*
 import com.briefy.api.infrastructure.ai.AiAdapter
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.opentelemetry.api.OpenTelemetry
+import io.opentelemetry.api.common.AttributeKey
+import io.opentelemetry.sdk.OpenTelemetrySdk
+import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter
+import io.opentelemetry.sdk.trace.SdkTracerProvider
+import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.*
@@ -21,9 +27,11 @@ class AiSubagentExecutionRunnerTest {
         model = "gemini-2.5-flash",
         maxToolCalls = 8
     )
+    private val noopTracer = OpenTelemetry.noop().getTracer("test")
 
     private val runner = AiSubagentExecutionRunner(
         aiAdapter = aiAdapter,
+        tracer = noopTracer,
         webSearchTool = webSearchTool,
         webFetchTool = webFetchTool,
         sourceLookupTool = sourceLookupTool,
@@ -36,6 +44,8 @@ class AiSubagentExecutionRunnerTest {
         briefingRunId = UUID.randomUUID(),
         subagentRunId = UUID.randomUUID(),
         userId = UUID.randomUUID(),
+        attempt = 1,
+        maxAttempts = 3,
         personaKey = "market_analyst",
         personaName = "Market Analyst",
         task = "Analyze market trends for AI adoption in healthcare",
@@ -273,6 +283,7 @@ Analysis without the blocked URL.
         val maxCalls = 3
         val limitedRunner = AiSubagentExecutionRunner(
             aiAdapter = aiAdapter,
+            tracer = noopTracer,
             webSearchTool = webSearchTool,
             webFetchTool = webFetchTool,
             sourceLookupTool = sourceLookupTool,
@@ -395,6 +406,7 @@ Budget-exhausted analysis.
     fun `works without web tools when they are null`() {
         val noToolsRunner = AiSubagentExecutionRunner(
             aiAdapter = aiAdapter,
+            tracer = noopTracer,
             webSearchTool = null,
             webFetchTool = null,
             sourceLookupTool = null,
@@ -443,5 +455,60 @@ Analysis with no internal sources.
         val result = runner.execute(emptySourceContext)
 
         assertTrue(result is SubagentExecutionResult.Succeeded)
+    }
+
+    @Test
+    fun `web search tool span is nested under active subagent span and records retry metadata`() {
+        val spanExporter = InMemorySpanExporter.create()
+        val tracerProvider = SdkTracerProvider.builder()
+            .addSpanProcessor(SimpleSpanProcessor.create(spanExporter))
+            .build()
+        val tracer = OpenTelemetrySdk.builder().setTracerProvider(tracerProvider).build().getTracer("test")
+        val tracedRunner = AiSubagentExecutionRunner(
+            aiAdapter = aiAdapter,
+            tracer = tracer,
+            webSearchTool = webSearchTool,
+            webFetchTool = webFetchTool,
+            sourceLookupTool = sourceLookupTool,
+            objectMapper = objectMapper,
+            config = config
+        )
+        val retryContext = baseContext.copy(attempt = 2, retryReason = "http_429")
+
+        whenever(aiAdapter.complete(any(), any(), any(), any(), any()))
+            .thenReturn(
+                """```tool
+{"tool": "web_search", "args": {"query": "healthcare AI adoption 2026 trends"}}
+```"""
+            )
+            .thenReturn(
+                """```output
+Analysis after retry.
+```"""
+            )
+        whenever(webSearchTool.search(any(), any())).thenReturn(
+            ToolResult.Success(
+                WebSearchResponse(
+                    results = listOf(WebSearchResult("AI Health 2026", "https://news.example.com/ai-health", "New trends...")),
+                    query = "healthcare AI adoption 2026 trends"
+                )
+            )
+        )
+
+        val parentSpan = tracer.spanBuilder("subagent.market_analyst").startSpan()
+        parentSpan.makeCurrent().use {
+            tracedRunner.execute(retryContext)
+        }
+        parentSpan.end()
+
+        val spans = spanExporter.finishedSpanItems.associateBy { it.name }
+        val toolSpan = spans.getValue("tool.web_search")
+        val subagentSpan = spans.getValue("subagent.market_analyst")
+
+        assertEquals(subagentSpan.spanContext.spanId, toolSpan.parentSpanContext.spanId)
+        assertEquals(2L, toolSpan.attributes.get(AttributeKey.longKey("attempt.number")))
+        assertEquals(true, toolSpan.attributes.get(AttributeKey.booleanKey("retry")))
+        assertEquals("http_429", toolSpan.attributes.get(AttributeKey.stringKey("retry.reason")))
+        assertEquals("healthcare AI adoption 2026 trends", toolSpan.attributes.get(AttributeKey.stringKey("tool.query")))
     }
 }
