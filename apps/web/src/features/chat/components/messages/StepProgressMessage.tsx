@@ -63,6 +63,17 @@ function buildEventDetail(event: BriefingRunEventResponse): string | null {
   return detailParts.length > 0 ? detailParts.join(' • ') : null
 }
 
+function getStepAttemptLabel(step: StepProgressChatMessage['payload']['steps'][number]): string {
+  const isImmediateNonRetryableFailure =
+    step.status === 'failed' && step.attempt === 1 && step.lastErrorRetryable === false
+
+  if (isImmediateNonRetryableFailure) {
+    return 'Failed (non-retryable)'
+  }
+
+  return `Attempt ${step.attempt ?? '-'}${step.maxAttempts ? `/${step.maxAttempts}` : ''}`
+}
+
 export const StepProgressMessage = memo(function StepProgressMessage({
   message,
 }: MessageComponentProps<StepProgressChatMessage>) {
@@ -212,9 +223,8 @@ export const StepProgressMessage = memo(function StepProgressMessage({
                 </div>
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Attempt {step.attempt ?? '-'}
-                {step.maxAttempts ? `/${step.maxAttempts}` : ''} • sources: {step.sourceCount} • web refs:{' '}
-                {step.webReferencesCount} • tools: {step.toolCallCount}
+                {getStepAttemptLabel(step)} • sources: {step.sourceCount} • web refs: {step.webReferencesCount} •
+                tools: {step.toolCallCount}
                 {step.reused ? ' • reused' : ''}
               </p>
               {step.lastErrorCode && (

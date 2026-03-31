@@ -40,6 +40,7 @@ CI currently runs backend tests on PRs and pushes to `main` via `.github/workflo
 - Follow concise, imperative commit messages. Current history favors patterns like `FEAT: ... (#<PR>)` or short lowercase imperatives (`implement user authentication`).
 - PRs should include: purpose, scope, testing evidence (commands run), and linked issue/PR context.
 - Include screenshots or short recordings for frontend-visible changes.
+- Always open PRs ready for review — never as draft.
 
 ## Security & Configuration Tips
 - Copy `.env.example` for local configuration; never commit real secrets.

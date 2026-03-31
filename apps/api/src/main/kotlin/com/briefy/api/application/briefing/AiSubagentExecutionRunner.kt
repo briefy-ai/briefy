@@ -2,6 +2,7 @@ package com.briefy.api.application.briefing
 
 import com.briefy.api.application.briefing.tool.*
 import com.briefy.api.infrastructure.ai.AiAdapter
+import com.briefy.api.infrastructure.ai.AiErrorCategory
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import java.util.UUID
@@ -22,10 +23,11 @@ class AiSubagentExecutionRunner(
             executeToolLoop(context)
         } catch (e: Exception) {
             logger.error("[ai-runner] Unexpected error for persona={} subagentRun={}", context.personaKey, context.subagentRunId, e)
+            val failure = classifyRunnerFailure(e)
             SubagentExecutionResult.Failed(
-                errorCode = "runner_error",
-                errorMessage = e.message?.take(500) ?: "Unknown error",
-                retryable = isTransientException(e)
+                errorCode = failure.errorCode,
+                errorMessage = failure.errorMessage,
+                retryable = failure.retryable
             )
         }
     }
@@ -349,9 +351,46 @@ Continue your investigation. If you have enough evidence, produce your ```output
         return error.code in setOf("timeout", "http_429", "http_5xx", "network_error")
     }
 
-    private fun isTransientException(e: Exception): Boolean {
-        val message = e.message?.lowercase() ?: ""
-        return message.contains("timeout") || message.contains("connection") || message.contains("429")
+    private fun classifyRunnerFailure(error: Exception): RunnerFailure {
+        val rootMessage = rootCause(error).message?.takeIf { it.isNotBlank() }
+        val errorMessage = (rootMessage ?: error.message ?: "Unknown error").take(500)
+        val normalizedMessage = errorMessage.lowercase()
+        val retryable = when {
+            isExplicitNonRetryableRunnerError(error, normalizedMessage) -> false
+            isRateLimitedRunnerError(normalizedMessage) -> true
+            else -> when (AiErrorCategory.from(error)) {
+                AiErrorCategory.TIMEOUT,
+                AiErrorCategory.PROVIDER_UNAVAILABLE,
+                AiErrorCategory.UNKNOWN -> true
+                AiErrorCategory.VALIDATION -> false
+            }
+        }
+
+        return RunnerFailure(
+            errorCode = "runner_error",
+            errorMessage = errorMessage,
+            retryable = retryable
+        )
+    }
+
+    private fun isExplicitNonRetryableRunnerError(error: Exception, message: String): Boolean {
+        if (error is IllegalArgumentException || rootCause(error) is IllegalArgumentException) {
+            return true
+        }
+
+        return NON_RETRYABLE_RUNNER_MESSAGE_MARKERS.any { marker -> message.contains(marker) }
+    }
+
+    private fun isRateLimitedRunnerError(message: String): Boolean {
+        return RATE_LIMIT_MESSAGE_MARKERS.any { marker -> message.contains(marker) }
+    }
+
+    private fun rootCause(error: Throwable): Throwable {
+        var current = error
+        while (current.cause != null && current.cause !== current) {
+            current = current.cause!!
+        }
+        return current
     }
 
     data class AiRunnerConfig(
@@ -370,11 +409,39 @@ Continue your investigation. If you have enough evidence, produce your ```output
         val error: ToolCallError? = null
     )
     private data class ToolCallError(val code: String, val message: String, val retryAfterSeconds: Long? = null)
+    private data class RunnerFailure(val errorCode: String, val errorMessage: String, val retryable: Boolean)
     data class WebReference(val url: String, val title: String?, val snippet: String?)
 
     companion object {
         private const val MAX_SOURCE_CHARS = 4000
         private const val BUDGET_EXHAUSTED_PROMPT = "You have used all available tool calls. Based on the evidence collected so far, produce your final ```output``` block now."
+        private val RATE_LIMIT_MESSAGE_MARKERS = setOf(
+            "429",
+            "rate limit",
+            "rate-limit",
+            "too many requests",
+            "quota exceeded"
+        )
+        private val NON_RETRYABLE_RUNNER_MESSAGE_MARKERS = setOf(
+            "400",
+            "401",
+            "403",
+            "bad request",
+            "unauthorized",
+            "forbidden",
+            "invalid api key",
+            "api key not valid",
+            "authentication failed",
+            "invalid prompt",
+            "prompt must not be blank",
+            "provider must not be blank",
+            "model must not be blank",
+            "unsupported ai provider",
+            "chat model is not configured",
+            "invalid persona",
+            "persona config",
+            "missing source data"
+        )
     }
 
     private fun buildAvailableTools(): String {
