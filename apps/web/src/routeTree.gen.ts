@@ -18,6 +18,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as TopicsIndexRouteImport } from './routes/topics/index'
 import { Route as SourcesIndexRouteImport } from './routes/sources/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as LibraryIndexRouteImport } from './routes/library/index'
 import { Route as TopicsTopicIdRouteImport } from './routes/topics/$topicId'
 import { Route as SourcesSourceIdRouteImport } from './routes/sources/$sourceId'
 import { Route as ShareTokenRouteImport } from './routes/share/$token'
@@ -68,6 +69,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/settings/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LibraryIndexRoute = LibraryIndexRouteImport.update({
+  id: '/library/',
+  path: '/library/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TopicsTopicIdRoute = TopicsTopicIdRouteImport.update({
   id: '/topics/$topicId',
   path: '/topics/$topicId',
@@ -100,6 +106,7 @@ export interface FileRoutesByFullPath {
   '/share/$token': typeof ShareTokenRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
   '/topics/$topicId': typeof TopicsTopicIdRoute
+  '/library/': typeof LibraryIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/sources/': typeof SourcesIndexRoute
   '/topics/': typeof TopicsIndexRoute
@@ -115,6 +122,7 @@ export interface FileRoutesByTo {
   '/share/$token': typeof ShareTokenRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
   '/topics/$topicId': typeof TopicsTopicIdRoute
+  '/library': typeof LibraryIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/sources': typeof SourcesIndexRoute
   '/topics': typeof TopicsIndexRoute
@@ -131,6 +139,7 @@ export interface FileRoutesById {
   '/share/$token': typeof ShareTokenRoute
   '/sources/$sourceId': typeof SourcesSourceIdRoute
   '/topics/$topicId': typeof TopicsTopicIdRoute
+  '/library/': typeof LibraryIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/sources/': typeof SourcesIndexRoute
   '/topics/': typeof TopicsIndexRoute
@@ -148,6 +157,7 @@ export interface FileRouteTypes {
     | '/share/$token'
     | '/sources/$sourceId'
     | '/topics/$topicId'
+    | '/library/'
     | '/settings/'
     | '/sources/'
     | '/topics/'
@@ -163,6 +173,7 @@ export interface FileRouteTypes {
     | '/share/$token'
     | '/sources/$sourceId'
     | '/topics/$topicId'
+    | '/library'
     | '/settings'
     | '/sources'
     | '/topics'
@@ -178,6 +189,7 @@ export interface FileRouteTypes {
     | '/share/$token'
     | '/sources/$sourceId'
     | '/topics/$topicId'
+    | '/library/'
     | '/settings/'
     | '/sources/'
     | '/topics/'
@@ -194,6 +206,7 @@ export interface RootRouteChildren {
   ShareTokenRoute: typeof ShareTokenRoute
   SourcesSourceIdRoute: typeof SourcesSourceIdRoute
   TopicsTopicIdRoute: typeof TopicsTopicIdRoute
+  LibraryIndexRoute: typeof LibraryIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   SourcesIndexRoute: typeof SourcesIndexRoute
   TopicsIndexRoute: typeof TopicsIndexRoute
@@ -264,6 +277,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/library/': {
+      id: '/library/'
+      path: '/library'
+      fullPath: '/library/'
+      preLoaderRoute: typeof LibraryIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/topics/$topicId': {
       id: '/topics/$topicId'
       path: '/topics/$topicId'
@@ -306,6 +326,7 @@ const rootRouteChildren: RootRouteChildren = {
   ShareTokenRoute: ShareTokenRoute,
   SourcesSourceIdRoute: SourcesSourceIdRoute,
   TopicsTopicIdRoute: TopicsTopicIdRoute,
+  LibraryIndexRoute: LibraryIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   SourcesIndexRoute: SourcesIndexRoute,
   TopicsIndexRoute: TopicsIndexRoute,

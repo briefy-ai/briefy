@@ -117,3 +117,20 @@ data class BriefingGenerationResult(
     val references: List<BriefingReferenceCandidate>,
     val conflictHighlights: List<BriefingConflictHighlightResponse>
 )
+
+data class BriefingSummaryResponse(
+    val id: UUID,
+    val status: String,
+    val enrichmentIntent: String,
+    val sourceCount: Int,
+    val contentSnippet: String?,
+    val createdAt: Instant,
+    val updatedAt: Instant
+)
+
+data class BriefingPageResponse(
+    val items: List<BriefingSummaryResponse>,
+    val nextCursor: String?,
+    val hasMore: Boolean,
+    val limit: Int
+)

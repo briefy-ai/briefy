@@ -31,6 +31,10 @@ class BriefingServiceTest {
     private val sourceRepository: SourceRepository = mock()
     private val briefingPlannerService: BriefingPlannerService = mock()
     private val briefingGenerationJobService: BriefingGenerationJobService = mock()
+    private val briefingGenerationJobRepository: BriefingGenerationJobRepository = mock()
+    private val runEventRepository: RunEventRepository = mock()
+    private val subagentRunRepository: SubagentRunRepository = mock()
+    private val synthesisRunRepository: SynthesisRunRepository = mock()
     private val currentUserProvider: CurrentUserProvider = mock()
     private val idGenerator: IdGenerator = mock()
     private val objectMapper = ObjectMapper()
@@ -44,6 +48,10 @@ class BriefingServiceTest {
         sourceRepository = sourceRepository,
         briefingPlannerService = briefingPlannerService,
         briefingGenerationJobService = briefingGenerationJobService,
+        briefingGenerationJobRepository = briefingGenerationJobRepository,
+        runEventRepository = runEventRepository,
+        subagentRunRepository = subagentRunRepository,
+        synthesisRunRepository = synthesisRunRepository,
         currentUserProvider = currentUserProvider,
         idGenerator = idGenerator,
         objectMapper = objectMapper

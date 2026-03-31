@@ -21,6 +21,6 @@ export async function requireAuthWithOnboarding() {
 export async function redirectAuthenticatedUser() {
   const user = await loadCurrentUser()
   if (user) {
-    throw redirect({ to: user.onboardingCompleted ? '/sources' : '/onboarding' })
+    throw redirect(user.onboardingCompleted ? { to: '/library', search: { tab: 'sources' } } : { to: '/onboarding' })
   }
 }

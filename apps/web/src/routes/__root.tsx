@@ -97,7 +97,8 @@ function RootLayoutContent() {
                 Topics
               </Link>
               <Link
-                to="/sources"
+                to="/library"
+                search={{ tab: 'sources' }}
                 className="text-xs text-muted-foreground transition-colors hover:text-foreground"
               >
                 Library

@@ -7,5 +7,6 @@ import java.util.UUID
 @Repository
 interface BriefingSourceRepository : JpaRepository<BriefingSource, UUID> {
     fun findByBriefingIdOrderByCreatedAtAsc(briefingId: UUID): List<BriefingSource>
+    fun countByBriefingId(briefingId: UUID): Int
     fun deleteByBriefingId(briefingId: UUID)
 }

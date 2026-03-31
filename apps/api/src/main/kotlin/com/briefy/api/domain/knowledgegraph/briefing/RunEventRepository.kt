@@ -40,6 +40,10 @@ interface RunEventRepository : JpaRepository<RunEvent, UUID> {
     fun findByBriefingRunIdOrderByOccurredAtAscSequenceIdAsc(briefingRunId: UUID): List<RunEvent>
     fun countByBriefingRunIdAndEventType(briefingRunId: UUID, eventType: String): Long
 
+    @Modifying
+    @Query("DELETE FROM RunEvent e WHERE e.briefingRunId IN (SELECT r.id FROM BriefingRun r WHERE r.briefingId = :briefingId)")
+    fun deleteByBriefingId(@Param("briefingId") briefingId: UUID)
+
     @Query(
         """
         SELECT event
