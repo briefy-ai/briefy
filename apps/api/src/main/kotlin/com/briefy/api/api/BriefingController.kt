@@ -107,15 +107,17 @@ class BriefingController(
     fun listRunEvents(
         @PathVariable id: UUID,
         @RequestParam(required = false) cursor: String?,
-        @RequestParam(required = false) limit: Int?
+        @RequestParam(required = false) limit: Int?,
+        @RequestParam(required = false) subagentRunId: UUID?
     ): ResponseEntity<BriefingRunEventsPageResponse> {
         logger.info(
-            "[controller] List briefing run events request received runId={} limit={} hasCursor={}",
+            "[controller] List briefing run events request received runId={} limit={} hasCursor={} subagentRunId={}",
             id,
             limit ?: "default",
-            !cursor.isNullOrBlank()
+            !cursor.isNullOrBlank(),
+            subagentRunId ?: "all"
         )
-        val page = briefingRunObservabilityService.listRunEvents(id, limit, cursor)
+        val page = briefingRunObservabilityService.listRunEvents(id, limit, cursor, subagentRunId)
         logger.info(
             "[controller] List briefing run events request completed runId={} count={} hasMore={}",
             id,

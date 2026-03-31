@@ -9,6 +9,7 @@ import java.util.UUID
 
 @Repository
 interface SubagentRunRepository : JpaRepository<SubagentRun, UUID> {
+    fun existsByIdAndBriefingRunId(id: UUID, briefingRunId: UUID): Boolean
     fun findByBriefingRunIdOrderByCreatedAtAsc(briefingRunId: UUID): List<SubagentRun>
 
     @Modifying

@@ -519,6 +519,170 @@ class BriefingControllerTest {
     }
 
     @Test
+    fun `GET run events filters by subagent run id and paginates within that subset`() {
+        val briefingId = createBriefingId("https://example.com/briefing-run-events-filtered")
+        val runId = UUID.randomUUID()
+        briefingRunRepository.save(
+            BriefingRun(
+                id = runId,
+                briefingId = briefingId,
+                executionFingerprint = "fingerprint-filtered-events",
+                status = BriefingRunStatus.RUNNING,
+                totalPersonas = 2,
+                requiredForSynthesis = 1
+            )
+        )
+
+        val firstSubagentRunId = UUID.randomUUID()
+        val secondSubagentRunId = UUID.randomUUID()
+        subagentRunRepository.save(
+            SubagentRun(
+                id = firstSubagentRunId,
+                briefingRunId = runId,
+                briefingId = briefingId,
+                personaKey = "first_persona",
+                status = SubagentRunStatus.RUNNING
+            )
+        )
+        subagentRunRepository.save(
+            SubagentRun(
+                id = secondSubagentRunId,
+                briefingRunId = runId,
+                briefingId = briefingId,
+                personaKey = "second_persona",
+                status = SubagentRunStatus.RUNNING
+            )
+        )
+
+        val t0 = Instant.parse("2026-03-01T11:00:00Z")
+        insertRunEventRow(
+            briefingRunId = runId,
+            subagentRunId = firstSubagentRunId,
+            eventType = "subagent.dispatched",
+            occurredAt = t0,
+            sequenceId = 1L,
+            attempt = 1,
+            payloadJson = """{"personaKey":"first_persona"}""",
+            createdAt = t0
+        )
+        insertRunEventRow(
+            briefingRunId = runId,
+            subagentRunId = secondSubagentRunId,
+            eventType = "subagent.dispatched",
+            occurredAt = t0.plusSeconds(1),
+            sequenceId = 2L,
+            attempt = 1,
+            payloadJson = """{"personaKey":"second_persona"}""",
+            createdAt = t0.plusSeconds(1)
+        )
+        insertRunEventRow(
+            briefingRunId = runId,
+            subagentRunId = firstSubagentRunId,
+            eventType = "subagent.attempt.failed",
+            occurredAt = t0.plusSeconds(2),
+            sequenceId = 3L,
+            attempt = 1,
+            payloadJson = """{"errorCode":"timeout"}""",
+            createdAt = t0.plusSeconds(2)
+        )
+        insertRunEventRow(
+            briefingRunId = runId,
+            subagentRunId = secondSubagentRunId,
+            eventType = "subagent.completed",
+            occurredAt = t0.plusSeconds(3),
+            sequenceId = 4L,
+            attempt = 1,
+            payloadJson = """{"status":"succeeded"}""",
+            createdAt = t0.plusSeconds(3)
+        )
+        insertRunEventRow(
+            briefingRunId = runId,
+            subagentRunId = firstSubagentRunId,
+            eventType = "subagent.retry.scheduled",
+            occurredAt = t0.plusSeconds(4),
+            sequenceId = 5L,
+            attempt = 1,
+            payloadJson = """{"retryable":true}""",
+            createdAt = t0.plusSeconds(4)
+        )
+
+        val firstPageResult = mockMvc.perform(
+            get("/api/briefings/runs/$runId/events")
+                .param("subagentRunId", firstSubagentRunId.toString())
+                .param("limit", "2")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items.length()").value(2))
+            .andExpect(jsonPath("$.items[0].subagentRunId").value(firstSubagentRunId.toString()))
+            .andExpect(jsonPath("$.items[1].subagentRunId").value(firstSubagentRunId.toString()))
+            .andExpect(jsonPath("$.items[0].eventType").value("subagent.dispatched"))
+            .andExpect(jsonPath("$.items[1].eventType").value("subagent.attempt.failed"))
+            .andExpect(jsonPath("$.hasMore").value(true))
+            .andReturn()
+
+        val firstPage = objectMapper.readTree(firstPageResult.response.contentAsString)
+        val nextCursor = firstPage["nextCursor"].asText()
+
+        mockMvc.perform(
+            get("/api/briefings/runs/$runId/events")
+                .param("subagentRunId", firstSubagentRunId.toString())
+                .param("limit", "2")
+                .param("cursor", nextCursor)
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items.length()").value(1))
+            .andExpect(jsonPath("$.items[0].subagentRunId").value(firstSubagentRunId.toString()))
+            .andExpect(jsonPath("$.items[0].eventType").value("subagent.retry.scheduled"))
+            .andExpect(jsonPath("$.hasMore").value(false))
+    }
+
+    @Test
+    fun `GET run events returns bad request when subagent run does not belong to run`() {
+        val firstBriefingId = createBriefingId("https://example.com/briefing-run-events-subagent-mismatch-a")
+        val secondBriefingId = createBriefingId("https://example.com/briefing-run-events-subagent-mismatch-b")
+        val firstRunId = UUID.randomUUID()
+        val secondRunId = UUID.randomUUID()
+        briefingRunRepository.save(
+            BriefingRun(
+                id = firstRunId,
+                briefingId = firstBriefingId,
+                executionFingerprint = "fingerprint-mismatch-a",
+                status = BriefingRunStatus.RUNNING,
+                totalPersonas = 1,
+                requiredForSynthesis = 1
+            )
+        )
+        briefingRunRepository.save(
+            BriefingRun(
+                id = secondRunId,
+                briefingId = secondBriefingId,
+                executionFingerprint = "fingerprint-mismatch-b",
+                status = BriefingRunStatus.RUNNING,
+                totalPersonas = 1,
+                requiredForSynthesis = 1
+            )
+        )
+
+        val secondRunSubagentId = UUID.randomUUID()
+        subagentRunRepository.save(
+            SubagentRun(
+                id = secondRunSubagentId,
+                briefingRunId = secondRunId,
+                briefingId = secondBriefingId,
+                personaKey = "foreign_persona",
+                status = SubagentRunStatus.RUNNING
+            )
+        )
+
+        mockMvc.perform(
+            get("/api/briefings/runs/$firstRunId/events")
+                .param("subagentRunId", secondRunSubagentId.toString())
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.message").value("subagentRunId does not belong to briefing run"))
+    }
+
+    @Test
     fun `GET run summary returns not found when run does not exist`() {
         mockMvc.perform(get("/api/briefings/runs/${UUID.randomUUID()}"))
             .andExpect(status().isNotFound)
