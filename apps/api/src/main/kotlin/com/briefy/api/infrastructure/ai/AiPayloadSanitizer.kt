@@ -4,19 +4,13 @@ import org.springframework.stereotype.Component
 
 @Component
 class AiPayloadSanitizer {
-    fun sanitize(input: String, maxChars: Int): String {
+    fun sanitize(input: String): String {
         if (input.isBlank()) return input
 
-        val redacted = input
+        return input
             .replace(API_KEY_PATTERN, "[REDACTED]")
             .replace(BEARER_PATTERN, "Bearer [REDACTED]")
             .replace(SECRET_ASSIGNMENT_PATTERN, "$1=[REDACTED]")
-
-        if (maxChars <= 0 || redacted.length <= maxChars) {
-            return redacted
-        }
-
-        return "${redacted.take(maxChars)}...[truncated]"
     }
 
     companion object {

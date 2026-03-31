@@ -5,6 +5,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 
 ## Mistakes Log
 
+- [2026-03-31] Started two `./gradlew test` commands against `apps/api` in parallel while verifying the Langfuse root-trace I/O fix -> let the runs finish, then treated the serial reruns as authoritative -> never start overlapping Gradle test commands in this module; verify serially from the start.
 - [2026-03-26] Started two `./gradlew test` commands against `apps/api` in parallel while verifying the Supadata extraction work -> stopped the daemons and reran verification serially -> never parallelize Gradle test runs in this module, even when the commands target different test sets.
 - [2026-03-29] Overstated Spring AI Google GenAI integration constraints in `AGENT_NOTES`/investigation notes -> Spring AI `2.0.0-M2` accepts portable `ChatOptions` and the default `ChatClient` system-message path; the real Google-specific mismatch was response extraction via `content()` -> when recording library limitations, verify both the official docs and the exact versioned source before writing a “must use custom path” note.
 - [2026-03-16] Removed `normalizeToPng` from cover generation without updating original-image storage metadata -> raw provider bytes could be JPEG while we still stored `original.png` with `image/png` -> detect the returned image format and upload with matching extension/content type when removing image normalization steps.
@@ -111,3 +112,4 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 - [2026-02-28 20:58] Avoid using standalone "Slice X" naming in PRs, file names, or agent notes; always tie work to the concrete feature/domain because a feature can span multiple slices and slice-only labels lose traceability after merges.
 - [2026-02-28 21:19] Hard workflow rule: never push implementation commits directly to `main`; always create a feature branch and open a PR, even for small changes.
 - [2026-03-03] When we simplify implementation for speed, explicitly document deferred tradeoffs/TODOs in code or Obsidian so we can safely return later -> always add a dated deferred-work checklist for intentional simplifications.
+- [2026-03-31] AI observability should retain full sanitized prompt/output payloads in every environment, including production -> keep `captureFullPayloads` effectively on everywhere, but never bypass sanitizer/redaction logic.

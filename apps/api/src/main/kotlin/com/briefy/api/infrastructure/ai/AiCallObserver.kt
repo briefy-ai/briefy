@@ -2,7 +2,6 @@ package com.briefy.api.infrastructure.ai
 
 import com.briefy.api.config.AiObservabilityProperties
 import io.opentelemetry.api.common.AttributeKey
-import io.opentelemetry.api.trace.Span
 import io.opentelemetry.api.trace.SpanKind
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
@@ -30,7 +29,6 @@ class AiCallObserver(
         val span = tracer.spanBuilder("ai.completion")
             .setSpanKind(SpanKind.INTERNAL)
             .startSpan()
-        val parentSpan = Span.current()
         val startedAt = System.nanoTime()
         val tags = buildTags(useCase, provider)
         val userId = resolveUserId()
@@ -45,58 +43,50 @@ class AiCallObserver(
             span.setAttribute(AttributeKey.stringArrayKey("langfuse.tags"), tags)
             if (userId != null) {
                 span.setAttribute("langfuse.user.id", userId)
-                copyToParent(parentSpan, "langfuse.user.id", userId)
             }
-            copyToParent(parentSpan, AttributeKey.stringArrayKey("langfuse.tags"), tags)
 
-            captureInput(span, parentSpan, prompt, systemPrompt)
+            captureInput(span, prompt, systemPrompt)
 
             try {
                 val result = operation()
                 span.setStatus(StatusCode.OK)
                 span.setAttribute("ai.success", true)
                 span.setAttribute("ai.output.length", result.length.toLong())
-                captureOutput(span, parentSpan, result)
+                captureOutput(span, result)
                 result
             } catch (error: Throwable) {
                 val errorCategory = AiErrorCategory.from(error)
                 span.recordException(error)
                 span.setStatus(StatusCode.ERROR, errorCategory.name.lowercase())
                 span.setAttribute("ai.error.category", errorCategory.name.lowercase())
-                copyToParent(parentSpan, "ai.error.category", errorCategory.name.lowercase())
                 throw error
             } finally {
                 val latencyMillis = (System.nanoTime() - startedAt) / 1_000_000
                 span.setAttribute("ai.latency_ms", latencyMillis)
-                copyToParent(parentSpan, "ai.latency_ms", latencyMillis)
                 span.end()
             }
         }
     }
 
-    private fun captureInput(span: Span, parentSpan: Span, prompt: String, systemPrompt: String?) {
+    private fun captureInput(span: io.opentelemetry.api.trace.Span, prompt: String, systemPrompt: String?) {
         span.setAttribute("ai.prompt.length", prompt.length.toLong())
         if (!systemPrompt.isNullOrBlank()) {
             span.setAttribute("ai.system_prompt.length", systemPrompt.length.toLong())
         }
 
-        val payloadLimit = if (properties.captureFullPayloads) Int.MAX_VALUE else properties.maxPayloadChars
-        val promptPreview = sanitizer.sanitize(prompt, payloadLimit)
+        val promptPreview = sanitizer.sanitize(prompt)
         span.setAttribute("ai.prompt.preview", promptPreview)
         span.setAttribute("input.value", promptPreview)
-        copyToParent(parentSpan, "input.value", promptPreview)
         if (!systemPrompt.isNullOrBlank()) {
-            val systemPromptPreview = sanitizer.sanitize(systemPrompt, payloadLimit)
+            val systemPromptPreview = sanitizer.sanitize(systemPrompt)
             span.setAttribute("ai.system_prompt.preview", systemPromptPreview)
         }
     }
 
-    private fun captureOutput(span: Span, parentSpan: Span, output: String) {
-        val payloadLimit = if (properties.captureFullPayloads) Int.MAX_VALUE else properties.maxPayloadChars
-        val outputPreview = sanitizer.sanitize(output, payloadLimit)
+    private fun captureOutput(span: io.opentelemetry.api.trace.Span, output: String) {
+        val outputPreview = sanitizer.sanitize(output)
         span.setAttribute("ai.output.preview", outputPreview)
         span.setAttribute("output.value", outputPreview)
-        copyToParent(parentSpan, "output.value", outputPreview)
     }
 
     private fun resolveUserId(): String? {
@@ -110,20 +100,5 @@ class AiCallObserver(
             tags.add("use_case:$useCase")
         }
         return tags
-    }
-
-    private fun copyToParent(parentSpan: Span, key: String, value: String) {
-        if (!parentSpan.spanContext.isValid) return
-        parentSpan.setAttribute(key, value)
-    }
-
-    private fun copyToParent(parentSpan: Span, key: String, value: Long) {
-        if (!parentSpan.spanContext.isValid) return
-        parentSpan.setAttribute(key, value)
-    }
-
-    private fun copyToParent(parentSpan: Span, key: AttributeKey<List<String>>, value: List<String>) {
-        if (!parentSpan.spanContext.isValid) return
-        parentSpan.setAttribute(key, value)
     }
 }

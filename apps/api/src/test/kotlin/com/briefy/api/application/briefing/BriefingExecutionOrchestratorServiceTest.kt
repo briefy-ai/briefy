@@ -2,8 +2,10 @@ package com.briefy.api.application.briefing
 
 import com.briefy.api.domain.knowledgegraph.briefing.*
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
+import com.briefy.api.infrastructure.ai.AiPayloadSanitizer
 import com.briefy.api.infrastructure.id.IdGenerator
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.opentelemetry.api.OpenTelemetry
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -60,7 +62,9 @@ class BriefingExecutionOrchestratorServiceTest {
             executionConfig = executionConfig,
             sourceRepository = sourceRepository,
             idGenerator = idGenerator,
-            objectMapper = objectMapper
+            objectMapper = objectMapper,
+            tracer = OpenTelemetry.noop().getTracer("test"),
+            sanitizer = AiPayloadSanitizer()
         )
     }
 

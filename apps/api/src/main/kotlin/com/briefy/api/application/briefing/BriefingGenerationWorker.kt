@@ -1,5 +1,6 @@
 package com.briefy.api.application.briefing
 
+import org.slf4j.MDC
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
@@ -35,19 +36,39 @@ class BriefingGenerationWorker(
         }
 
         jobs.forEach { job ->
-            try {
-                briefingGenerationService.generateApprovedBriefing(job.briefingId, job.userId)
-                briefingGenerationJobService.markSucceeded(job.id, Instant.now())
-            } catch (ex: Exception) {
-                logger.warn(
-                    "[briefing-worker] generation_failed jobId={} briefingId={} userId={}",
-                    job.id,
-                    job.briefingId,
-                    job.userId,
-                    ex
-                )
-                briefingGenerationJobService.markFailed(job.id, ex.message ?: "generation_failed", Instant.now())
+            withUserIdInMdc(job.userId) {
+                try {
+                    briefingGenerationService.generateApprovedBriefing(job.briefingId, job.userId)
+                    briefingGenerationJobService.markSucceeded(job.id, Instant.now())
+                } catch (ex: Exception) {
+                    logger.warn(
+                        "[briefing-worker] generation_failed jobId={} briefingId={} userId={}",
+                        job.id,
+                        job.briefingId,
+                        job.userId,
+                        ex
+                    )
+                    briefingGenerationJobService.markFailed(job.id, ex.message ?: "generation_failed", Instant.now())
+                }
             }
         }
+    }
+
+    private fun withUserIdInMdc(userId: UUID, action: () -> Unit) {
+        val previousUserId = MDC.get(USER_ID_KEY)
+        MDC.put(USER_ID_KEY, userId.toString())
+        try {
+            action()
+        } finally {
+            if (previousUserId == null) {
+                MDC.remove(USER_ID_KEY)
+            } else {
+                MDC.put(USER_ID_KEY, previousUserId)
+            }
+        }
+    }
+
+    companion object {
+        private const val USER_ID_KEY = "userId"
     }
 }

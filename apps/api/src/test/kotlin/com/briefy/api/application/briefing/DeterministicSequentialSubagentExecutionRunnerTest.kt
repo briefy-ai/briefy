@@ -14,6 +14,8 @@ class DeterministicSequentialSubagentExecutionRunnerTest {
         briefingRunId = UUID.randomUUID(),
         subagentRunId = UUID.randomUUID(),
         userId = UUID.randomUUID(),
+        attempt = 1,
+        maxAttempts = 3,
         personaKey = "step-1",
         personaName = "Test Persona",
         task = task,
