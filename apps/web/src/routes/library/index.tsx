@@ -1,4 +1,4 @@
-import { createFileRoute, Link as RouterLink } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   BookOpen,
@@ -35,7 +35,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { archiveSourcesBatch, createSource, deleteSource, listSources, restoreSource } from '@/lib/api/sources'
-import { listBriefings } from '@/lib/api/briefings'
+import { deleteBriefing, listBriefings } from '@/lib/api/briefings'
 import { ApiClientError } from '@/lib/api/client'
 import { requireAuthWithOnboarding } from '@/lib/auth/requireAuth'
 import { cn } from '@/lib/utils'
@@ -69,15 +69,7 @@ function LibraryPage() {
     <div className="max-w-3xl mx-auto space-y-8 animate-fade-in">
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
-            <RouterLink
-              to="/topics"
-              className="rounded-md border border-border/60 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Topics
-            </RouterLink>
-          </div>
+          <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
           <div className="inline-flex rounded-md border border-border/60 bg-card/50 p-1">
             <button
               type="button"
@@ -391,34 +383,38 @@ function SourcesTab() {
         </Button>
       </form>
 
-      <div className="inline-flex rounded-md border border-border/60 bg-card/50 p-1">
-        <button
-          type="button"
-          onClick={() => setFilter('active')}
-          className={`rounded px-3 py-1.5 text-xs transition-colors ${
-            filter === 'active'
-              ? 'bg-background text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Active
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilter('archived')}
-          className={`rounded px-3 py-1.5 text-xs transition-colors ${
-            filter === 'archived'
-              ? 'bg-background text-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Archived
-        </button>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="inline-flex rounded-md border border-border/60 bg-card/50 p-0.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setFilter('active')}
+            className={`rounded px-3 py-1.5 text-xs transition-colors ${
+              filter === 'active'
+                ? 'bg-background text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Active
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('archived')}
+            className={`rounded px-3 py-1.5 text-xs transition-colors ${
+              filter === 'archived'
+                ? 'bg-background text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Archived
+          </button>
+        </div>
+        {filter === 'active' && (
+          <>
+            <div className="h-5 w-px bg-border/50 shrink-0" />
+            <FilterBar value={filterState} onChange={setFilterState} />
+          </>
+        )}
       </div>
-
-      {filter === 'active' && (
-        <FilterBar value={filterState} onChange={setFilterState} />
-      )}
 
       {hasSelection && filter === 'active' && (
         <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
@@ -619,6 +615,10 @@ function BriefingsTab() {
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number | null>(null)
+  const [confirmDeleteIds, setConfirmDeleteIds] = useState<string[]>([])
+  const [deletingIds, setDeletingIds] = useState<string[]>([])
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
   const isFetchingMoreRef = useRef(false)
   const fetchTokenRef = useRef(0)
@@ -640,9 +640,7 @@ function BriefingsTab() {
       if (currentFetchToken !== fetchTokenRef.current) return
       setError(e instanceof Error ? e.message : 'Failed to load briefings')
     } finally {
-      if (currentFetchToken === fetchTokenRef.current) {
-        setLoading(false)
-      }
+      if (currentFetchToken === fetchTokenRef.current) setLoading(false)
     }
   }, [])
 
@@ -668,33 +666,63 @@ function BriefingsTab() {
       if (currentFetchToken !== fetchTokenRef.current) return
       setError(e instanceof Error ? e.message : 'Failed to load more briefings')
     } finally {
-      if (currentFetchToken === fetchTokenRef.current) {
-        setLoadingMore(false)
-      }
+      if (currentFetchToken === fetchTokenRef.current) setLoadingMore(false)
       isFetchingMoreRef.current = false
     }
   }, [hasMore, nextCursor])
 
-  useEffect(() => {
-    fetchBriefings()
-  }, [fetchBriefings])
+  useEffect(() => { fetchBriefings() }, [fetchBriefings])
 
   useEffect(() => {
     if (!hasMore) return
     const node = loadMoreRef.current
     if (!node) return
-
     const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          void fetchMoreBriefings()
-        }
-      },
+      (entries) => { if (entries.some((e) => e.isIntersecting)) void fetchMoreBriefings() },
       { rootMargin: '240px' }
     )
     observer.observe(node)
     return () => observer.disconnect()
   }, [fetchMoreBriefings, hasMore, briefings.length])
+
+  useEffect(() => {
+    const ids = new Set(briefings.map((b) => b.id))
+    setSelectedIds((prev) => prev.filter((id) => ids.has(id)))
+  }, [briefings])
+
+  async function executeDelete(ids: string[]) {
+    const uniqueIds = Array.from(new Set(ids))
+    setDeletingIds((prev) => Array.from(new Set([...prev, ...uniqueIds])))
+    try {
+      await Promise.all(uniqueIds.map((id) => deleteBriefing(id)))
+      setBriefings((prev) => prev.filter((b) => !uniqueIds.includes(b.id)))
+      setSelectedIds((prev) => prev.filter((id) => !uniqueIds.includes(id)))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete briefing(s)')
+    } finally {
+      setDeletingIds((prev) => prev.filter((id) => !uniqueIds.includes(id)))
+    }
+  }
+
+  function handleCardClick(event: React.MouseEvent<HTMLAnchorElement>, index: number, id: string) {
+    const isSelectionGesture = event.metaKey || event.ctrlKey || event.shiftKey
+    if (!isSelectionGesture) return
+    event.preventDefault()
+    event.stopPropagation()
+
+    if (event.shiftKey) {
+      const anchor = selectionAnchorIndex ?? index
+      const start = Math.min(anchor, index)
+      const end = Math.max(anchor, index)
+      const rangeIds = briefings.slice(start, end + 1).map((b) => b.id)
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...rangeIds])))
+      if (selectionAnchorIndex === null) setSelectionAnchorIndex(index)
+      return
+    }
+
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
+    setSelectionAnchorIndex(index)
+  }
 
   if (error) {
     return (
@@ -708,11 +736,7 @@ function BriefingsTab() {
     return (
       <div className="space-y-2">
         {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-border/50 bg-card/50 p-4"
-            style={{ animationDelay: `${i * 80}ms` }}
-          >
+          <div key={i} className="rounded-xl border border-border/50 bg-card/50 p-4" style={{ animationDelay: `${i * 80}ms` }}>
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 space-y-2.5">
                 <Skeleton className="h-4 w-1/2" />
@@ -741,26 +765,89 @@ function BriefingsTab() {
     )
   }
 
+  const hasDeletingSelection = selectedIds.some((id) => deletingIds.includes(id))
+
   return (
-    <div className="space-y-1.5">
-      {briefings.map((briefing, i) => (
-        <div
-          key={briefing.id}
-          className="animate-slide-up"
-          style={{
-            animationDelay: `${i * 40}ms`,
-            animationFillMode: 'backwards',
-          }}
-        >
-          <BriefingCard briefing={briefing} />
-        </div>
-      ))}
-      {hasMore && <div ref={loadMoreRef} className="h-2" aria-hidden="true" />}
-      {loadingMore && (
-        <div className="py-2 text-center text-xs text-muted-foreground">
-          Loading more briefings...
+    <div className="space-y-4">
+      {selectedIds.length > 0 && (
+        <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+          <div className="flex items-center gap-2 text-sm">
+            <CheckSquare className="size-4 text-primary" />
+            <span>{selectedIds.length} selected</span>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="secondary" size="sm">
+                Actions
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                disabled={hasDeletingSelection}
+                onSelect={() => setConfirmDeleteIds([...selectedIds])}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="size-4" />
+                Delete selected
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setSelectedIds([])}>
+                Clear selection
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
+
+      <AlertDialog
+        open={confirmDeleteIds.length > 0}
+        onOpenChange={(open) => { if (!open) setConfirmDeleteIds([]) }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmDeleteIds.length === 1 ? 'Delete briefing?' : `Delete ${confirmDeleteIds.length} briefings?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the {confirmDeleteIds.length === 1 ? 'briefing' : 'briefings'} and cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={hasDeletingSelection}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={hasDeletingSelection}
+              onClick={() => {
+                const ids = [...confirmDeleteIds]
+                setConfirmDeleteIds([])
+                void executeDelete(ids)
+              }}
+            >
+              {hasDeletingSelection ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className="space-y-1.5">
+        {briefings.map((briefing, i) => (
+          <div
+            key={briefing.id}
+            className="animate-slide-up"
+            style={{ animationDelay: `${i * 40}ms`, animationFillMode: 'backwards' }}
+          >
+            <BriefingCard
+              briefing={briefing}
+              selected={selectedIds.includes(briefing.id)}
+              onCardClick={(event) => handleCardClick(event, i, briefing.id)}
+            />
+          </div>
+        ))}
+        {hasMore && <div ref={loadMoreRef} className="h-2" aria-hidden="true" />}
+        {loadingMore && (
+          <div className="py-2 text-center text-xs text-muted-foreground">Loading more briefings...</div>
+        )}
+      </div>
     </div>
   )
 }
@@ -812,7 +899,7 @@ function SourceCard({
   const topics = source.topics ?? []
 
   return (
-    <RouterLink
+    <Link
       to="/sources/$sourceId"
       params={{ sourceId: source.id }}
       className="group block"
@@ -914,7 +1001,7 @@ function SourceCard({
           </div>
         )}
       </div>
-    </RouterLink>
+    </Link>
   )
 }
 

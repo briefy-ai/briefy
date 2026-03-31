@@ -36,7 +36,15 @@ function formatRelativeDate(iso: string): string {
   return new Date(iso).toLocaleDateString()
 }
 
-export function BriefingCard({ briefing }: { briefing: BriefingSummaryResponse }) {
+export function BriefingCard({
+  briefing,
+  selected = false,
+  onCardClick,
+}: {
+  briefing: BriefingSummaryResponse
+  selected?: boolean
+  onCardClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void
+}) {
   const intent = INTENT_CONFIG[briefing.enrichmentIntent]
   const status = STATUS_CONFIG[briefing.status]
   const IntentIcon = intent?.icon ?? Layers
@@ -47,11 +55,14 @@ export function BriefingCard({ briefing }: { briefing: BriefingSummaryResponse }
       to="/briefings/$briefingId"
       params={{ briefingId: briefing.id }}
       className="group block"
+      onClick={onCardClick}
     >
       <div
         className={cn(
           'rounded-lg border px-4 py-3.5 transition-all duration-150',
-          'border-border/40 bg-card/40 hover:bg-card/70 hover:border-border/60'
+          selected
+            ? 'border-primary/50 bg-primary/5'
+            : 'border-border/40 bg-card/40 hover:bg-card/70 hover:border-border/60'
         )}
       >
         <div className="flex items-start justify-between gap-3">

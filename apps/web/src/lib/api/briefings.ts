@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './client'
+import { apiDelete, apiGet, apiPost } from './client'
 import type {
   BriefingPageResponse,
   BriefingResponse,
@@ -36,6 +36,10 @@ export async function approveBriefing(id: string): Promise<BriefingResponse> {
 
 export async function retryBriefing(id: string): Promise<BriefingResponse> {
   return apiPost<BriefingResponse>(`/api/briefings/${id}/retry`)
+}
+
+export async function deleteBriefing(id: string): Promise<void> {
+  return apiDelete(`/api/briefings/${id}`)
 }
 
 export async function getBriefingRunSummary(runId: string): Promise<BriefingRunSummaryResponse> {

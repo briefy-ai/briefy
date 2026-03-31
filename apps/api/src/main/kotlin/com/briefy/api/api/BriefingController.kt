@@ -14,6 +14,7 @@ import jakarta.validation.constraints.NotEmpty
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -76,6 +77,14 @@ class BriefingController(
         val briefing = briefingService.approvePlan(id)
         logger.info("[controller] Approve briefing request completed briefingId={} status={}", briefing.id, briefing.status)
         return ResponseEntity.ok(briefing)
+    }
+
+    @DeleteMapping("/{id}")
+    fun deleteBriefing(@PathVariable id: UUID): ResponseEntity<Void> {
+        logger.info("[controller] Delete briefing request received briefingId={}", id)
+        briefingService.deleteBriefing(id)
+        logger.info("[controller] Delete briefing request completed briefingId={}", id)
+        return ResponseEntity.noContent().build()
     }
 
     @PostMapping("/{id}/retry")

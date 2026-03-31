@@ -23,6 +23,10 @@ class BriefingService(
     private val sourceRepository: SourceRepository,
     private val briefingPlannerService: BriefingPlannerService,
     private val briefingGenerationJobService: BriefingGenerationJobService,
+    private val briefingGenerationJobRepository: BriefingGenerationJobRepository,
+    private val runEventRepository: RunEventRepository,
+    private val subagentRunRepository: SubagentRunRepository,
+    private val synthesisRunRepository: SynthesisRunRepository,
     private val currentUserProvider: CurrentUserProvider,
     private val idGenerator: IdGenerator,
     private val objectMapper: ObjectMapper
@@ -242,6 +246,23 @@ class BriefingService(
         briefingPlanStepRepository.saveAll(planSteps)
 
         return toResponse(briefing, links, planSteps, emptyList())
+    }
+
+    @Transactional
+    fun deleteBriefing(id: UUID) {
+        val userId = currentUserProvider.requireUserId()
+        briefingRepository.findByIdAndUserId(id, userId)
+            ?: throw BriefingNotFoundException(id)
+
+        runEventRepository.deleteByBriefingId(id)
+        subagentRunRepository.deleteByBriefingId(id)
+        synthesisRunRepository.deleteByBriefingId(id)
+        briefingRunRepository.deleteByBriefingId(id)
+        briefingPlanStepRepository.deleteByBriefingId(id)
+        briefingReferenceRepository.deleteByBriefingId(id)
+        briefingSourceRepository.deleteByBriefingId(id)
+        briefingGenerationJobRepository.deleteByBriefingId(id)
+        briefingRepository.deleteById(id)
     }
 
     private fun loadAndValidateSources(userId: UUID, sourceIds: List<UUID>): List<Source> {
