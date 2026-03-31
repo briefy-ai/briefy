@@ -1,5 +1,6 @@
 package com.briefy.api.api
 
+import com.briefy.api.application.briefing.BriefingPageResponse
 import com.briefy.api.application.briefing.BriefingResponse
 import com.briefy.api.application.briefing.BriefingRunEventsPageResponse
 import com.briefy.api.application.briefing.BriefingRunObservabilityService
@@ -49,12 +50,16 @@ class BriefingController(
     }
 
     @GetMapping
-    fun listBriefings(@RequestParam(required = false) status: String?): ResponseEntity<List<BriefingResponse>> {
-        logger.info("[controller] List briefings request received status={}", status ?: "all")
+    fun listBriefings(
+        @RequestParam(required = false) status: String?,
+        @RequestParam(required = false) limit: Int?,
+        @RequestParam(required = false) cursor: String?
+    ): ResponseEntity<BriefingPageResponse> {
+        logger.info("[controller] List briefings request received status={} limit={} hasCursor={}", status ?: "all", limit ?: "default", !cursor.isNullOrBlank())
         val statusFilter = status?.let { BriefingStatus.valueOf(it.uppercase()) }
-        val briefings = briefingService.listBriefings(statusFilter)
-        logger.info("[controller] List briefings request completed count={}", briefings.size)
-        return ResponseEntity.ok(briefings)
+        val page = briefingService.listBriefingsSummary(statusFilter, limit, cursor)
+        logger.info("[controller] List briefings request completed count={} hasMore={}", page.items.size, page.hasMore)
+        return ResponseEntity.ok(page)
     }
 
     @GetMapping("/{id}")

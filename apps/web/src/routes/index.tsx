@@ -4,8 +4,12 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/lib/auth/useAuth'
+import { redirectAuthenticatedUser } from '@/lib/auth/requireAuth'
 
 export const Route = createFileRoute('/')({
+  beforeLoad: async () => {
+    await redirectAuthenticatedUser()
+  },
   component: HomePage,
 })
 
@@ -104,7 +108,7 @@ function HomePage() {
               {!isLoading && isAuthenticated ? (
                 <>
                   <Button asChild size="lg" className="min-w-44">
-                    <Link to="/sources">
+                    <Link to="/library" search={{ tab: 'sources' }}>
                       Open Library
                       <ArrowRight className="size-4" />
                     </Link>
@@ -241,7 +245,7 @@ function HomePage() {
             <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
               {!isLoading && isAuthenticated ? (
                 <Button asChild size="lg" className="min-w-44">
-                  <Link to="/sources">Go to Library</Link>
+                  <Link to="/library" search={{ tab: 'sources' }}>Go to Library</Link>
                 </Button>
               ) : (
                 <>

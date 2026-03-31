@@ -153,7 +153,8 @@ function BriefingDetailPage() {
 function BackLink() {
   return (
     <Link
-      to="/sources"
+      to="/library"
+      search={{ tab: 'sources' }}
       className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
       aria-label="Back to Library"
     >

@@ -365,6 +365,23 @@ export interface BriefingResponse {
   failedAt: string | null
 }
 
+export interface BriefingSummaryResponse {
+  id: string
+  status: BriefingStatus
+  enrichmentIntent: 'deep_dive' | 'contextual_expansion' | 'truth_grounding'
+  sourceCount: number
+  contentSnippet: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BriefingPageResponse {
+  items: BriefingSummaryResponse[]
+  nextCursor: string | null
+  hasMore: boolean
+  limit: number
+}
+
 export type BriefingRunStatus =
   | 'queued'
   | 'running'

@@ -123,7 +123,8 @@ class BriefingControllerTest {
 
         mockMvc.perform(get("/api/briefings"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$[?(@.id=='$briefingId')]").isNotEmpty)
+            .andExpect(jsonPath("$.items").isArray)
+            .andExpect(jsonPath("$.items[?(@.id=='$briefingId')]").isNotEmpty)
 
         mockMvc.perform(get("/api/briefings/$briefingId"))
             .andExpect(status().isOk)

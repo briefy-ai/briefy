@@ -27,6 +27,8 @@ class BriefingService(
     private val idGenerator: IdGenerator,
     private val objectMapper: ObjectMapper
 ) {
+    private val DEFAULT_BRIEFING_LIST_LIMIT = 20
+    private val MAX_BRIEFING_LIST_LIMIT = 100
 
     @Transactional
     fun createBriefing(command: CreateBriefingCommand): BriefingResponse {
@@ -79,6 +81,52 @@ class BriefingService(
         briefingRepository.save(briefing)
 
         return toResponse(briefing, links, planSteps, emptyList())
+    }
+
+    @Transactional(readOnly = true)
+    fun listBriefingsSummary(status: BriefingStatus?, limit: Int?, cursor: String?): BriefingPageResponse {
+        val userId = currentUserProvider.requireUserId()
+        val normalizedLimit = (limit ?: DEFAULT_BRIEFING_LIST_LIMIT).coerceIn(1, MAX_BRIEFING_LIST_LIMIT)
+        val decodedCursor = cursor?.let { BriefingListCursorCodec.decode(it) }
+
+        val briefings = briefingRepository.findBriefingsPage(
+            userId = userId,
+            status = status,
+            cursorCreatedAt = decodedCursor?.createdAt,
+            cursorId = decodedCursor?.id,
+            limit = normalizedLimit
+        )
+
+        val hasMore = briefings.size > normalizedLimit
+        val pageItems = if (hasMore) briefings.dropLast(1) else briefings
+
+        val nextCursor = if (hasMore && pageItems.isNotEmpty()) {
+            BriefingListCursorCodec.encode(BriefingListCursor(
+                createdAt = pageItems.last().createdAt,
+                id = pageItems.last().id
+            ))
+        } else {
+            null
+        }
+
+        val items = pageItems.map { briefing ->
+            BriefingSummaryResponse(
+                id = briefing.id,
+                status = briefing.status.name.lowercase(),
+                enrichmentIntent = briefing.enrichmentIntent.name.lowercase(),
+                sourceCount = briefingSourceRepository.countByBriefingId(briefing.id),
+                contentSnippet = briefing.contentMarkdown?.take(200),
+                createdAt = briefing.createdAt,
+                updatedAt = briefing.updatedAt
+            )
+        }
+
+        return BriefingPageResponse(
+            items = items,
+            nextCursor = nextCursor,
+            hasMore = hasMore,
+            limit = normalizedLimit
+        )
     }
 
     @Transactional(readOnly = true)
