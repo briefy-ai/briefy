@@ -138,7 +138,7 @@ class BriefingExecutionOrchestratorServiceTest {
             .thenReturn(SubagentExecutionResult.Succeeded(
                 curatedText = "Analysis output",
                 sourceIdsUsedJson = "[]",
-                toolStatsJson = """{"budgetExhausted":false}"""
+                toolStatsJson = """{"toolCallCount":0}"""
             ))
 
         // Post-fan-out: refresh runs for synthesis gate
