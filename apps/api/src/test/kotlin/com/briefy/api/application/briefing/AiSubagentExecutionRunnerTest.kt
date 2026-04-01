@@ -13,6 +13,7 @@ import com.briefy.api.application.briefing.tool.WebSearchTool
 import com.briefy.api.infrastructure.ai.AiAdapter
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -312,6 +313,58 @@ Repeated-search analysis.
         val failed = result as SubagentExecutionResult.Failed
         assertEquals("runner_error", failed.errorCode)
         assertTrue(failed.retryable)
+    }
+
+    @Test
+    fun `handles provider unavailable exception as retryable failure`() {
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenThrow(RuntimeException("503 Service Unavailable"))
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.Failed)
+        val failed = result as SubagentExecutionResult.Failed
+        assertEquals("runner_error", failed.errorCode)
+        assertTrue(failed.retryable)
+    }
+
+    @Test
+    fun `handles bad request runner exception as non retryable failure`() {
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenThrow(RuntimeException("400 Bad Request"))
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.Failed)
+        val failed = result as SubagentExecutionResult.Failed
+        assertEquals("runner_error", failed.errorCode)
+        assertFalse(failed.retryable)
+    }
+
+    @Test
+    fun `handles unauthorized runner exception as non retryable failure`() {
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenThrow(RuntimeException("401 Unauthorized"))
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.Failed)
+        val failed = result as SubagentExecutionResult.Failed
+        assertEquals("runner_error", failed.errorCode)
+        assertFalse(failed.retryable)
+    }
+
+    @Test
+    fun `handles illegal argument runner exception as non retryable failure`() {
+        whenever(aiAdapter.completeWithTools(any(), any(), any(), anyOrNull(), anyOrNull(), any()))
+            .thenThrow(IllegalArgumentException("invalid prompt"))
+
+        val result = runner.execute(baseContext)
+
+        assertTrue(result is SubagentExecutionResult.Failed)
+        val failed = result as SubagentExecutionResult.Failed
+        assertEquals("runner_error", failed.errorCode)
+        assertFalse(failed.retryable)
     }
 
     @Test
