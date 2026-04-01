@@ -190,7 +190,6 @@ briefing:
     ai:
       provider: ${BRIEFING_EXECUTION_AI_PROVIDER:google_genai}
       model: ${BRIEFING_EXECUTION_AI_MODEL:gemini-2.5-flash}
-      max-tool-calls: ${BRIEFING_EXECUTION_AI_MAX_TOOL_CALLS:8}
     retry:
       transient-delay-first-seconds: ${BRIEFING_EXECUTION_RETRY_TRANSIENT_DELAY_FIRST_SECONDS:1}
       transient-delay-second-seconds: ${BRIEFING_EXECUTION_RETRY_TRANSIENT_DELAY_SECOND_SECONDS:2}

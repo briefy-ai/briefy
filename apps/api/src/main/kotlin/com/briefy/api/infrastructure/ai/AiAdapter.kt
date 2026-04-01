@@ -1,6 +1,7 @@
 package com.briefy.api.infrastructure.ai
 
 import com.google.genai.Client
+import io.micrometer.observation.ObservationRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.model.ChatModel
@@ -26,6 +27,7 @@ import org.springframework.web.client.RestClient
 class AiAdapter(
     private val restClientBuilder: RestClient.Builder,
     private val aiCallObserver: AiCallObserver,
+    private val observationRegistry: ObservationRegistry,
     @param:Value("\${spring.ai.zhipuai.chat.api-key:}")
     private val zhipuChatApiKey: String,
     @param:Value("\${spring.ai.zhipuai.chat.base-url:https://api.z.ai/api/paas}")
@@ -46,6 +48,7 @@ class AiAdapter(
     private val logger = LoggerFactory.getLogger(AiAdapter::class.java)
     private val defaultToolExecutionExceptionProcessor = DefaultToolExecutionExceptionProcessor.builder().build()
     private val toolCallingManager = ToolCallingManager.builder()
+        .observationRegistry(observationRegistry)
         .toolExecutionExceptionProcessor { exception ->
             val cause = exception.cause
             if (cause is RetryableToolExecutionException) {
@@ -65,7 +68,7 @@ class AiAdapter(
                 ZhiPuAiChatOptions.builder().model(zhipuDefaultModel).build(),
                 toolCallingManager,
                 org.springframework.ai.retry.RetryUtils.DEFAULT_RETRY_TEMPLATE,
-                io.micrometer.observation.ObservationRegistry.NOOP
+                observationRegistry
             )
         }
         if (minimaxChatApiKey.isNotBlank()) {
@@ -188,7 +191,7 @@ class AiAdapter(
             requestSpec = ChatClient.builder(chatModel).build().prompt(),
             prompt = prompt,
             systemPrompt = systemPrompt,
-            chatOptions = buildChatOptions(normalizedProvider, model, toolCallbacks.isNotEmpty()),
+            chatOptions = buildChatOptions(normalizedProvider, model),
             toolCallbacks = toolCallbacks
         )
 
@@ -236,20 +239,16 @@ class AiAdapter(
         return requestSpec.user(prompt)
     }
 
-    private fun buildChatOptions(provider: String, model: String, hasTools: Boolean): ChatOptions {
+    private fun buildChatOptions(provider: String, model: String): ChatOptions {
         return when (provider) {
             "google_genai" -> GoogleGenAiChatOptions.builder()
                 .model(model)
-                .includeThoughts(hasTools && model.startsWith("gemini-3"))
-                .internalToolExecutionEnabled(hasTools)
                 .build()
             "minimax" -> MiniMaxChatOptions.builder()
                 .model(model)
-                .internalToolExecutionEnabled(hasTools)
                 .build()
             "zhipuai" -> ZhiPuAiChatOptions.builder()
                 .model(model)
-                .internalToolExecutionEnabled(hasTools)
                 .build()
             else -> DefaultChatOptions().apply { setModel(model) }
         }

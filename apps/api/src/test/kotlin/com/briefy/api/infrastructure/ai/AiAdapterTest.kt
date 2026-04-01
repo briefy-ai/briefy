@@ -2,7 +2,6 @@ package com.briefy.api.infrastructure.ai
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.any
@@ -18,12 +17,14 @@ import org.springframework.ai.chat.model.Generation
 import org.springframework.ai.chat.prompt.DefaultChatOptions
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions
 import org.springframework.ai.tool.ToolCallback
+import io.micrometer.observation.ObservationRegistry
 import org.springframework.web.client.RestClient
 
 class AiAdapterTest {
     private val aiAdapter = AiAdapter(
         restClientBuilder = RestClient.builder(),
         aiCallObserver = mock(),
+        observationRegistry = ObservationRegistry.NOOP,
         zhipuChatApiKey = "",
         zhipuChatBaseUrl = "https://api.z.ai/api/paas",
         zhipuDefaultModel = "glm-4.7-flash",
@@ -91,7 +92,6 @@ class AiAdapterTest {
             systemPrompt = "system prompt",
             chatOptions = GoogleGenAiChatOptions.builder()
                 .model("gemini-2.5-flash")
-                .internalToolExecutionEnabled(true)
                 .build(),
             toolCallbacks = listOf(toolCallback)
         )
@@ -103,7 +103,6 @@ class AiAdapterTest {
         verify(requestSpec).options(optionsCaptor.capture())
         verify(requestSpec).toolCallbacks(callbackCaptor.capture())
         assertEquals("gemini-2.5-flash", optionsCaptor.firstValue.model)
-        assertTrue(optionsCaptor.firstValue.internalToolExecutionEnabled == true)
         assertEquals(listOf(toolCallback), callbackCaptor.firstValue)
     }
 
