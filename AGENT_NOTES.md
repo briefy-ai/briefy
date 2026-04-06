@@ -5,6 +5,7 @@ See `AGENTS.md` → "Agent Notes File" for what belongs in each section and how 
 
 ## Mistakes Log
 
+- [2026-03-29] Added an integration assertion for default AI settings using the shared `AiSettingsControllerTest` user id -> earlier `PUT` tests had already persisted provider changes, so the later `GET` assertion observed mutated state -> when controller tests read default persisted settings, use a fresh user id per test or reset the repository state first.
 - [2026-03-31] Started two `./gradlew test` commands against `apps/api` in parallel while verifying the Langfuse root-trace I/O fix -> let the runs finish, then treated the serial reruns as authoritative -> never start overlapping Gradle test commands in this module; verify serially from the start.
 - [2026-03-26] Started two `./gradlew test` commands against `apps/api` in parallel while verifying the Supadata extraction work -> stopped the daemons and reran verification serially -> never parallelize Gradle test runs in this module, even when the commands target different test sets.
 - [2026-03-29] Overstated Spring AI Google GenAI integration constraints in `AGENT_NOTES`/investigation notes -> Spring AI `2.0.0-M2` accepts portable `ChatOptions` and the default `ChatClient` system-message path; the real Google-specific mismatch was response extraction via `content()` -> when recording library limitations, verify both the official docs and the exact versioned source before writing a “must use custom path” note.

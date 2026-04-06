@@ -21,7 +21,7 @@ repositories {
 	maven { url = uri("https://repo.spring.io/milestone") }
 }
 
-extra["springAiVersion"] = "2.0.0-M2"
+extra["springAiVersion"] = "2.0.0-M4"
 extra["awsSdkVersion"] = "2.42.13"
 
 dependencyManagement {

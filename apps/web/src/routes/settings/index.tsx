@@ -47,6 +47,15 @@ export const Route = createFileRoute('/settings/')({
   component: SettingsPage,
 })
 
+function formatAiProviderLabel(provider: AiProviderDto) {
+  const suffixes = [
+    provider.deprecated ? 'deprecated' : null,
+    !provider.configured ? 'not configured' : null,
+  ].filter(Boolean)
+
+  return suffixes.length > 0 ? `${provider.label} (${suffixes.join(', ')})` : provider.label
+}
+
 function SettingsPage() {
   const [providers, setProviders] = useState<ProviderSettingDto[]>([])
   const [ttsProviders, setTtsProviders] = useState<TtsProviderSettingDto[]>([])
@@ -92,9 +101,9 @@ function SettingsPage() {
   const [showImageGenKey, setShowImageGenKey] = useState(false)
   const [imageGenSaving, setImageGenSaving] = useState(false)
   const [imageGenRemovingKey, setImageGenRemovingKey] = useState(false)
-  const [topicProvider, setTopicProvider] = useState<AiProviderId>('zhipuai')
+  const [topicProvider, setTopicProvider] = useState<AiProviderId>('google_genai')
   const [topicModel, setTopicModel] = useState<string>('')
-  const [formatterProvider, setFormatterProvider] = useState<AiProviderId>('zhipuai')
+  const [formatterProvider, setFormatterProvider] = useState<AiProviderId>('google_genai')
   const [formatterModel, setFormatterModel] = useState<string>('')
   const [telegramStatus, setTelegramStatus] = useState<TelegramLinkStatusResponse | null>(null)
   const [telegramLinkCode, setTelegramLinkCode] = useState<string | null>(null)
@@ -1175,11 +1184,11 @@ function SettingsPage() {
                       <SelectValue placeholder="Select a provider" />
                     </SelectTrigger>
                     <SelectContent>
-                    {aiProviders.map((provider) => (
-                      <SelectItem key={provider.id} value={provider.id} disabled={!provider.configured}>
-                        {provider.label}{provider.configured ? '' : ' (not configured)'}
-                      </SelectItem>
-                    ))}
+                      {aiProviders.map((provider) => (
+                        <SelectItem key={provider.id} value={provider.id} disabled={!provider.configured}>
+                          {formatAiProviderLabel(provider)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1201,7 +1210,11 @@ function SettingsPage() {
               </CardContent>
               <CardFooter className="justify-between">
                 <div className="text-xs text-muted-foreground">
-                  {topicProviderConfig?.configured ? 'Provider configured' : 'Provider key missing on server'}
+                  {topicProviderConfig?.configured
+                    ? topicProviderConfig.deprecated
+                      ? 'Provider configured, but deprecated upstream'
+                      : 'Provider configured'
+                    : 'Provider key missing on server'}
                 </div>
                 <Button
                   type="button"
@@ -1233,7 +1246,7 @@ function SettingsPage() {
                     <SelectContent>
                     {aiProviders.map((provider) => (
                       <SelectItem key={provider.id} value={provider.id} disabled={!provider.configured}>
-                        {provider.label}{provider.configured ? '' : ' (not configured)'}
+                        {formatAiProviderLabel(provider)}
                       </SelectItem>
                     ))}
                     </SelectContent>
@@ -1257,7 +1270,11 @@ function SettingsPage() {
               </CardContent>
               <CardFooter className="justify-between">
                 <div className="text-xs text-muted-foreground">
-                  {formatterProviderConfig?.configured ? 'Provider configured' : 'Provider key missing on server'}
+                  {formatterProviderConfig?.configured
+                    ? formatterProviderConfig.deprecated
+                      ? 'Provider configured, but deprecated upstream'
+                      : 'Provider configured'
+                    : 'Provider key missing on server'}
                 </div>
                 <Button
                   type="button"
