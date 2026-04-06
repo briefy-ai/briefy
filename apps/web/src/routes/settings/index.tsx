@@ -1183,12 +1183,12 @@ function SettingsPage() {
                     <SelectTrigger>
                       <SelectValue placeholder="Select a provider" />
                     </SelectTrigger>
-                      <SelectContent>
-                    {aiProviders.map((provider) => (
-                      <SelectItem key={provider.id} value={provider.id} disabled={!provider.configured}>
-                        {formatAiProviderLabel(provider)}
-                      </SelectItem>
-                    ))}
+                    <SelectContent>
+                      {aiProviders.map((provider) => (
+                        <SelectItem key={provider.id} value={provider.id} disabled={!provider.configured}>
+                          {formatAiProviderLabel(provider)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1210,11 +1210,11 @@ function SettingsPage() {
               </CardContent>
               <CardFooter className="justify-between">
                 <div className="text-xs text-muted-foreground">
-                  {topicProviderConfig?.deprecated
-                    ? 'Provider configured, but deprecated upstream'
-                    : topicProviderConfig?.configured
-                      ? 'Provider configured'
-                      : 'Provider key missing on server'}
+                  {topicProviderConfig?.configured
+                    ? topicProviderConfig.deprecated
+                      ? 'Provider configured, but deprecated upstream'
+                      : 'Provider configured'
+                    : 'Provider key missing on server'}
                 </div>
                 <Button
                   type="button"
@@ -1270,11 +1270,11 @@ function SettingsPage() {
               </CardContent>
               <CardFooter className="justify-between">
                 <div className="text-xs text-muted-foreground">
-                  {formatterProviderConfig?.deprecated
-                    ? 'Provider configured, but deprecated upstream'
-                    : formatterProviderConfig?.configured
-                      ? 'Provider configured'
-                      : 'Provider key missing on server'}
+                  {formatterProviderConfig?.configured
+                    ? formatterProviderConfig.deprecated
+                      ? 'Provider configured, but deprecated upstream'
+                      : 'Provider configured'
+                    : 'Provider key missing on server'}
                 </div>
                 <Button
                   type="button"
