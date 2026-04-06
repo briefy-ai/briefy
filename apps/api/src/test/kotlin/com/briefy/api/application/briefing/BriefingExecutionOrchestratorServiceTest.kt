@@ -247,4 +247,150 @@ class BriefingExecutionOrchestratorServiceTest {
         // Runner called exactly once (no retry)
         verify(subagentExecutionRunner, times(1)).execute(any())
     }
+
+    @Test
+    fun `Late run still proceeds to synthesis when synthesis gate is met`() {
+        val briefing = Briefing(
+            id = briefingId, userId = userId,
+            enrichmentIntent = BriefingEnrichmentIntent.DEEP_DIVE,
+            status = BriefingStatus.GENERATING
+        )
+        val planStep = BriefingPlanStep(
+            id = UUID.randomUUID(), briefingId = briefingId,
+            personaId = null, personaName = "Market Analyst",
+            stepOrder = 1, task = "Analyze market"
+        )
+
+        val activeBriefingRun = BriefingRun(
+            id = briefingRunId, briefingId = briefingId,
+            executionFingerprint = "fp", status = BriefingRunStatus.RUNNING,
+            totalPersonas = 1, requiredForSynthesis = 1,
+            deadlineAt = farFuture
+        )
+        val refreshedBriefingRun = BriefingRun(
+            id = briefingRunId, briefingId = briefingId,
+            executionFingerprint = "fp", status = BriefingRunStatus.RUNNING,
+            totalPersonas = 1, requiredForSynthesis = 1,
+            deadlineAt = Instant.now().minusSeconds(5)
+        )
+        val succeededSubagentRun = SubagentRun(
+            id = subagentRunId, briefingRunId = briefingRunId, briefingId = briefingId,
+            personaKey = "step-1", status = SubagentRunStatus.SUCCEEDED,
+            attempt = 1, maxAttempts = 3,
+            curatedText = "Analysis output"
+        )
+        val synthesisRun = SynthesisRun(
+            id = synthesisRunId, briefingRunId = briefingRunId,
+            status = SynthesisRunStatus.NOT_STARTED
+        )
+
+        whenever(briefingRunRepository.findTopByBriefingIdAndStatusInOrderByCreatedAtDesc(eq(briefingId), any()))
+            .thenReturn(activeBriefingRun)
+        whenever(subagentRunRepository.findByBriefingRunIdOrderByCreatedAtAsc(briefingRunId))
+            .thenReturn(listOf(succeededSubagentRun), listOf(succeededSubagentRun))
+        whenever(synthesisRunRepository.findByBriefingRunId(briefingRunId))
+            .thenReturn(synthesisRun, synthesisRun)
+        whenever(briefingRunRepository.findById(briefingRunId))
+            .thenReturn(Optional.of(refreshedBriefingRun))
+        whenever(synthesisExecutionRunner.run(any())).thenReturn(
+            BriefingGenerationResult(
+                markdownBody = "# Synthesis",
+                references = emptyList(),
+                conflictHighlights = emptyList()
+            )
+        )
+
+        val outcome = service.executeApprovedBriefing(briefing, emptyList(), listOf(planStep))
+
+        assertEquals(ExecutionOrchestrationOutcome.Status.SUCCEEDED, outcome.status)
+        verify(synthesisExecutionRunner).run(any())
+        verify(executionStateTransitionService).startSynthesisRun(
+            synthesisRunId = eq(synthesisRunId),
+            eventId = any(),
+            occurredAt = any()
+        )
+        verify(executionStateTransitionService).markSynthesisCompleted(
+            synthesisRunId = eq(synthesisRunId),
+            eventId = any(),
+            output = eq("# Synthesis"),
+            occurredAt = any()
+        )
+        verify(executionStateTransitionService).markBriefingRunSucceeded(
+            runId = eq(briefingRunId),
+            eventId = any(),
+            occurredAt = any()
+        )
+        verify(executionStateTransitionService, never()).markBriefingRunTimedOut(
+            any(),
+            any(),
+            anyOrNull(),
+            any()
+        )
+        verify(executionStateTransitionService, never()).cancelSynthesisRun(any(), any(), any())
+        verify(executionStateTransitionService, never()).markSynthesisGateFailedSkipped(any(), any(), any(), any(), any())
+    }
+
+    @Test
+    fun `Late run fails with global timeout when synthesis gate is not met`() {
+        val briefing = Briefing(
+            id = briefingId, userId = userId,
+            enrichmentIntent = BriefingEnrichmentIntent.DEEP_DIVE,
+            status = BriefingStatus.GENERATING
+        )
+        val planStep = BriefingPlanStep(
+            id = UUID.randomUUID(), briefingId = briefingId,
+            personaId = null, personaName = "Market Analyst",
+            stepOrder = 1, task = "Analyze market"
+        )
+
+        val activeBriefingRun = BriefingRun(
+            id = briefingRunId, briefingId = briefingId,
+            executionFingerprint = "fp", status = BriefingRunStatus.RUNNING,
+            totalPersonas = 1, requiredForSynthesis = 1,
+            deadlineAt = farFuture
+        )
+        val refreshedBriefingRun = BriefingRun(
+            id = briefingRunId, briefingId = briefingId,
+            executionFingerprint = "fp", status = BriefingRunStatus.RUNNING,
+            totalPersonas = 1, requiredForSynthesis = 1,
+            deadlineAt = Instant.now().minusSeconds(5)
+        )
+        val skippedSubagentRun = SubagentRun(
+            id = subagentRunId, briefingRunId = briefingRunId, briefingId = briefingId,
+            personaKey = "step-1", status = SubagentRunStatus.SKIPPED_NO_OUTPUT,
+            attempt = 3, maxAttempts = 3
+        )
+        val synthesisRun = SynthesisRun(
+            id = synthesisRunId, briefingRunId = briefingRunId,
+            status = SynthesisRunStatus.NOT_STARTED
+        )
+
+        whenever(briefingRunRepository.findTopByBriefingIdAndStatusInOrderByCreatedAtDesc(eq(briefingId), any()))
+            .thenReturn(activeBriefingRun)
+        whenever(subagentRunRepository.findByBriefingRunIdOrderByCreatedAtAsc(briefingRunId))
+            .thenReturn(listOf(skippedSubagentRun), listOf(skippedSubagentRun))
+        whenever(synthesisRunRepository.findByBriefingRunId(briefingRunId))
+            .thenReturn(synthesisRun, synthesisRun)
+        whenever(briefingRunRepository.findById(briefingRunId))
+            .thenReturn(Optional.of(refreshedBriefingRun))
+
+        val outcome = service.executeApprovedBriefing(briefing, emptyList(), listOf(planStep))
+
+        assertEquals(ExecutionOrchestrationOutcome.Status.FAILED, outcome.status)
+        assertEquals(BriefingRunFailureCode.GLOBAL_TIMEOUT, outcome.failureCode)
+        verify(executionStateTransitionService).markBriefingRunTimedOut(
+            runId = eq(briefingRunId),
+            eventId = any(),
+            failureMessage = eq("Execution run exceeded global timeout"),
+            occurredAt = any()
+        )
+        verify(executionStateTransitionService).cancelSynthesisRun(
+            synthesisRunId = eq(synthesisRunId),
+            eventId = any(),
+            occurredAt = any()
+        )
+        verify(synthesisExecutionRunner, never()).run(any())
+        verify(executionStateTransitionService, never()).startSynthesisRun(any(), any(), any())
+        verify(executionStateTransitionService, never()).markSynthesisGateFailedSkipped(any(), any(), any(), any(), any())
+    }
 }
