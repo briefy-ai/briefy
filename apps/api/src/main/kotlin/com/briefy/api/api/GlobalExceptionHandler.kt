@@ -223,6 +223,7 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(UnauthorizedException::class)
     fun handleUnauthorized(ex: UnauthorizedException): ResponseEntity<ErrorResponse> {
+        logger.warn("[exception] Unauthorized: {}", ex.message)
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
             .body(ErrorResponse(
                 status = HttpStatus.UNAUTHORIZED.value(),

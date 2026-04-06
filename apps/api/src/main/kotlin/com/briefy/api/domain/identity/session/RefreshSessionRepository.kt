@@ -11,6 +11,7 @@ import java.util.UUID
 @Repository
 interface RefreshSessionRepository : JpaRepository<RefreshSession, UUID> {
     fun findByTokenHashAndRevokedAtIsNull(tokenHash: String): RefreshSession?
+    fun findByTokenHash(tokenHash: String): RefreshSession?
 
     @Modifying
     @Query(
