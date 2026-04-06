@@ -27,6 +27,7 @@ export function createSystemTextMessage(payload: ChatMessagePayloadByType['syste
   return {
     id: messageId('system_text'),
     type: 'system_text',
+    role: 'system',
     direction: 'outbound',
     createdAt: nowIso(),
     payload,
@@ -37,6 +38,7 @@ export function createUserTextMessage(text: string): ChatMessage {
   return {
     id: messageId('user_text'),
     type: 'user_text',
+    role: 'user',
     direction: 'inbound',
     createdAt: nowIso(),
     payload: { text },
@@ -51,6 +53,7 @@ export function createUserActionMessage(
   return {
     id: messageId('user_action'),
     type: 'user_action',
+    role: 'user',
     direction: 'inbound',
     createdAt: nowIso(),
     payload: {
@@ -69,6 +72,7 @@ export function createThreadBootstrapMessages(context: ChatSourceContext): ChatM
     {
       id: messageId('intent_selector'),
       type: 'intent_selector',
+      role: 'system',
       direction: 'outbound',
       createdAt: nowIso(),
       payload: {
@@ -221,6 +225,7 @@ export function mergeBriefingMessages(
     const planMessage: ChatMessage = {
       id: planPreviewId,
       type: 'plan_preview',
+      role: 'system',
       direction: 'outbound',
       createdAt: briefing.plannedAt ?? briefing.updatedAt,
       payload: toPlanPreviewPayload(briefing),
@@ -235,6 +240,7 @@ export function mergeBriefingMessages(
     const stepProgressMessage: ChatMessage = {
       id: stepProgressId,
       type: 'step_progress',
+      role: 'system',
       direction: 'outbound',
       createdAt: briefing.updatedAt,
       mutable: true,
@@ -249,6 +255,7 @@ export function mergeBriefingMessages(
     const resultMessage: ChatMessage = {
       id: `briefing_result:${briefing.id}`,
       type: 'briefing_result',
+      role: 'system',
       direction: 'outbound',
       createdAt: briefing.generationCompletedAt ?? briefing.updatedAt,
       payload: toBriefingResultPayload(briefing),
@@ -262,6 +269,7 @@ export function mergeBriefingMessages(
     const errorMessage: ChatMessage = {
       id: `error:${briefing.id}`,
       type: 'error',
+      role: 'system',
       direction: 'outbound',
       createdAt: briefing.failedAt ?? briefing.updatedAt,
       payload: toErrorPayload(briefing),

@@ -7,6 +7,7 @@ import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import org.slf4j.MDC
 import org.springframework.stereotype.Component
+import reactor.core.publisher.Flux
 
 @Component
 class AiCallObserver(
@@ -65,6 +66,62 @@ class AiCallObserver(
                 span.setAttribute("ai.latency_ms", latencyMillis)
                 span.end()
             }
+        }
+    }
+
+    fun observeStream(
+        provider: String,
+        model: String,
+        useCase: String?,
+        prompt: String,
+        systemPrompt: String?,
+        operation: () -> Flux<String>
+    ): Flux<String> {
+        if (!properties.enabled) {
+            return operation()
+        }
+
+        return Flux.defer {
+            val span = tracer.spanBuilder("ai.completion")
+                .setSpanKind(SpanKind.INTERNAL)
+                .startSpan()
+            val startedAt = System.nanoTime()
+            val tags = buildTags(useCase, provider)
+            val userId = resolveUserId()
+            val outputBuffer = StringBuilder()
+
+            span.setAttribute("ai.provider", provider)
+            span.setAttribute("ai.model", model)
+            span.setAttribute("ai.use_case", useCase.orEmpty())
+            span.setAttribute("ai.success", false)
+            span.setAttribute("gen_ai.request.model", model)
+            span.setAttribute("gen_ai.system", provider)
+            span.setAttribute(AttributeKey.stringArrayKey("langfuse.tags"), tags)
+            if (userId != null) {
+                span.setAttribute("langfuse.user.id", userId)
+            }
+
+            captureInput(span, prompt, systemPrompt)
+
+            operation()
+                .doOnNext { chunk -> outputBuffer.append(chunk) }
+                .doOnComplete {
+                    span.setStatus(StatusCode.OK)
+                    span.setAttribute("ai.success", true)
+                    span.setAttribute("ai.output.length", outputBuffer.length.toLong())
+                    captureOutput(span, outputBuffer.toString())
+                }
+                .doOnError { error ->
+                    val errorCategory = AiErrorCategory.from(error)
+                    span.recordException(error)
+                    span.setStatus(StatusCode.ERROR, errorCategory.name.lowercase())
+                    span.setAttribute("ai.error.category", errorCategory.name.lowercase())
+                }
+                .doFinally {
+                    val latencyMillis = (System.nanoTime() - startedAt) / 1_000_000
+                    span.setAttribute("ai.latency_ms", latencyMillis)
+                    span.end()
+                }
         }
     }
 

@@ -3,6 +3,7 @@ import type { ChatMessage, ChatMessageType } from '../types'
 import { useChatMessageHandlers } from './ChatMessageHandlers'
 import { UnknownMessageFallback } from './UnknownMessageFallback'
 import type { MessageComponentProps } from './messageTypes'
+import { AssistantTextMessage } from './messages/AssistantTextMessage'
 import { BriefingResultMessage } from './messages/BriefingResultMessage'
 import { ErrorMessage } from './messages/ErrorMessage'
 import { IntentSelectorMessage } from './messages/IntentSelectorMessage'
@@ -16,6 +17,7 @@ type RendererComponent = ComponentType<MessageComponentProps<ChatMessage>>
 
 const messageRegistry: Partial<Record<ChatMessageType, RendererComponent>> = {
   system_text: SystemTextMessage as RendererComponent,
+  assistant_text: AssistantTextMessage as RendererComponent,
   user_text: UserTextMessage as RendererComponent,
   user_action: UserActionMessage as RendererComponent,
   intent_selector: IntentSelectorMessage as RendererComponent,

@@ -218,3 +218,8 @@ cover-image:
     enabled: ${COVER_IMAGE_PROMPT_CRAFTING_ENABLED:true}
     provider: ${COVER_IMAGE_PROMPT_CRAFTING_PROVIDER:google_genai}
     model: ${COVER_IMAGE_PROMPT_CRAFTING_MODEL:gemini-2.5-flash}
+
+chat:
+  conversation:
+    provider: ${CHAT_CONVERSATION_PROVIDER:google_genai}
+    model: ${CHAT_CONVERSATION_MODEL:gemini-2.5-flash}

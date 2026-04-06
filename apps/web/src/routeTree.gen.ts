@@ -14,6 +14,7 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ContentGenerationRouteImport } from './routes/content-generation'
 import { Route as ContentConsumptionRouteImport } from './routes/content-consumption'
+import { Route as ChatRouteImport } from './routes/chat'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TopicsIndexRouteImport } from './routes/topics/index'
 import { Route as SourcesIndexRouteImport } from './routes/sources/index'
@@ -47,6 +48,11 @@ const ContentGenerationRoute = ContentGenerationRouteImport.update({
 const ContentConsumptionRoute = ContentConsumptionRouteImport.update({
   id: '/content-consumption',
   path: '/content-consumption',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatRoute = ChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -97,6 +103,7 @@ const BriefingsBriefingIdRoute = BriefingsBriefingIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
   '/content-consumption': typeof ContentConsumptionRoute
   '/content-generation': typeof ContentGenerationRoute
   '/login': typeof LoginRoute
@@ -113,6 +120,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
   '/content-consumption': typeof ContentConsumptionRoute
   '/content-generation': typeof ContentGenerationRoute
   '/login': typeof LoginRoute
@@ -130,6 +138,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/chat': typeof ChatRoute
   '/content-consumption': typeof ContentConsumptionRoute
   '/content-generation': typeof ContentGenerationRoute
   '/login': typeof LoginRoute
@@ -148,6 +157,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/chat'
     | '/content-consumption'
     | '/content-generation'
     | '/login'
@@ -164,6 +174,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/chat'
     | '/content-consumption'
     | '/content-generation'
     | '/login'
@@ -180,6 +191,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/chat'
     | '/content-consumption'
     | '/content-generation'
     | '/login'
@@ -197,6 +209,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ChatRoute: typeof ChatRoute
   ContentConsumptionRoute: typeof ContentConsumptionRoute
   ContentGenerationRoute: typeof ContentGenerationRoute
   LoginRoute: typeof LoginRoute
@@ -247,6 +260,13 @@ declare module '@tanstack/react-router' {
       path: '/content-consumption'
       fullPath: '/content-consumption'
       preLoaderRoute: typeof ContentConsumptionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat': {
+      id: '/chat'
+      path: '/chat'
+      fullPath: '/chat'
+      preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -317,6 +337,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ChatRoute: ChatRoute,
   ContentConsumptionRoute: ContentConsumptionRoute,
   ContentGenerationRoute: ContentGenerationRoute,
   LoginRoute: LoginRoute,

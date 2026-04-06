@@ -22,6 +22,7 @@ import org.springframework.ai.zhipuai.api.ZhiPuAiApi
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
+import reactor.core.publisher.Flux
 
 @Component
 class AiAdapter(
@@ -132,6 +133,44 @@ class AiAdapter(
         )
     }
 
+    fun stream(
+        provider: String,
+        model: String,
+        prompt: String,
+        systemPrompt: String? = null,
+        useCase: String? = null
+    ): Flux<String> {
+        require(prompt.isNotBlank()) { "prompt must not be blank" }
+        require(provider.isNotBlank()) { "provider must not be blank" }
+        require(model.isNotBlank()) { "model must not be blank" }
+
+        logger.info(
+            "[ai] Starting completion stream provider={} model={} promptLength={} hasSystemPrompt={}",
+            provider,
+            model,
+            prompt.length,
+            !systemPrompt.isNullOrBlank()
+        )
+
+        return aiCallObserver.observeStream(
+            provider = provider,
+            model = model,
+            useCase = useCase,
+            prompt = prompt,
+            systemPrompt = systemPrompt
+        ) {
+            when (provider.trim().lowercase()) {
+                "zhipuai", "minimax", "google_genai" -> streamWithSpringChatModel(
+                    provider = provider,
+                    prompt = prompt,
+                    systemPrompt = systemPrompt,
+                    model = model
+                )
+                else -> throw IllegalArgumentException("Unsupported AI provider '$provider'")
+            }
+        }
+    }
+
     private fun completeInternal(
         provider: String,
         model: String,
@@ -203,6 +242,39 @@ class AiAdapter(
             }
         } else {
             extractSpringResponse(normalizedProvider, promptSpec.call())
+        }
+    }
+
+    private fun streamWithSpringChatModel(
+        provider: String,
+        prompt: String,
+        systemPrompt: String?,
+        model: String
+    ): Flux<String> {
+        val normalizedProvider = provider.trim().lowercase()
+        val chatModel = springChatModels[normalizedProvider]
+            ?: throw IllegalStateException(
+                "Spring AI chat model is not configured for provider '$provider'. " +
+                    "Set the matching provider API key."
+            )
+
+        val promptSpec = buildPromptSpec(
+            requestSpec = ChatClient.builder(chatModel).build().prompt(),
+            prompt = prompt,
+            systemPrompt = systemPrompt,
+            chatOptions = buildChatOptions(normalizedProvider, model)
+        )
+
+        val stream = promptSpec.stream().content()
+            .filter { !it.isNullOrEmpty() }
+            .map { it }
+
+        return if (normalizedProvider == "google_genai") {
+            stream.onErrorMap(RuntimeException::class.java) { error ->
+                GoogleGenAiSpringSupport.unwrapFailure(error)
+            }
+        } else {
+            stream
         }
     }
 

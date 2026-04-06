@@ -151,6 +151,70 @@ export interface ApiError {
   timestamp: string
 }
 
+export type ChatRole = 'user' | 'assistant' | 'system'
+export type ChatPersistedMessageType = 'user_text' | 'assistant_text' | 'system_text'
+export type ChatContentReferenceType = 'source' | 'briefing'
+
+export interface ChatContentReferenceDto {
+  id: string
+  type: ChatContentReferenceType
+}
+
+export interface ChatMessageDto {
+  id: string
+  role: ChatRole
+  type: ChatPersistedMessageType
+  content: string | null
+  contentReferences: ChatContentReferenceDto[]
+  entityType: ChatContentReferenceType | null
+  entityId: string | null
+  createdAt: string
+}
+
+export interface ChatConversationResponse {
+  id: string
+  title: string | null
+  messages: ChatMessageDto[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ChatConversationSummaryResponse {
+  id: string
+  title: string | null
+  updatedAt: string
+  lastMessagePreview: string | null
+}
+
+export interface ChatConversationPageResponse {
+  items: ChatConversationSummaryResponse[]
+  nextCursor: string | null
+  hasMore: boolean
+  limit: number
+}
+
+export interface SendChatMessageRequest {
+  text: string
+  contentReferences: ChatContentReferenceDto[]
+}
+
+export type ChatStreamEvent =
+  | {
+      type: 'token'
+      conversationId: string
+      content: string
+    }
+  | {
+      type: 'message'
+      conversationId: string
+      message: ChatMessageDto
+    }
+  | {
+      type: 'error'
+      conversationId: string | null
+      message: string
+    }
+
 export interface CreateSourceRequest {
   url: string
 }
