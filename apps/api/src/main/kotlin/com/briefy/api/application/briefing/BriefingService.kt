@@ -23,10 +23,16 @@ class BriefingService(
     private val sourceRepository: SourceRepository,
     private val briefingPlannerService: BriefingPlannerService,
     private val briefingGenerationJobService: BriefingGenerationJobService,
+    private val briefingGenerationJobRepository: BriefingGenerationJobRepository,
+    private val runEventRepository: RunEventRepository,
+    private val subagentRunRepository: SubagentRunRepository,
+    private val synthesisRunRepository: SynthesisRunRepository,
     private val currentUserProvider: CurrentUserProvider,
     private val idGenerator: IdGenerator,
     private val objectMapper: ObjectMapper
 ) {
+    private val DEFAULT_BRIEFING_LIST_LIMIT = 20
+    private val MAX_BRIEFING_LIST_LIMIT = 100
 
     @Transactional
     fun createBriefing(command: CreateBriefingCommand): BriefingResponse {
@@ -55,6 +61,7 @@ class BriefingService(
         briefingSourceRepository.saveAll(links)
 
         val planDrafts = briefingPlannerService.buildPlan(
+            briefingId = briefing.id,
             userId = userId,
             enrichmentIntent = intent.name,
             sources = sources
@@ -79,6 +86,53 @@ class BriefingService(
         briefingRepository.save(briefing)
 
         return toResponse(briefing, links, planSteps, emptyList())
+    }
+
+    @Transactional(readOnly = true)
+    fun listBriefingsSummary(status: BriefingStatus?, limit: Int?, cursor: String?): BriefingPageResponse {
+        val userId = currentUserProvider.requireUserId()
+        val normalizedLimit = (limit ?: DEFAULT_BRIEFING_LIST_LIMIT).coerceIn(1, MAX_BRIEFING_LIST_LIMIT)
+        val decodedCursor = cursor?.let { BriefingListCursorCodec.decode(it) }
+
+        val briefings = briefingRepository.findBriefingsPage(
+            userId = userId,
+            status = status,
+            cursorCreatedAt = decodedCursor?.createdAt,
+            cursorId = decodedCursor?.id,
+            limit = normalizedLimit
+        )
+
+        val hasMore = briefings.size > normalizedLimit
+        val pageItems = if (hasMore) briefings.dropLast(1) else briefings
+
+        val nextCursor = if (hasMore && pageItems.isNotEmpty()) {
+            BriefingListCursorCodec.encode(BriefingListCursor(
+                createdAt = pageItems.last().createdAt,
+                id = pageItems.last().id
+            ))
+        } else {
+            null
+        }
+
+        val items = pageItems.map { briefing ->
+            BriefingSummaryResponse(
+                id = briefing.id,
+                status = briefing.status.name.lowercase(),
+                enrichmentIntent = briefing.enrichmentIntent.name.lowercase(),
+                title = briefing.title,
+                sourceCount = briefingSourceRepository.countByBriefingId(briefing.id),
+                contentSnippet = briefing.contentMarkdown?.take(200),
+                createdAt = briefing.createdAt,
+                updatedAt = briefing.updatedAt
+            )
+        }
+
+        return BriefingPageResponse(
+            items = items,
+            nextCursor = nextCursor,
+            hasMore = hasMore,
+            limit = normalizedLimit
+        )
     }
 
     @Transactional(readOnly = true)
@@ -174,6 +228,7 @@ class BriefingService(
         briefingRepository.save(briefing)
 
         val planDrafts = briefingPlannerService.buildPlan(
+            briefingId = briefing.id,
             userId = userId,
             enrichmentIntent = briefing.enrichmentIntent.name,
             sources = sources
@@ -194,6 +249,23 @@ class BriefingService(
         briefingPlanStepRepository.saveAll(planSteps)
 
         return toResponse(briefing, links, planSteps, emptyList())
+    }
+
+    @Transactional
+    fun deleteBriefing(id: UUID) {
+        val userId = currentUserProvider.requireUserId()
+        briefingRepository.findByIdAndUserId(id, userId)
+            ?: throw BriefingNotFoundException(id)
+
+        runEventRepository.deleteByBriefingId(id)
+        subagentRunRepository.deleteByBriefingId(id)
+        synthesisRunRepository.deleteByBriefingId(id)
+        briefingRunRepository.deleteByBriefingId(id)
+        briefingPlanStepRepository.deleteByBriefingId(id)
+        briefingReferenceRepository.deleteByBriefingId(id)
+        briefingSourceRepository.deleteByBriefingId(id)
+        briefingGenerationJobRepository.deleteByBriefingId(id)
+        briefingRepository.deleteById(id)
     }
 
     private fun loadAndValidateSources(userId: UUID, sourceIds: List<UUID>): List<Source> {
@@ -244,6 +316,7 @@ class BriefingService(
             executionRunId = latestExecutionRunId,
             status = briefing.status.name.lowercase(),
             enrichmentIntent = briefing.enrichmentIntent.name.lowercase(),
+            title = briefing.title,
             sourceIds = links.map { it.sourceId },
             plan = planSteps.map { step ->
                 BriefingPlanStepResponse(

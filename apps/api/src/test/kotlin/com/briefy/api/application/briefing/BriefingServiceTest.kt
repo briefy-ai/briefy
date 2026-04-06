@@ -31,6 +31,10 @@ class BriefingServiceTest {
     private val sourceRepository: SourceRepository = mock()
     private val briefingPlannerService: BriefingPlannerService = mock()
     private val briefingGenerationJobService: BriefingGenerationJobService = mock()
+    private val briefingGenerationJobRepository: BriefingGenerationJobRepository = mock()
+    private val runEventRepository: RunEventRepository = mock()
+    private val subagentRunRepository: SubagentRunRepository = mock()
+    private val synthesisRunRepository: SynthesisRunRepository = mock()
     private val currentUserProvider: CurrentUserProvider = mock()
     private val idGenerator: IdGenerator = mock()
     private val objectMapper = ObjectMapper()
@@ -44,6 +48,10 @@ class BriefingServiceTest {
         sourceRepository = sourceRepository,
         briefingPlannerService = briefingPlannerService,
         briefingGenerationJobService = briefingGenerationJobService,
+        briefingGenerationJobRepository = briefingGenerationJobRepository,
+        runEventRepository = runEventRepository,
+        subagentRunRepository = subagentRunRepository,
+        synthesisRunRepository = synthesisRunRepository,
         currentUserProvider = currentUserProvider,
         idGenerator = idGenerator,
         objectMapper = objectMapper
@@ -75,9 +83,10 @@ class BriefingServiceTest {
         whenever(briefingPlanStepRepository.saveAll(any<List<BriefingPlanStep>>())).thenAnswer { it.arguments[0] }
         whenever(
             briefingPlannerService.buildPlan(
-                userId = userId,
-                enrichmentIntent = "DEEP_DIVE",
-                sources = listOf(source)
+                any(),
+                eq(userId),
+                eq("DEEP_DIVE"),
+                eq(listOf(source))
             )
         ).thenReturn(
             listOf(
@@ -134,9 +143,10 @@ class BriefingServiceTest {
         whenever(idGenerator.newId()).thenReturn(UUID.randomUUID())
         whenever(
             briefingPlannerService.buildPlan(
-                userId = userId,
-                enrichmentIntent = "TRUTH_GROUNDING",
-                sources = listOf(source)
+                eq(briefing.id),
+                eq(userId),
+                eq("TRUTH_GROUNDING"),
+                eq(listOf(source))
             )
         ).thenReturn(
             listOf(

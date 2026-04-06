@@ -1,12 +1,28 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowLeft, ExternalLink, RefreshCw } from 'lucide-react'
+import { ArrowLeft, ExternalLink, MoreHorizontal, RefreshCw, Trash2 } from 'lucide-react'
 import { MarkdownContent } from '@/components/content/MarkdownContent'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getBriefing } from '@/lib/api/briefings'
+import { deleteBriefing, getBriefing } from '@/lib/api/briefings'
 import { extractErrorMessage } from '@/lib/api/errorMessage'
 import type { BriefingResponse } from '@/lib/api/types'
 import { requireAuthWithOnboarding } from '@/lib/auth/requireAuth'
@@ -23,10 +39,13 @@ export const Route = createFileRoute('/briefings/$briefingId')({
 })
 
 function BriefingDetailPage() {
+  const navigate = useNavigate()
   const { briefingId } = Route.useParams()
   const [briefing, setBriefing] = useState<BriefingResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   const fetchBriefing = useCallback(async () => {
     try {
@@ -44,6 +63,17 @@ function BriefingDetailPage() {
   useEffect(() => {
     void fetchBriefing()
   }, [fetchBriefing])
+
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await deleteBriefing(briefingId)
+      await navigate({ to: '/library', search: { tab: 'briefings' } })
+    } catch (e) {
+      setError(extractErrorMessage(e, 'Failed to delete briefing'))
+      setDeleting(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -86,15 +116,33 @@ function BriefingDetailPage() {
       <BackLink />
 
       <header className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="capitalize">
-            {briefing.status}
-          </Badge>
-          <Badge variant="secondary" className="capitalize">
-            {briefing.enrichmentIntent.replace('_', ' ')}
-          </Badge>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="capitalize">
+              {briefing.status}
+            </Badge>
+            <Badge variant="secondary" className="capitalize">
+              {briefing.enrichmentIntent.replace('_', ' ')}
+            </Badge>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8" aria-label="Briefing actions">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setConfirmDeleteOpen(true)}
+              >
+                <Trash2 className="mr-2 size-4" />
+                Delete briefing
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Briefing {briefing.id.slice(0, 8)}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{briefing.title ?? `Briefing ${briefing.id.slice(0, 8)}`}</h1>
         <p className="text-xs text-muted-foreground">
           Updated {new Date(briefing.updatedAt).toLocaleString('en-US')}
         </p>
@@ -146,6 +194,27 @@ function BriefingDetailPage() {
           </ol>
         )}
       </section>
+
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete briefing?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the briefing and all its content. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={deleting}
+              onClick={() => void handleDelete()}
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
@@ -153,7 +222,8 @@ function BriefingDetailPage() {
 function BackLink() {
   return (
     <Link
-      to="/sources"
+      to="/library"
+      search={{ tab: 'sources' }}
       className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
       aria-label="Back to Library"
     >

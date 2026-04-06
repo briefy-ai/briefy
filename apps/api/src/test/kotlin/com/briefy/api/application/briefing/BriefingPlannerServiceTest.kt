@@ -8,7 +8,15 @@ import com.briefy.api.domain.knowledgegraph.source.Metadata
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
 import com.briefy.api.domain.knowledgegraph.source.Url
+import io.opentelemetry.api.OpenTelemetry
+import io.opentelemetry.api.common.AttributeKey
+import io.opentelemetry.api.trace.StatusCode
+import io.opentelemetry.sdk.OpenTelemetrySdk
+import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter
+import io.opentelemetry.sdk.trace.SdkTracerProvider
+import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
@@ -26,13 +34,14 @@ class BriefingPlannerServiceTest {
     @Test
     fun `buildPlan returns deterministic fallback when no personas exist`() {
         val service = createService(aiPlanningEnabled = true)
+        val briefingId = UUID.randomUUID()
         val userId = UUID.randomUUID()
         whenever(agentPersonaRepository.findForUseCase(userId, AgentPersonaUseCase.ENRICHMENT)).thenReturn(emptyList())
         whenever(deterministicBriefingPlanGenerator.generate(any(), any(), any())).thenReturn(
             listOf(BriefingPlanDraft(null, "Claim Auditor", "Fallback task"))
         )
 
-        val plan = service.buildPlan(userId, "TRUTH_GROUNDING", listOf(createActiveSource(userId, "Source A")))
+        val plan = service.buildPlan(briefingId, userId, "TRUTH_GROUNDING", listOf(createActiveSource(userId, "Source A")))
 
         assertEquals(1, plan.size)
         assertEquals("Claim Auditor", plan[0].personaName)
@@ -57,6 +66,7 @@ class BriefingPlannerServiceTest {
         )
 
         val plan = service.buildPlan(
+            UUID.randomUUID(),
             userId,
             "DEEP_DIVE",
             listOf(createActiveSource(userId, "Architecture Notes"))
@@ -70,6 +80,7 @@ class BriefingPlannerServiceTest {
     @Test
     fun `buildPlan falls back to deterministic when ai generation fails`() {
         val service = createService(aiPlanningEnabled = true)
+        val briefingId = UUID.randomUUID()
         val userId = UUID.randomUUID()
         val personas = listOf(createPersona("The Skeptic"))
         whenever(agentPersonaRepository.findForUseCase(userId, AgentPersonaUseCase.ENRICHMENT)).thenReturn(personas)
@@ -78,7 +89,7 @@ class BriefingPlannerServiceTest {
             listOf(BriefingPlanDraft(personas[0].id, personas[0].name, "Deterministic fallback task"))
         )
 
-        val plan = service.buildPlan(userId, "DEEP_DIVE", listOf(createActiveSource(userId, "Architecture Notes")))
+        val plan = service.buildPlan(briefingId, userId, "DEEP_DIVE", listOf(createActiveSource(userId, "Architecture Notes")))
 
         assertEquals(1, plan.size)
         assertEquals("The Skeptic", plan[0].personaName)
@@ -88,6 +99,7 @@ class BriefingPlannerServiceTest {
     @Test
     fun `buildPlan uses deterministic generator when ai planning is disabled`() {
         val service = createService(aiPlanningEnabled = false)
+        val briefingId = UUID.randomUUID()
         val userId = UUID.randomUUID()
         val personas = listOf(createPersona("The Skeptic"))
         whenever(agentPersonaRepository.findForUseCase(userId, AgentPersonaUseCase.ENRICHMENT)).thenReturn(personas)
@@ -95,17 +107,49 @@ class BriefingPlannerServiceTest {
             listOf(BriefingPlanDraft(personas[0].id, personas[0].name, "Deterministic task"))
         )
 
-        val plan = service.buildPlan(userId, "DEEP_DIVE", listOf(createActiveSource(userId, "Architecture Notes")))
+        val plan = service.buildPlan(briefingId, userId, "DEEP_DIVE", listOf(createActiveSource(userId, "Architecture Notes")))
 
         assertEquals(1, plan.size)
         verify(aiBriefingPlanGenerator, never()).generate(any(), any(), any())
     }
 
-    private fun createService(aiPlanningEnabled: Boolean): BriefingPlannerService {
+    @Test
+    fun `buildPlan creates separate root planning span with fallback metadata`() {
+        val spanExporter = InMemorySpanExporter.create()
+        val tracerProvider = SdkTracerProvider.builder()
+            .addSpanProcessor(SimpleSpanProcessor.create(spanExporter))
+            .build()
+        val tracer = OpenTelemetrySdk.builder().setTracerProvider(tracerProvider).build().getTracer("test")
+        val service = createService(aiPlanningEnabled = true, tracer = tracer)
+        val briefingId = UUID.randomUUID()
+        val userId = UUID.randomUUID()
+        val personas = listOf(createPersona("The Skeptic"))
+        whenever(agentPersonaRepository.findForUseCase(userId, AgentPersonaUseCase.ENRICHMENT)).thenReturn(personas)
+        whenever(aiBriefingPlanGenerator.generate(any(), any(), any())).thenThrow(IllegalStateException("invalid plan"))
+        whenever(deterministicBriefingPlanGenerator.generate(any(), any(), any())).thenReturn(
+            listOf(BriefingPlanDraft(personas[0].id, personas[0].name, "Deterministic fallback task"))
+        )
+
+        service.buildPlan(briefingId, userId, "DEEP_DIVE", listOf(createActiveSource(userId, "Architecture Notes")))
+
+        val span = spanExporter.finishedSpanItems.single()
+        assertEquals("briefing.planning", span.name)
+        assertFalse(span.parentSpanContext.isValid)
+        assertEquals(StatusCode.OK, span.status.statusCode)
+        assertEquals(briefingId.toString(), span.attributes.get(AttributeKey.stringKey("briefing.id")))
+        assertEquals(userId.toString(), span.attributes.get(AttributeKey.stringKey("langfuse.user.id")))
+        assertEquals("deterministic_fallback_after_ai_error", span.attributes.get(AttributeKey.stringKey("planning.strategy")))
+    }
+
+    private fun createService(
+        aiPlanningEnabled: Boolean,
+        tracer: io.opentelemetry.api.trace.Tracer = OpenTelemetry.noop().getTracer("test")
+    ): BriefingPlannerService {
         return BriefingPlannerService(
             agentPersonaRepository = agentPersonaRepository,
             aiBriefingPlanGenerator = aiBriefingPlanGenerator,
             deterministicBriefingPlanGenerator = deterministicBriefingPlanGenerator,
+            tracer = tracer,
             aiPlanningEnabled = aiPlanningEnabled
         )
     }

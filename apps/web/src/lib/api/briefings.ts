@@ -1,10 +1,26 @@
-import { apiGet, apiPost } from './client'
+import { apiDelete, apiGet, apiPost } from './client'
 import type {
+  BriefingPageResponse,
   BriefingResponse,
   BriefingRunEventsPageResponse,
   BriefingRunSummaryResponse,
   CreateBriefingRequest,
 } from './types'
+
+interface ListBriefingsParams {
+  status?: string
+  limit?: number
+  cursor?: string
+}
+
+export async function listBriefings(params: ListBriefingsParams = {}): Promise<BriefingPageResponse> {
+  const searchParams = new URLSearchParams()
+  if (params.status) searchParams.set('status', params.status)
+  if (params.limit) searchParams.set('limit', String(params.limit))
+  if (params.cursor) searchParams.set('cursor', params.cursor)
+  const query = searchParams.toString()
+  return apiGet<BriefingPageResponse>(query ? `/api/briefings?${query}` : '/api/briefings')
+}
 
 export async function createBriefing(request: CreateBriefingRequest): Promise<BriefingResponse> {
   return apiPost<BriefingResponse>('/api/briefings', request)
@@ -22,6 +38,10 @@ export async function retryBriefing(id: string): Promise<BriefingResponse> {
   return apiPost<BriefingResponse>(`/api/briefings/${id}/retry`)
 }
 
+export async function deleteBriefing(id: string): Promise<void> {
+  return apiDelete(`/api/briefings/${id}`)
+}
+
 export async function getBriefingRunSummary(runId: string): Promise<BriefingRunSummaryResponse> {
   return apiGet<BriefingRunSummaryResponse>(`/api/briefings/runs/${runId}`)
 }
@@ -29,6 +49,7 @@ export async function getBriefingRunSummary(runId: string): Promise<BriefingRunS
 interface ListBriefingRunEventsParams {
   cursor?: string
   limit?: number
+  subagentRunId?: string
 }
 
 export async function listBriefingRunEvents(
@@ -41,6 +62,9 @@ export async function listBriefingRunEvents(
   }
   if (params.limit) {
     searchParams.set('limit', String(params.limit))
+  }
+  if (params.subagentRunId) {
+    searchParams.set('subagentRunId', params.subagentRunId)
   }
   const query = searchParams.toString()
   const path = query

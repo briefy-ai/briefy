@@ -14,4 +14,5 @@ interface BriefingRunRepository : JpaRepository<BriefingRun, UUID> {
     ): BriefingRun?
 
     fun findTopByBriefingIdOrderByCreatedAtDesc(briefingId: UUID): BriefingRun?
+    fun deleteByBriefingId(briefingId: UUID)
 }

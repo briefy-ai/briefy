@@ -156,6 +156,7 @@ function toStepProgressPayload(
         task: step.task,
         status: step.status,
         stepOrder: step.stepOrder,
+        subagentRunId: subagent?.id ?? null,
         attempt: subagent?.attempt ?? null,
         maxAttempts: subagent?.maxAttempts ?? null,
         reused: subagent?.reused ?? false,
@@ -173,7 +174,7 @@ function toBriefingResultPayload(briefing: BriefingResponse): BriefingResultPayl
   return {
     briefingId: briefing.id,
     status: briefing.status,
-    title: `Briefing ${briefing.id.slice(0, 8)}`,
+    title: briefing.title ?? `Briefing ${briefing.id.slice(0, 8)}`,
   }
 }
 

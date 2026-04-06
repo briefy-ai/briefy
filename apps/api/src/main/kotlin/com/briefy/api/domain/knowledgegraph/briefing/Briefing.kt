@@ -35,6 +35,9 @@ class Briefing(
     @Column(name = "conflict_highlights_json", columnDefinition = "TEXT")
     var conflictHighlightsJson: String? = null,
 
+    @Column(name = "title", length = 300)
+    var title: String? = null,
+
     @Column(name = "error_json", columnDefinition = "TEXT")
     var errorJson: String? = null,
 
@@ -85,9 +88,11 @@ class Briefing(
         markdown: String,
         citationsJson: String,
         conflictHighlightsJson: String?,
+        title: String? = null,
         now: Instant = Instant.now()
     ) {
         transitionTo(BriefingStatus.READY)
+        this.title = title
         contentMarkdown = markdown
         this.citationsJson = citationsJson
         this.conflictHighlightsJson = conflictHighlightsJson
@@ -106,6 +111,7 @@ class Briefing(
 
     fun resetForRetry(now: Instant = Instant.now()) {
         transitionTo(BriefingStatus.PLAN_PENDING_APPROVAL)
+        title = null
         contentMarkdown = null
         citationsJson = null
         conflictHighlightsJson = null

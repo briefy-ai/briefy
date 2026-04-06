@@ -7,8 +7,6 @@ import org.springframework.stereotype.Component
 @ConfigurationProperties(prefix = "ai.observability")
 class AiObservabilityProperties {
     var enabled: Boolean = false
-    var captureFullPayloads: Boolean = false
-    var maxPayloadChars: Int = 400
     var langfuse = Langfuse()
 
     class Langfuse {

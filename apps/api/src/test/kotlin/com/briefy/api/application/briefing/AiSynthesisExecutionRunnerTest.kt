@@ -3,6 +3,7 @@ package com.briefy.api.application.briefing
 import com.briefy.api.infrastructure.ai.AiAdapter
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -28,6 +29,7 @@ class AiSynthesisExecutionRunnerTest {
         whenever(aiAdapter.complete(any(), any(), any(), any(), any())).thenReturn(
             """```json
 {
+  "title": "AI Impact Assessment: Near-Term Outlook",
   "markdownBody": "## Final Briefing\\n\\nConsensus with explicit disagreements.",
   "references": [
     {
@@ -55,6 +57,7 @@ class AiSynthesisExecutionRunnerTest {
 
         val result = runner.run(baseRequest())
 
+        assertEquals("AI Impact Assessment: Near-Term Outlook", result.title)
         assertTrue(result.markdownBody.contains("Final Briefing"))
         assertEquals(2, result.references.size)
         assertTrue(result.references.any { it.url == "https://persona.example.com/ref-a" })
@@ -71,6 +74,7 @@ class AiSynthesisExecutionRunnerTest {
 
         val result = runner.run(baseRequest())
 
+        assertNull(result.title)
         assertTrue(result.markdownBody.contains("Synthesized Briefing"))
         assertEquals(1, result.references.size)
         assertEquals("https://persona.example.com/ref-a", result.references.first().url)
@@ -83,6 +87,7 @@ class AiSynthesisExecutionRunnerTest {
 
         val result = runner.run(baseRequest())
 
+        assertNull(result.title)
         assertTrue(result.markdownBody.contains("## Briefing"))
         assertTrue(result.markdownBody.contains("Persona One"))
         assertEquals(1, result.references.size)
@@ -100,6 +105,7 @@ class AiSynthesisExecutionRunnerTest {
 
         val result = runner.run(baseRequest())
 
+        assertNull(result.title)
         assertTrue(result.markdownBody.contains("## Briefing"))
         assertTrue(result.markdownBody.contains("Persona One"))
         assertEquals(1, result.references.size)

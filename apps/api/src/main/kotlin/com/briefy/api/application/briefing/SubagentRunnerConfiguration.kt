@@ -35,8 +35,7 @@ class SubagentRunnerConfiguration {
                     objectMapper = objectMapper,
                     config = AiSubagentExecutionRunner.AiRunnerConfig(
                         provider = executionConfig.ai.provider,
-                        model = executionConfig.ai.model,
-                        maxToolCalls = executionConfig.ai.maxToolCalls
+                        model = executionConfig.ai.model
                     )
                 )
             }

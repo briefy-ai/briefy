@@ -1,5 +1,6 @@
 package com.briefy.api.api
 
+import com.briefy.api.application.briefing.BriefingPageResponse
 import com.briefy.api.application.briefing.BriefingResponse
 import com.briefy.api.application.briefing.BriefingRunEventsPageResponse
 import com.briefy.api.application.briefing.BriefingRunObservabilityService
@@ -13,6 +14,7 @@ import jakarta.validation.constraints.NotEmpty
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -49,12 +51,16 @@ class BriefingController(
     }
 
     @GetMapping
-    fun listBriefings(@RequestParam(required = false) status: String?): ResponseEntity<List<BriefingResponse>> {
-        logger.info("[controller] List briefings request received status={}", status ?: "all")
+    fun listBriefings(
+        @RequestParam(required = false) status: String?,
+        @RequestParam(required = false) limit: Int?,
+        @RequestParam(required = false) cursor: String?
+    ): ResponseEntity<BriefingPageResponse> {
+        logger.info("[controller] List briefings request received status={} limit={} hasCursor={}", status ?: "all", limit ?: "default", !cursor.isNullOrBlank())
         val statusFilter = status?.let { BriefingStatus.valueOf(it.uppercase()) }
-        val briefings = briefingService.listBriefings(statusFilter)
-        logger.info("[controller] List briefings request completed count={}", briefings.size)
-        return ResponseEntity.ok(briefings)
+        val page = briefingService.listBriefingsSummary(statusFilter, limit, cursor)
+        logger.info("[controller] List briefings request completed count={} hasMore={}", page.items.size, page.hasMore)
+        return ResponseEntity.ok(page)
     }
 
     @GetMapping("/{id}")
@@ -71,6 +77,14 @@ class BriefingController(
         val briefing = briefingService.approvePlan(id)
         logger.info("[controller] Approve briefing request completed briefingId={} status={}", briefing.id, briefing.status)
         return ResponseEntity.ok(briefing)
+    }
+
+    @DeleteMapping("/{id}")
+    fun deleteBriefing(@PathVariable id: UUID): ResponseEntity<Void> {
+        logger.info("[controller] Delete briefing request received briefingId={}", id)
+        briefingService.deleteBriefing(id)
+        logger.info("[controller] Delete briefing request completed briefingId={}", id)
+        return ResponseEntity.noContent().build()
     }
 
     @PostMapping("/{id}/retry")
@@ -93,15 +107,17 @@ class BriefingController(
     fun listRunEvents(
         @PathVariable id: UUID,
         @RequestParam(required = false) cursor: String?,
-        @RequestParam(required = false) limit: Int?
+        @RequestParam(required = false) limit: Int?,
+        @RequestParam(required = false) subagentRunId: UUID?
     ): ResponseEntity<BriefingRunEventsPageResponse> {
         logger.info(
-            "[controller] List briefing run events request received runId={} limit={} hasCursor={}",
+            "[controller] List briefing run events request received runId={} limit={} hasCursor={} subagentRunId={}",
             id,
             limit ?: "default",
-            !cursor.isNullOrBlank()
+            !cursor.isNullOrBlank(),
+            subagentRunId ?: "all"
         )
-        val page = briefingRunObservabilityService.listRunEvents(id, limit, cursor)
+        val page = briefingRunObservabilityService.listRunEvents(id, limit, cursor, subagentRunId)
         logger.info(
             "[controller] List briefing run events request completed runId={} count={} hasMore={}",
             id,

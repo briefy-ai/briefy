@@ -1,4 +1,10 @@
-import type { BriefingPlanStepResponse, BriefingPlanStepStatus, BriefingStatus } from '@/lib/api/types'
+import type {
+  BriefingPlanStepResponse,
+  BriefingPlanStepStatus,
+  BriefingRunStatus,
+  BriefingStatus,
+  SynthesisRunStatus,
+} from '@/lib/api/types'
 
 // Re-export from constants for backward compatibility
 export { ACTION_KEYS, CHAT_INTENTS, isActiveBriefingStatus, isTerminalBriefingStatus } from './constants'
@@ -58,8 +64,8 @@ export interface StepProgressPayload {
   briefingStatus: BriefingStatus
   execution: {
     runId: string
-    runStatus: string
-    synthesisStatus: string
+    runStatus: BriefingRunStatus
+    synthesisStatus: SynthesisRunStatus
     durationMs: number
     requiredForSynthesis: number
     nonEmptySucceededCount: number
@@ -74,6 +80,7 @@ export interface StepProgressPayload {
     task: string
     status: BriefingPlanStepStatus
     stepOrder: number
+    subagentRunId: string | null
     attempt: number | null
     maxAttempts: number | null
     reused: boolean

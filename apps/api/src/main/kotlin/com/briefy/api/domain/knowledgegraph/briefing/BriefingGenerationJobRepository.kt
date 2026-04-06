@@ -12,6 +12,7 @@ import java.util.UUID
 @Repository
 interface BriefingGenerationJobRepository : JpaRepository<BriefingGenerationJob, UUID> {
     fun findByBriefingId(briefingId: UUID): BriefingGenerationJob?
+    fun deleteByBriefingId(briefingId: UUID)
 
     @Query(
         """
