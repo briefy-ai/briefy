@@ -12,6 +12,7 @@ import com.briefy.api.infrastructure.id.IdGenerator
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
+import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.time.Instant
@@ -34,6 +35,7 @@ class BriefingExecutionOrchestratorService(
     private val tracer: Tracer,
     private val sanitizer: AiPayloadSanitizer
 ) {
+    private val logger = LoggerFactory.getLogger(BriefingExecutionOrchestratorService::class.java)
 
     fun executeApprovedBriefing(
         briefing: Briefing,
@@ -169,20 +171,6 @@ class BriefingExecutionOrchestratorService(
                 failureCode = BriefingRunFailureCode.ORCHESTRATION_ERROR,
                 failureMessage = "Synthesis run missing for briefingRunId=${refreshedBriefingRun.id}"
             )
-        if (isRunPastDeadline(refreshedBriefingRun)) {
-            handleGlobalTimeout(
-                RunGraph(
-                    briefingRun = refreshedBriefingRun,
-                    subagentRuns = refreshedSubagentRuns,
-                    synthesisRun = synthesisRun
-                )
-            )
-            return ExecutionOrchestrationOutcome.failed(
-                briefingRunId = refreshedBriefingRun.id,
-                failureCode = BriefingRunFailureCode.GLOBAL_TIMEOUT,
-                failureMessage = "Execution run exceeded global timeout before synthesis"
-            )
-        }
         if (refreshedBriefingRun.status == BriefingRunStatus.CANCELLING) {
             finalizeCancellingRun(
                 RunGraph(
@@ -201,6 +189,20 @@ class BriefingExecutionOrchestratorService(
         val required = refreshedBriefingRun.requiredForSynthesis
         val actual = nonEmptySucceededCount
         if (actual < required) {
+            if (isRunPastDeadline(refreshedBriefingRun)) {
+                handleGlobalTimeout(
+                    RunGraph(
+                        briefingRun = refreshedBriefingRun,
+                        subagentRuns = refreshedSubagentRuns,
+                        synthesisRun = synthesisRun
+                    )
+                )
+                return ExecutionOrchestrationOutcome.failed(
+                    briefingRunId = refreshedBriefingRun.id,
+                    failureCode = BriefingRunFailureCode.GLOBAL_TIMEOUT,
+                    failureMessage = "Execution run exceeded global timeout before synthesis"
+                )
+            }
             val now = Instant.now()
             executionStateTransitionService.markSynthesisGateFailedSkipped(
                 synthesisRunId = synthesisRun.id,
@@ -220,6 +222,15 @@ class BriefingExecutionOrchestratorService(
                 briefingRunId = refreshedBriefingRun.id,
                 failureCode = BriefingRunFailureCode.SYNTHESIS_GATE_NOT_MET,
                 failureMessage = "Synthesis gate not met"
+            )
+        }
+        if (isRunPastDeadline(refreshedBriefingRun)) {
+            logger.info(
+                "[briefing-orchestrator] proceeding_to_synthesis_after_global_deadline briefingRunId={} requiredForSynthesis={} actualSucceeded={} deadlineAt={}",
+                refreshedBriefingRun.id,
+                required,
+                actual,
+                refreshedBriefingRun.deadlineAt
             )
         }
 
