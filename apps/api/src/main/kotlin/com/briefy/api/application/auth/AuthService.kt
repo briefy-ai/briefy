@@ -75,25 +75,46 @@ class AuthService(
     fun refresh(refreshToken: String?): AccessTokenResult {
         logger.info("[service] Refreshing access token hasToken={}", !refreshToken.isNullOrBlank())
         if (refreshToken.isNullOrBlank()) {
+            logger.warn("[service] Refresh failed: token is blank or missing")
             throw UnauthorizedException("Refresh token is required")
         }
 
         val tokenHash = hashRefreshToken(refreshToken)
+        val tokenHashPrefix = tokenHash.take(12)
         val now = Instant.now()
         val session = refreshSessionRepository.findByTokenHashAndRevokedAtIsNull(tokenHash)
-            ?: throw UnauthorizedException("Invalid refresh token")
+
+        if (session == null) {
+            val revokedSession = refreshSessionRepository.findByTokenHash(tokenHash)
+            if (revokedSession != null) {
+                logger.warn(
+                    "[service] Refresh failed: session found but revoked hashPrefix={} userId={} createdAt={} revokedAt={} expiresAt={}",
+                    tokenHashPrefix, revokedSession.userId, revokedSession.createdAt, revokedSession.revokedAt, revokedSession.expiresAt
+                )
+            } else {
+                logger.warn("[service] Refresh failed: no session found for hashPrefix={}", tokenHashPrefix)
+            }
+            throw UnauthorizedException("Invalid refresh token")
+        }
 
         if (!session.isActive(now)) {
+            logger.warn(
+                "[service] Refresh failed: session expired hashPrefix={} userId={} expiresAt={} now={}",
+                tokenHashPrefix, session.userId, session.expiresAt, now
+            )
             session.revoke(now)
             refreshSessionRepository.save(session)
             throw UnauthorizedException("Refresh token expired")
         }
 
-        val user = userRepository.findById(session.userId).orElseThrow { UnauthorizedException("User not found") }
+        val user = userRepository.findById(session.userId).orElseThrow {
+            logger.warn("[service] Refresh failed: user not found userId={}", session.userId)
+            UnauthorizedException("User not found")
+        }
         user.ensureActive()
 
         val accessToken = jwtService.generateAccessToken(user.toPrincipal())
-        logger.info("[service] Access token refreshed userId={}", user.id)
+        logger.info("[service] Access token refreshed userId={} sessionCreatedAt={}", user.id, session.createdAt)
         return AccessTokenResult(accessToken)
     }
 
@@ -135,7 +156,10 @@ class AuthService(
 
     private fun issueTokens(user: User): AuthResult {
         val now = Instant.now()
-        refreshSessionRepository.revokeActiveByUserId(user.id, now)
+        val revokedCount = refreshSessionRepository.revokeActiveByUserId(user.id, now)
+        if (revokedCount > 0) {
+            logger.info("[service] Revoked {} active refresh session(s) on login userId={}", revokedCount, user.id)
+        }
 
         val refreshToken = generateOpaqueToken()
         val refreshSession = RefreshSession(
