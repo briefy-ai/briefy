@@ -97,6 +97,7 @@ class ChatController(
 data class SendChatMessageRequest(
     @field:NotBlank(message = "text is required")
     val text: String,
+    @field:Valid
     val contentReferences: List<ChatContentReferenceRequest> = emptyList()
 )
 

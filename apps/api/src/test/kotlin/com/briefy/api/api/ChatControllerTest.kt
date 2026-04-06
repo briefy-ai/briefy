@@ -69,6 +69,10 @@ class ChatControllerTest {
 
     @BeforeEach
     fun setupCurrentUser() {
+        chatMessageRepository.deleteAll()
+        conversationRepository.deleteAll()
+        briefingRepository.deleteAll()
+        sourceRepository.deleteAll()
         `when`(currentUserProvider.requireUserId()).thenReturn(testUserId)
     }
 

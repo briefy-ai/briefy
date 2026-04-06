@@ -47,14 +47,11 @@ export function ContentPicker({
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
   const searchTokenRef = useRef(0)
   const containerRef = useRef<HTMLDivElement | null>(null)
-
-  // Load recent sources and briefings on open
-  useEffect(() => {
-    if (!open) return
-
+  const loadRecentSources = useCallback((token: number) => {
     setLoadingSources(true)
     listSources({ status: 'active', limit: 10, sort: 'newest' })
-      .then((res) =>
+      .then((res) => {
+        if (token !== searchTokenRef.current) return
         setSourceResults(
           res.items.map((s) => ({
             id: s.id,
@@ -63,16 +60,31 @@ export function ContentPicker({
             sourceType: s.sourceType,
           }))
         )
-      )
-      .catch(() => setSourceResults([]))
-      .finally(() => setLoadingSources(false))
+      })
+      .catch(() => {
+        if (token !== searchTokenRef.current) return
+        setSourceResults([])
+      })
+      .finally(() => {
+        if (token === searchTokenRef.current) {
+          setLoadingSources(false)
+        }
+      })
+  }, [])
+
+  // Load recent sources and briefings on open
+  useEffect(() => {
+    if (!open) return
+
+    const token = ++searchTokenRef.current
+    loadRecentSources(token)
 
     setLoadingBriefings(true)
     listBriefings({ status: 'ready', limit: 10 })
       .then((res) => setBriefingResults(res.items))
       .catch(() => setBriefingResults([]))
       .finally(() => setLoadingBriefings(false))
-  }, [open])
+  }, [loadRecentSources, open])
 
   // Close on click outside
   useEffect(() => {
@@ -100,21 +112,7 @@ export function ContentPicker({
     clearTimeout(debounceRef.current)
     const token = ++searchTokenRef.current
     if (!q.trim()) {
-      // Reset to recent sources
-      setLoadingSources(true)
-      listSources({ status: 'active', limit: 10, sort: 'newest' })
-        .then((res) =>
-          setSourceResults(
-            res.items.map((s) => ({
-              id: s.id,
-              title: s.metadata?.title ?? null,
-              domain: s.url.platform,
-              sourceType: s.sourceType,
-            }))
-          )
-        )
-        .catch(() => setSourceResults([]))
-        .finally(() => setLoadingSources(false))
+      loadRecentSources(token)
       return
     }
     setLoadingSources(true)
@@ -132,7 +130,7 @@ export function ContentPicker({
         }
       }
     }, 200)
-  }, [])
+  }, [loadRecentSources])
 
   function handleSelectSource(item: SourceItem) {
     onSelect({

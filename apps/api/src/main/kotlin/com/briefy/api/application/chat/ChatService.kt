@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
+import reactor.core.scheduler.Schedulers
 import java.time.Instant
 import java.util.UUID
 
@@ -48,6 +49,7 @@ class ChatService(
     private val logger = LoggerFactory.getLogger(ChatService::class.java)
     private val defaultListLimit = 20
     private val maxListLimit = 100
+    private val maxPromptHistoryMessages = 20
 
     fun sendMessage(command: SendChatMessageCommand): Flux<ServerSentEvent<String>> {
         val userId = currentUserProvider.requireUserId()
@@ -84,7 +86,7 @@ class ChatService(
                         preparedTurn.conversation.id,
                         ChatErrorStreamEvent(
                             conversationId = preparedTurn.conversation.id,
-                            message = error.message ?: "Failed to generate assistant response"
+                            message = "Failed to generate assistant response"
                         )
                     )
                 )
@@ -107,6 +109,19 @@ class ChatService(
 
         val hasMore = conversations.size > normalizedLimit
         val pageItems = if (hasMore) conversations.dropLast(1) else conversations
+        val latestPreviews = if (pageItems.isEmpty()) {
+            emptyMap()
+        } else {
+            transactionTemplate.execute {
+                chatMessageRepository.findLatestContentByConversationIds(pageItems.map { it.id })
+                    .associate { preview ->
+                        preview.conversationId to preview.content
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() }
+                            ?.take(200)
+                    }
+            }.orEmpty()
+        }
         val nextCursor = if (hasMore && pageItems.isNotEmpty()) {
             val lastItem = pageItems.last()
             ConversationListCursorCodec.encode(
@@ -124,11 +139,7 @@ class ChatService(
                 id = conversation.id,
                 title = conversation.title,
                 updatedAt = conversation.updatedAt,
-                lastMessagePreview = chatMessageRepository.findTopByConversationIdOrderByCreatedAtDesc(conversation.id)
-                    ?.content
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() }
-                    ?.take(200)
+                lastMessagePreview = latestPreviews[conversation.id]
             )
         }
 
@@ -301,11 +312,12 @@ class ChatService(
     }
 
     private fun buildPrompt(history: List<ChatMessage>, text: String): String {
-        if (history.isEmpty()) {
+        val recentHistory = history.takeLast(maxPromptHistoryMessages)
+        if (recentHistory.isEmpty()) {
             return text
         }
 
-        val historyBlock = history.joinToString("\n\n") { message ->
+        val historyBlock = recentHistory.joinToString("\n\n") { message ->
             val speaker = when (message.role) {
                 ChatMessageRole.USER -> "User"
                 ChatMessageRole.ASSISTANT -> "Assistant"
@@ -364,25 +376,25 @@ class ChatService(
             )
         }
 
-        val message = transactionTemplate.execute {
-            val now = Instant.now()
-            val assistantMessage = ChatMessage(
-                id = idGenerator.newId(),
-                conversationId = preparedTurn.conversation.id,
-                role = ChatMessageRole.ASSISTANT,
-                type = ChatMessageType.ASSISTANT_TEXT,
-                content = trimmedText,
-                createdAt = now
-            )
+        return Mono.fromCallable {
+            val message = transactionTemplate.execute {
+                val now = Instant.now()
+                val assistantMessage = ChatMessage(
+                    id = idGenerator.newId(),
+                    conversationId = preparedTurn.conversation.id,
+                    role = ChatMessageRole.ASSISTANT,
+                    type = ChatMessageType.ASSISTANT_TEXT,
+                    content = trimmedText,
+                    createdAt = now
+                )
 
-            val conversation = conversationRepository.findByIdAndUserId(preparedTurn.conversation.id, preparedTurn.conversation.userId)
-                ?: throw ChatConversationAccessException()
-            conversation.touch(now)
-            conversationRepository.save(conversation)
-            chatMessageRepository.save(assistantMessage)
-        } ?: error("Failed to persist assistant message")
+                val conversation = conversationRepository.findByIdAndUserId(preparedTurn.conversation.id, preparedTurn.conversation.userId)
+                    ?: throw ChatConversationAccessException()
+                conversation.touch(now)
+                conversationRepository.save(conversation)
+                chatMessageRepository.save(assistantMessage)
+            } ?: error("Failed to persist assistant message")
 
-        return Mono.just(
             toSse(
                 preparedTurn.conversation.id,
                 ChatMessageStreamEvent(
@@ -390,7 +402,8 @@ class ChatService(
                     message = toMessageResponse(message)
                 )
             )
-        )
+        }
+            .subscribeOn(Schedulers.boundedElastic())
     }
 
     private fun parseConversationId(rawValue: String): UUID {

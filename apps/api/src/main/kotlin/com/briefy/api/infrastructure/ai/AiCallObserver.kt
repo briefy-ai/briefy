@@ -103,25 +103,36 @@ class AiCallObserver(
 
             captureInput(span, prompt, systemPrompt)
 
-            operation()
-                .doOnNext { chunk -> outputBuffer.append(chunk) }
-                .doOnComplete {
-                    span.setStatus(StatusCode.OK)
-                    span.setAttribute("ai.success", true)
-                    span.setAttribute("ai.output.length", outputBuffer.length.toLong())
-                    captureOutput(span, outputBuffer.toString())
-                }
-                .doOnError { error ->
-                    val errorCategory = AiErrorCategory.from(error)
-                    span.recordException(error)
-                    span.setStatus(StatusCode.ERROR, errorCategory.name.lowercase())
-                    span.setAttribute("ai.error.category", errorCategory.name.lowercase())
-                }
-                .doFinally {
-                    val latencyMillis = (System.nanoTime() - startedAt) / 1_000_000
-                    span.setAttribute("ai.latency_ms", latencyMillis)
-                    span.end()
-                }
+            try {
+                operation()
+                    .doOnNext { chunk -> outputBuffer.append(chunk) }
+                    .doOnComplete {
+                        span.setStatus(StatusCode.OK)
+                        span.setAttribute("ai.success", true)
+                        span.setAttribute("ai.output.length", outputBuffer.length.toLong())
+                        captureOutput(span, outputBuffer.toString())
+                    }
+                    .doOnError { error ->
+                        val errorCategory = AiErrorCategory.from(error)
+                        span.recordException(error)
+                        span.setStatus(StatusCode.ERROR, errorCategory.name.lowercase())
+                        span.setAttribute("ai.error.category", errorCategory.name.lowercase())
+                    }
+                    .doFinally {
+                        val latencyMillis = (System.nanoTime() - startedAt) / 1_000_000
+                        span.setAttribute("ai.latency_ms", latencyMillis)
+                        span.end()
+                    }
+            } catch (error: Throwable) {
+                val errorCategory = AiErrorCategory.from(error)
+                span.recordException(error)
+                span.setStatus(StatusCode.ERROR, errorCategory.name.lowercase())
+                span.setAttribute("ai.error.category", errorCategory.name.lowercase())
+                val latencyMillis = (System.nanoTime() - startedAt) / 1_000_000
+                span.setAttribute("ai.latency_ms", latencyMillis)
+                span.end()
+                Flux.error<String>(error)
+            }
         }
     }
 

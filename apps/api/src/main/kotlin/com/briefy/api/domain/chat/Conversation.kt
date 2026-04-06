@@ -25,7 +25,7 @@ class Conversation(
     @Column(name = "updated_at", nullable = false)
     var updatedAt: Instant = Instant.now()
 ) {
-    fun touch(now: Instant = Instant.now()) {
+    fun touch(now: Instant) {
         updatedAt = now
     }
 }
