@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { PanelLeft, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ACTION_KEYS } from '../../constants'
+import type { ChatIntentId } from '../../types'
 import { useChatEngineContext } from '../../ChatEngineProvider'
 import { ChatMessageHandlersProvider, type ChatMessageHandlers } from '../ChatMessageHandlers'
 import { MessageList } from '../MessageList'
 import { ChatInputBar } from './ChatInputBar'
-
-const noop = () => {}
 
 interface ChatMainAreaProps {
   sidebarOpen: boolean
@@ -23,11 +23,47 @@ export function ChatMainArea({ sidebarOpen, onToggleSidebar }: ChatMainAreaProps
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [engine.messages])
 
+  const handleSelectIntent = useCallback(
+    (intent: ChatIntentId) => {
+      const sourceRefs = engine.contentReferences.filter((r) => r.type === 'source')
+      if (sourceRefs.length === 0) return
+      void engine.submitBriefingAction(
+        {
+          type: 'create_briefing',
+          sourceIds: sourceRefs.map((r) => r.id),
+          enrichmentIntent: intent,
+        },
+        `Selected intent: ${intent.replace(/_/g, ' ')}`
+      )
+    },
+    [engine]
+  )
+
+  const handleApprovePlan = useCallback(
+    (briefingId: string) => {
+      void engine.submitBriefingAction(
+        { type: 'approve_plan', briefingId },
+        'Approved plan'
+      )
+    },
+    [engine]
+  )
+
+  const handleRetry = useCallback(
+    (briefingId: string) => {
+      void engine.submitBriefingAction(
+        { type: 'retry_briefing', briefingId },
+        'Retried briefing generation'
+      )
+    },
+    [engine]
+  )
+
   const handlers = useMemo<ChatMessageHandlers>(
     () => ({
-      onSelectIntent: noop,
-      onApprovePlan: noop,
-      onRetry: noop,
+      onSelectIntent: handleSelectIntent,
+      onApprovePlan: handleApprovePlan,
+      onRetry: handleRetry,
       onOpenBriefing: (briefingId: string) => {
         void navigate({ to: '/briefings/$briefingId', params: { briefingId } })
       },
@@ -36,9 +72,18 @@ export function ChatMainArea({ sidebarOpen, onToggleSidebar }: ChatMainAreaProps
           void navigate({ to })
         }
       },
-      isActionPending: () => false,
+      isActionPending: (actionKey: string) => {
+        if (actionKey === ACTION_KEYS.SELECT_INTENT) return engine.isBriefingActionPending
+        if (engine.activeBriefingId && actionKey === ACTION_KEYS.approvePlan(engine.activeBriefingId)) {
+          return engine.isBriefingActionPending
+        }
+        if (engine.activeBriefingId && actionKey === ACTION_KEYS.retry(engine.activeBriefingId)) {
+          return engine.isBriefingActionPending
+        }
+        return false
+      },
     }),
-    [navigate]
+    [engine.activeBriefingId, engine.isBriefingActionPending, handleApprovePlan, handleRetry, handleSelectIntent, navigate]
   )
 
   return (

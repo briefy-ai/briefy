@@ -1,13 +1,17 @@
 package com.briefy.api.api
 
+import com.briefy.api.application.chat.ChatAction
 import com.briefy.api.application.chat.ChatConversationPageResponse
 import com.briefy.api.application.chat.ChatConversationResponse
 import com.briefy.api.application.chat.ChatContentReferenceInput
+import com.briefy.api.application.chat.ChatMessageResponse
 import com.briefy.api.application.chat.ChatService
+import com.briefy.api.application.chat.PersistBriefingResultCommand
 import com.briefy.api.application.chat.SendChatMessageCommand
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.http.codec.ServerSentEvent
@@ -45,7 +49,8 @@ class ChatController(
             SendChatMessageCommand(
                 conversationIdOrNew = ChatService.NEW_CONVERSATION_ID,
                 text = request.text,
-                contentReferences = request.contentReferences.map { it.toCommand() }
+                contentReferences = request.contentReferences.map { it.toCommand() },
+                action = request.action?.toCommand()
             )
         )
     }
@@ -68,7 +73,8 @@ class ChatController(
             SendChatMessageCommand(
                 conversationIdOrNew = id,
                 text = request.text,
-                contentReferences = request.contentReferences.map { it.toCommand() }
+                contentReferences = request.contentReferences.map { it.toCommand() },
+                action = request.action?.toCommand()
             )
         )
     }
@@ -92,14 +98,44 @@ class ChatController(
         chatService.deleteConversation(id)
         return ResponseEntity.noContent().build()
     }
+
+    @PostMapping("/{id}/briefing-result")
+    fun persistBriefingResult(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: PersistBriefingResultRequest
+    ): ResponseEntity<ChatMessageResponse> {
+        val message = chatService.persistBriefingResult(
+            PersistBriefingResultCommand(
+                conversationId = id,
+                briefingId = request.briefingId
+            )
+        )
+        return ResponseEntity.status(HttpStatus.CREATED).body(message)
+    }
 }
 
 data class SendChatMessageRequest(
     @field:NotBlank(message = "text is required")
     val text: String,
     @field:Valid
-    val contentReferences: List<ChatContentReferenceRequest> = emptyList()
+    val contentReferences: List<ChatContentReferenceRequest> = emptyList(),
+    val action: ChatActionRequest? = null
 )
+
+data class ChatActionRequest(
+    @field:NotBlank(message = "action type is required")
+    val type: String,
+    val briefingId: UUID? = null,
+    val sourceIds: List<UUID>? = null,
+    val enrichmentIntent: String? = null
+) {
+    fun toCommand(): ChatAction = ChatAction(
+        type = type,
+        briefingId = briefingId,
+        sourceIds = sourceIds,
+        enrichmentIntent = enrichmentIntent
+    )
+}
 
 data class ChatContentReferenceRequest(
     val id: UUID,
@@ -113,3 +149,7 @@ data class ChatContentReferenceRequest(
         )
     }
 }
+
+data class PersistBriefingResultRequest(
+    val briefingId: UUID
+)

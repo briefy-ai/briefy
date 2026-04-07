@@ -8,10 +8,18 @@ data class ChatContentReferenceInput(
     val type: String
 )
 
+data class ChatAction(
+    val type: String,
+    val briefingId: UUID? = null,
+    val sourceIds: List<UUID>? = null,
+    val enrichmentIntent: String? = null
+)
+
 data class SendChatMessageCommand(
     val conversationIdOrNew: String,
     val text: String,
-    val contentReferences: List<ChatContentReferenceInput>
+    val contentReferences: List<ChatContentReferenceInput>,
+    val action: ChatAction? = null
 )
 
 data class ChatMessageResponse(
@@ -19,6 +27,7 @@ data class ChatMessageResponse(
     val role: String,
     val type: String,
     val content: String?,
+    val payload: Any? = null,
     val contentReferences: List<ChatContentReferenceResponse>,
     val entityType: String?,
     val entityId: UUID?,
@@ -71,3 +80,14 @@ data class ChatErrorStreamEvent(
     val conversationId: UUID?,
     val message: String
 ) : ChatStreamEventPayload
+
+data class ChatBriefingActionStreamEvent(
+    val type: String = "briefing_action",
+    val conversationId: UUID,
+    val messages: List<ChatMessageResponse>
+) : ChatStreamEventPayload
+
+data class PersistBriefingResultCommand(
+    val conversationId: UUID,
+    val briefingId: UUID
+)

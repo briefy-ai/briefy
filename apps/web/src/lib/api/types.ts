@@ -152,7 +152,14 @@ export interface ApiError {
 }
 
 export type ChatRole = 'user' | 'assistant' | 'system'
-export type ChatPersistedMessageType = 'user_text' | 'assistant_text' | 'system_text'
+export type ChatPersistedMessageType =
+  | 'user_text'
+  | 'assistant_text'
+  | 'system_text'
+  | 'user_action'
+  | 'briefing_plan'
+  | 'briefing_result'
+  | 'briefing_error'
 export type ChatContentReferenceType = 'source' | 'briefing'
 
 export interface ChatContentReferenceDto {
@@ -165,6 +172,7 @@ export interface ChatMessageDto {
   role: ChatRole
   type: ChatPersistedMessageType
   content: string | null
+  payload: Record<string, unknown> | null
   contentReferences: ChatContentReferenceDto[]
   entityType: ChatContentReferenceType | null
   entityId: string | null
@@ -193,9 +201,17 @@ export interface ChatConversationPageResponse {
   limit: number
 }
 
+export interface ChatActionDto {
+  type: 'create_briefing' | 'approve_plan' | 'retry_briefing'
+  briefingId?: string
+  sourceIds?: string[]
+  enrichmentIntent?: string
+}
+
 export interface SendChatMessageRequest {
   text: string
   contentReferences: ChatContentReferenceDto[]
+  action?: ChatActionDto
 }
 
 export type ChatStreamEvent =
@@ -213,6 +229,11 @@ export type ChatStreamEvent =
       type: 'error'
       conversationId: string | null
       message: string
+    }
+  | {
+      type: 'briefing_action'
+      conversationId: string
+      messages: ChatMessageDto[]
     }
 
 export interface CreateSourceRequest {
