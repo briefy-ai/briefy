@@ -33,6 +33,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import reactor.core.scheduler.Schedulers
+import org.springframework.security.core.context.SecurityContextHolder
 import java.time.Instant
 import java.util.UUID
 import java.util.function.Function
@@ -80,7 +81,8 @@ class ChatService(
         val preparedTurn = prepareTurn(userId, command)
         val assistantContent = StringBuilder()
         val memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build()
-        val topicLookupCallback = buildTopicLookupCallback()
+        val authentication = SecurityContextHolder.getContext().authentication
+        val topicLookupCallback = buildTopicLookupCallback(authentication)
 
         return aiAdapter.streamWithAdvisors(
             provider = chatProvider,
@@ -514,10 +516,19 @@ class ChatService(
         }
     }
 
-    private fun buildTopicLookupCallback() = FunctionToolCallback.builder(
+    private fun buildTopicLookupCallback(
+        authentication: org.springframework.security.core.Authentication?
+    ) = FunctionToolCallback.builder(
         "topic_lookup",
         Function<TopicLookupToolRequest, String> { request ->
-            executeTopicLookup(request)
+            val context = SecurityContextHolder.createEmptyContext()
+            context.authentication = authentication
+            SecurityContextHolder.setContext(context)
+            try {
+                executeTopicLookup(request)
+            } finally {
+                SecurityContextHolder.clearContext()
+            }
         }
     )
         .description(
