@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { ApiClientError } from '@/lib/api/client'
 import type { BriefingResponse, BriefingStatus } from '@/lib/api/types'
 import { ACTION_KEYS, getGuidanceFromUserText, isActiveBriefingStatus } from '../constants'
+import { useChatEngineContext } from '../ChatEngineProvider'
 import { createChatTransport } from '../transport/chatTransport'
 import { useBriefingPolling } from '../transport/useBriefingPolling'
 import type { ChatIntentId, ChatMessage, ChatSourceContext } from '../types'
@@ -37,6 +38,7 @@ function appendErrorMessage(
   return appendMessage(messages, {
     id: `error:${crypto.randomUUID()}`,
     type: 'error',
+    role: 'system',
     direction: 'outbound',
     createdAt: new Date().toISOString(),
     payload: {
@@ -56,14 +58,14 @@ export function useChatPanelController() {
   const navigate = useNavigate()
   const transport = useMemo(() => createChatTransport(), [])
   const executionSnapshotsRef = useRef<Record<string, ExecutionProgressSnapshot>>({})
+  const engine = useChatEngineContext()
+  const { messages, setMessages, inputValue, setInputValue } = engine
 
   const [isOpen, setIsOpen] = useState(false)
   const [pageSourceContext, setPageSourceContext] = useState<ChatSourceContext | null>(null)
   const [sourceContext, setSourceContext] = useState<ChatSourceContext | null>(null)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [activeBriefingId, setActiveBriefingId] = useState<string | null>(null)
   const [activeBriefingStatus, setActiveBriefingStatus] = useState<BriefingStatus | null>(null)
-  const [inputValue, setInputValue] = useState('')
   const [pendingActionKeys, setPendingActionKeys] = useState<Set<string>>(new Set())
 
   const setActionPending = useCallback((key: string, isPending: boolean) => {
@@ -93,7 +95,7 @@ export function useChatPanelController() {
     setPendingActionKeys(new Set())
     setInputValue('')
     setIsOpen(true)
-  }, [transport])
+  }, [transport, setMessages, setInputValue])
 
   const closePanel = useCallback(() => {
     setIsOpen(false)
@@ -111,7 +113,7 @@ export function useChatPanelController() {
       ]
     })
     setIsOpen(true)
-  }, [])
+  }, [setMessages])
 
   const hasActiveThread = Boolean(sourceContext || activeBriefingId)
 
@@ -167,7 +169,7 @@ export function useChatPanelController() {
       setActiveBriefingStatus(briefing.status)
       setMessages((prev) => mergeBriefingMessages(prev, briefing, execution))
     },
-    [loadExecutionSnapshot]
+    [loadExecutionSnapshot, setMessages]
   )
 
   const handleBriefingUpdate = useCallback(
@@ -179,7 +181,7 @@ export function useChatPanelController() {
         setMessages((prev) => appendErrorMessage(prev, errorMessage(error, 'Failed to refresh briefing progress')))
       }
     },
-    [transport, applyBriefingSnapshot]
+    [transport, applyBriefingSnapshot, setMessages]
   )
 
   useBriefingPolling({
@@ -222,7 +224,7 @@ export function useChatPanelController() {
         setActionPending(ACTION_KEYS.SELECT_INTENT, false)
       }
     },
-    [sourceContext, activeBriefingId, isActionPending, setActionPending, transport, applyBriefingSnapshot]
+    [sourceContext, activeBriefingId, isActionPending, setActionPending, transport, applyBriefingSnapshot, setMessages]
   )
 
   const approvePlan = useCallback(
@@ -248,7 +250,7 @@ export function useChatPanelController() {
         setActionPending(key, false)
       }
     },
-    [isActionPending, setActionPending, transport, applyBriefingSnapshot]
+    [isActionPending, setActionPending, transport, applyBriefingSnapshot, setMessages]
   )
 
   const retryFailedBriefing = useCallback(
@@ -280,7 +282,7 @@ export function useChatPanelController() {
         setActionPending(key, false)
       }
     },
-    [isActionPending, setActionPending, transport, applyBriefingSnapshot]
+    [isActionPending, setActionPending, transport, applyBriefingSnapshot, setMessages]
   )
 
   const submitUserText = useCallback((text: string) => {
@@ -300,7 +302,7 @@ export function useChatPanelController() {
       )
     )
     setInputValue('')
-  }, [])
+  }, [setMessages, setInputValue])
 
   const navigateToBriefing = useCallback(
     (briefingId: string) => {

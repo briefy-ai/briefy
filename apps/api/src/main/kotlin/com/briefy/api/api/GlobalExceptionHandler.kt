@@ -12,6 +12,10 @@ import com.briefy.api.application.briefing.InvalidBriefingStateException
 import com.briefy.api.application.annotation.InvalidSourceAnnotationStateException
 import com.briefy.api.application.annotation.SourceAnnotationNotFoundException
 import com.briefy.api.application.annotation.SourceAnnotationOverlapException
+import com.briefy.api.application.chat.ChatConversationAccessException
+import com.briefy.api.application.chat.ChatConversationNotFoundException
+import com.briefy.api.application.chat.ChatReferenceAccessException
+import com.briefy.api.application.chat.InvalidChatRequestException
 import com.briefy.api.application.source.*
 import com.briefy.api.application.topic.InvalidTopicLinkStateException
 import com.briefy.api.application.topic.TopicAlreadyExistsException
@@ -89,6 +93,42 @@ class GlobalExceptionHandler {
                     status = HttpStatus.BAD_REQUEST.value(),
                     error = "Bad Request",
                     message = ex.message ?: "Invalid briefing state"
+                )
+            )
+    }
+
+    @ExceptionHandler(ChatConversationNotFoundException::class)
+    fun handleChatConversationNotFound(ex: ChatConversationNotFoundException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.NOT_FOUND.value(),
+                    error = "Not Found",
+                    message = ex.message ?: "Conversation not found"
+                )
+            )
+    }
+
+    @ExceptionHandler(ChatConversationAccessException::class, ChatReferenceAccessException::class)
+    fun handleChatAccess(ex: RuntimeException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.FORBIDDEN.value(),
+                    error = "Forbidden",
+                    message = ex.message ?: "Chat resource is not accessible"
+                )
+            )
+    }
+
+    @ExceptionHandler(InvalidChatRequestException::class)
+    fun handleInvalidChatRequest(ex: InvalidChatRequestException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.BAD_REQUEST.value(),
+                    error = "Bad Request",
+                    message = ex.message ?: "Invalid chat request"
                 )
             )
     }

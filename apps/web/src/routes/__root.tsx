@@ -20,8 +20,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { ChatEngineProvider } from '@/features/chat/ChatEngineProvider'
 import { ChatPanelProvider, useChatPanel } from '@/features/chat/ChatPanelProvider'
 import { AudioPlayerProvider, useHasAudioPlayer } from '@/features/audio/AudioPlayerProvider'
+import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/useAuth'
 
 export const Route = createRootRoute({
@@ -30,11 +32,13 @@ export const Route = createRootRoute({
 
 function RootLayout() {
   return (
-    <ChatPanelProvider>
-      <AudioPlayerProvider>
-        <RootLayoutContent />
-      </AudioPlayerProvider>
-    </ChatPanelProvider>
+    <ChatEngineProvider>
+      <ChatPanelProvider>
+        <AudioPlayerProvider>
+          <RootLayoutContent />
+        </AudioPlayerProvider>
+      </ChatPanelProvider>
+    </ChatEngineProvider>
   )
 }
 
@@ -45,7 +49,11 @@ function RootLayoutContent() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const isSettingsPath = pathname.startsWith('/settings')
   const isOnboardingPath = pathname.startsWith('/onboarding')
-  const isChatEligible = !isLoading && Boolean(user) && !isSettingsPath && !isOnboardingPath
+  const isChatPath = pathname === '/chat'
+  const isChatEligible = !isLoading && Boolean(user) && !isSettingsPath && !isOnboardingPath && !isChatPath
+  const pageBottomInset = hasAudioPlayer
+    ? 'calc(env(safe-area-inset-bottom, 0px) + 5rem)'
+    : undefined
 
   useEffect(() => {
     if (!isChatEligible) {
@@ -103,6 +111,12 @@ function RootLayoutContent() {
               >
                 Library
               </Link>
+              <Link
+                to="/chat"
+                className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Chat
+              </Link>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon-sm" className="rounded-full" aria-label="User menu">
@@ -153,16 +167,23 @@ function RootLayoutContent() {
       </header>
 
       <main
-        className="mx-auto max-w-5xl px-6 py-8"
+        className={cn(
+          isChatPath
+            ? 'overflow-hidden'
+            : 'mx-auto max-w-5xl px-6 py-8'
+        )}
         style={{
-          paddingBottom: hasAudioPlayer
-            ? 'calc(env(safe-area-inset-bottom, 0px) + 5rem)'
+          height: isChatPath
+            ? hasAudioPlayer
+              ? 'calc(100dvh - 3.5rem - env(safe-area-inset-bottom, 0px) - 5rem)'
+              : 'calc(100dvh - 3.5rem)'
             : undefined,
+          paddingBottom: !isChatPath ? pageBottomInset : undefined,
         }}
       >
         <Outlet />
       </main>
-      {isChatEligible && (
+      {isChatEligible && !isChatPath && (
         <>
           <SourceSearchDialog />
           <ChatLauncherButton onClick={openPanelWithDefaultContext} />

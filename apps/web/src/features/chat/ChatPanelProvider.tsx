@@ -1,7 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, type ReactNode } from 'react'
+import { useNavigate, useRouterState } from '@tanstack/react-router'
 import type { ChatSourceContext } from './types'
 import { ChatPanel } from './components/ChatPanel'
+import { useChatEngineContext } from './ChatEngineProvider'
 import { useChatPanelController } from './state/useChatPanelController'
 
 interface ChatPanelContextValue {
@@ -19,6 +21,22 @@ const ChatPanelContext = createContext<ChatPanelContextValue | null>(null)
 
 export function ChatPanelProvider({ children }: { children: ReactNode }) {
   const controller = useChatPanelController()
+  const engine = useChatEngineContext()
+  const navigate = useNavigate()
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+
+  // Close drawer when navigating to /chat
+  useEffect(() => {
+    if (pathname === '/chat' && controller.isOpen) {
+      controller.closePanel()
+    }
+  }, [pathname, controller])
+
+  const handleExpand = useCallback(() => {
+    engine.clearConversation()
+    controller.closePanel()
+    void navigate({ to: '/chat' })
+  }, [controller, engine, navigate])
 
   return (
     <ChatPanelContext.Provider
@@ -47,6 +65,7 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
         retryFailedBriefing={controller.retryFailedBriefing}
         navigateToBriefing={controller.navigateToBriefing}
         onNavigate={controller.navigateToPath}
+        onExpand={handleExpand}
         isActionPending={controller.isActionPending}
       />
     </ChatPanelContext.Provider>

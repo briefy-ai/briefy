@@ -11,6 +11,7 @@ export { ACTION_KEYS, CHAT_INTENTS, isActiveBriefingStatus, isTerminalBriefingSt
 
 export type ChatMessageType =
   | 'system_text'
+  | 'assistant_text'
   | 'user_text'
   | 'user_action'
   | 'intent_selector'
@@ -20,6 +21,7 @@ export type ChatMessageType =
   | 'error'
 
 export type ChatMessageDirection = 'inbound' | 'outbound'
+export type ChatMessageRole = 'user' | 'assistant' | 'system'
 
 export type ChatActionType = 'select_intent' | 'approve_plan' | 'retry'
 
@@ -38,6 +40,10 @@ export interface SystemTextPayload {
 }
 
 export interface UserTextPayload {
+  text: string
+}
+
+export interface AssistantTextPayload {
   text: string
 }
 
@@ -109,6 +115,7 @@ export interface ErrorPayload {
 
 export type ChatMessagePayloadByType = {
   system_text: SystemTextPayload
+  assistant_text: AssistantTextPayload
   user_text: UserTextPayload
   user_action: UserActionPayload
   intent_selector: IntentSelectorPayload
@@ -122,16 +129,27 @@ export type ChatMessage = {
   [K in ChatMessageType]: {
     id: string
     type: K
+    role: ChatMessageRole
     direction: ChatMessageDirection
     createdAt: string
     payload: ChatMessagePayloadByType[K]
     entityType?: 'source' | 'briefing'
     entityId?: string
     mutable?: boolean
+    contextReferences?: ContentReference[]
   }
 }[ChatMessageType]
 
 export interface ChatSourceContext {
   sourceId: string
   sourceTitle: string
+}
+
+export type ContentReferenceType = 'source' | 'briefing'
+
+export interface ContentReference {
+  id: string
+  type: ContentReferenceType
+  title: string
+  subtitle?: string
 }

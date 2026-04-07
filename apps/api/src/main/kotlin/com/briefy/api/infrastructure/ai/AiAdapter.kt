@@ -4,6 +4,7 @@ import com.google.genai.Client
 import io.micrometer.observation.ObservationRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.client.advisor.api.Advisor
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.ChatOptions
@@ -22,6 +23,7 @@ import org.springframework.ai.zhipuai.api.ZhiPuAiApi
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
+import reactor.core.publisher.Flux
 
 @Component
 class AiAdapter(
@@ -132,6 +134,87 @@ class AiAdapter(
         )
     }
 
+    fun stream(
+        provider: String,
+        model: String,
+        prompt: String,
+        systemPrompt: String? = null,
+        useCase: String? = null
+    ): Flux<String> {
+        require(prompt.isNotBlank()) { "prompt must not be blank" }
+        require(provider.isNotBlank()) { "provider must not be blank" }
+        require(model.isNotBlank()) { "model must not be blank" }
+
+        logger.info(
+            "[ai] Starting completion stream provider={} model={} promptLength={} hasSystemPrompt={}",
+            provider,
+            model,
+            prompt.length,
+            !systemPrompt.isNullOrBlank()
+        )
+
+        return aiCallObserver.observeStream(
+            provider = provider,
+            model = model,
+            useCase = useCase,
+            prompt = prompt,
+            systemPrompt = systemPrompt
+        ) {
+            when (provider.trim().lowercase()) {
+                "zhipuai", "minimax", "google_genai" -> streamWithSpringChatModel(
+                    provider = provider,
+                    prompt = prompt,
+                    systemPrompt = systemPrompt,
+                    model = model
+                )
+                else -> throw IllegalArgumentException("Unsupported AI provider '$provider'")
+            }
+        }
+    }
+
+    fun streamWithAdvisors(
+        provider: String,
+        model: String,
+        userMessage: String,
+        systemPrompt: String? = null,
+        useCase: String? = null,
+        advisors: List<Advisor> = emptyList(),
+        advisorParams: Map<String, Any> = emptyMap()
+    ): Flux<String> {
+        require(userMessage.isNotBlank()) { "userMessage must not be blank" }
+        require(provider.isNotBlank()) { "provider must not be blank" }
+        require(model.isNotBlank()) { "model must not be blank" }
+
+        logger.info(
+            "[ai] Starting completion stream provider={} model={} promptLength={} hasSystemPrompt={} advisorCount={}",
+            provider,
+            model,
+            userMessage.length,
+            !systemPrompt.isNullOrBlank(),
+            advisors.size
+        )
+
+        return aiCallObserver.observeStream(
+            provider = provider,
+            model = model,
+            useCase = useCase,
+            prompt = userMessage,
+            systemPrompt = systemPrompt
+        ) {
+            when (provider.trim().lowercase()) {
+                "zhipuai", "minimax", "google_genai" -> streamWithSpringChatModel(
+                    provider = provider,
+                    prompt = userMessage,
+                    systemPrompt = systemPrompt,
+                    model = model,
+                    advisors = advisors,
+                    advisorParams = advisorParams
+                )
+                else -> throw IllegalArgumentException("Unsupported AI provider '$provider'")
+            }
+        }
+    }
+
     private fun completeInternal(
         provider: String,
         model: String,
@@ -206,6 +289,43 @@ class AiAdapter(
         }
     }
 
+    private fun streamWithSpringChatModel(
+        provider: String,
+        prompt: String,
+        systemPrompt: String?,
+        model: String,
+        advisors: List<Advisor> = emptyList(),
+        advisorParams: Map<String, Any> = emptyMap()
+    ): Flux<String> {
+        val normalizedProvider = provider.trim().lowercase()
+        val chatModel = springChatModels[normalizedProvider]
+            ?: throw IllegalStateException(
+                "Spring AI chat model is not configured for provider '$provider'. " +
+                    "Set the matching provider API key."
+            )
+
+        val promptSpec = buildPromptSpec(
+            requestSpec = ChatClient.builder(chatModel).build().prompt(),
+            prompt = prompt,
+            systemPrompt = systemPrompt,
+            chatOptions = buildChatOptions(normalizedProvider, model),
+            advisors = advisors,
+            advisorParams = advisorParams
+        )
+
+        val stream = promptSpec.stream().content()
+            .filter { !it.isNullOrEmpty() }
+            .map { it }
+
+        return if (normalizedProvider == "google_genai") {
+            stream.onErrorMap(RuntimeException::class.java) { error ->
+                GoogleGenAiSpringSupport.unwrapFailure(error)
+            }
+        } else {
+            stream
+        }
+    }
+
     internal fun buildPromptSpec(
         requestSpec: ChatClient.ChatClientRequestSpec,
         prompt: String,
@@ -225,13 +345,25 @@ class AiAdapter(
         prompt: String,
         systemPrompt: String?,
         chatOptions: ChatOptions,
-        toolCallbacks: List<ToolCallback> = emptyList()
+        toolCallbacks: List<ToolCallback> = emptyList(),
+        advisors: List<Advisor> = emptyList(),
+        advisorParams: Map<String, Any> = emptyMap()
     ): ChatClient.ChatClientRequestSpec {
         if (!systemPrompt.isNullOrBlank()) {
             requestSpec.system(systemPrompt)
         }
 
         requestSpec.options(chatOptions)
+        if (advisors.isNotEmpty() || advisorParams.isNotEmpty()) {
+            requestSpec.advisors { advisorSpec ->
+                if (advisors.isNotEmpty()) {
+                    advisorSpec.advisors(advisors)
+                }
+                if (advisorParams.isNotEmpty()) {
+                    advisorSpec.params(advisorParams)
+                }
+            }
+        }
         if (toolCallbacks.isNotEmpty()) {
             requestSpec.toolCallbacks(toolCallbacks)
         }

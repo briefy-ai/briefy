@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { MessageSquare } from 'lucide-react'
+import { Maximize2, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -26,6 +26,7 @@ interface ChatPanelProps {
   retryFailedBriefing: (briefingId: string) => void
   navigateToBriefing: (briefingId: string) => void
   onNavigate: (to: string) => void
+  onExpand: () => void
   isActionPending: (key: string) => boolean
 }
 
@@ -42,6 +43,7 @@ export function ChatPanel({
   retryFailedBriefing,
   navigateToBriefing,
   onNavigate,
+  onExpand,
   isActionPending,
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null)
@@ -67,9 +69,18 @@ export function ChatPanel({
     <Sheet open={isOpen} onOpenChange={(open) => (open ? undefined : closePanel())}>
       <SheetContent side="right" className="w-full p-0 sm:max-w-lg">
         <SheetHeader className="border-b border-border/60" style={{ paddingTop: sheetHeaderPaddingTop }}>
-          <SheetTitle className="flex items-center gap-2 text-sm">
+          <SheetTitle className="flex items-center gap-2 pr-10 text-sm">
             <MessageSquare className="size-4" aria-hidden="true" />
-            Briefing Chat
+            <span className="flex-1">Briefing Chat</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={onExpand}
+              aria-label="Expand to full screen"
+            >
+              <Maximize2 className="size-4" />
+            </Button>
           </SheetTitle>
           <SheetDescription>
             {sourceContext
