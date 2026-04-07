@@ -17,9 +17,9 @@ import com.briefy.api.infrastructure.id.IdGenerator
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.ObjectNode
 import org.slf4j.LoggerFactory
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor
+import org.springframework.ai.chat.memory.ChatMemory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.codec.ServerSentEvent
 import org.springframework.stereotype.Service
@@ -39,6 +39,7 @@ class ChatService(
     private val currentUserProvider: CurrentUserProvider,
     private val idGenerator: IdGenerator,
     private val aiAdapter: AiAdapter,
+    private val chatMemory: ChatMemory,
     private val objectMapper: ObjectMapper,
     private val transactionTemplate: TransactionTemplate,
     @param:Value("\${chat.conversation.provider:google_genai}")
@@ -49,19 +50,21 @@ class ChatService(
     private val logger = LoggerFactory.getLogger(ChatService::class.java)
     private val defaultListLimit = 20
     private val maxListLimit = 100
-    private val maxPromptHistoryMessages = 20
 
     fun sendMessage(command: SendChatMessageCommand): Flux<ServerSentEvent<String>> {
         val userId = currentUserProvider.requireUserId()
         val preparedTurn = prepareTurn(userId, command)
         val assistantContent = StringBuilder()
+        val memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build()
 
-        return aiAdapter.stream(
+        return aiAdapter.streamWithAdvisors(
             provider = chatProvider,
             model = chatModel,
-            prompt = preparedTurn.prompt,
+            userMessage = preparedTurn.userText,
             systemPrompt = preparedTurn.systemPrompt,
-            useCase = "chat_conversation"
+            useCase = "chat_conversation",
+            advisors = listOf(memoryAdvisor),
+            advisorParams = mapOf(ChatMemory.CONVERSATION_ID to preparedTurn.conversation.id.toString())
         )
             .filter { it.isNotEmpty() }
             .map { token ->
@@ -174,6 +177,7 @@ class ChatService(
         transactionTemplate.executeWithoutResult {
             chatMessageRepository.deleteByConversationId(conversation.id)
             conversationRepository.deleteById(conversation.id)
+            chatMemory.clear(conversation.id.toString())
         }
     }
 
@@ -188,7 +192,6 @@ class ChatService(
 
         return transactionTemplate.execute {
             val conversation = resolveConversation(userId, command.conversationIdOrNew)
-            val history = chatMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.id)
             val resolvedReferences = resolveReferences(userId, dedupedReferences)
             val now = Instant.now()
 
@@ -210,10 +213,8 @@ class ChatService(
 
             PreparedChatTurn(
                 conversation = conversation,
-                history = history,
-                userMessage = userMessage,
                 systemPrompt = buildSystemPrompt(resolvedReferences),
-                prompt = buildPrompt(history, trimmedText)
+                userText = trimmedText
             )
         } ?: error("Failed to prepare chat turn")
     }
@@ -309,31 +310,6 @@ class ChatService(
             appendLine("Referenced content:")
             appendLine(contextBlocks)
         }.trim()
-    }
-
-    private fun buildPrompt(history: List<ChatMessage>, text: String): String {
-        val recentHistory = history.takeLast(maxPromptHistoryMessages)
-        if (recentHistory.isEmpty()) {
-            return text
-        }
-
-        val historyBlock = recentHistory.joinToString("\n\n") { message ->
-            val speaker = when (message.role) {
-                ChatMessageRole.USER -> "User"
-                ChatMessageRole.ASSISTANT -> "Assistant"
-                ChatMessageRole.SYSTEM -> "System"
-            }
-            val content = message.content?.trim().orEmpty()
-            "$speaker: $content"
-        }
-
-        return buildString {
-            appendLine("Conversation history:")
-            appendLine(historyBlock)
-            appendLine()
-            appendLine("Latest user message:")
-            append(text)
-        }
     }
 
     private fun buildUserPayload(references: List<ResolvedReference>): JsonNode? {
@@ -456,10 +432,8 @@ class ChatService(
 
     private data class PreparedChatTurn(
         val conversation: Conversation,
-        val history: List<ChatMessage>,
-        val userMessage: ChatMessage,
         val systemPrompt: String,
-        val prompt: String
+        val userText: String
     )
 
     private data class ResolvedReference(

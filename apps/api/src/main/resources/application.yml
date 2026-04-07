@@ -46,6 +46,10 @@ spring:
       observations:
         log-prompt: ${SPRING_AI_CHAT_OBSERVATIONS_LOG_PROMPT:true}
         log-completion: ${SPRING_AI_CHAT_OBSERVATIONS_LOG_COMPLETION:true}
+      memory:
+        repository:
+          jdbc:
+            initialize-schema: never
     embedding:
       observations:
         log-query-response: ${SPRING_AI_EMBEDDING_OBSERVATIONS_LOG_QUERY_RESPONSE:true}
@@ -223,3 +227,5 @@ chat:
   conversation:
     provider: ${CHAT_CONVERSATION_PROVIDER:google_genai}
     model: ${CHAT_CONVERSATION_MODEL:gemini-2.5-flash}
+    memory:
+      max-messages: ${CHAT_CONVERSATION_MEMORY_MAX_MESSAGES:20}

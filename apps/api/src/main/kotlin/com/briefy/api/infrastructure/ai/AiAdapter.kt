@@ -4,6 +4,7 @@ import com.google.genai.Client
 import io.micrometer.observation.ObservationRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.ai.chat.client.ChatClient
+import org.springframework.ai.chat.client.advisor.api.Advisor
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
 import org.springframework.ai.chat.prompt.ChatOptions
@@ -171,6 +172,49 @@ class AiAdapter(
         }
     }
 
+    fun streamWithAdvisors(
+        provider: String,
+        model: String,
+        userMessage: String,
+        systemPrompt: String? = null,
+        useCase: String? = null,
+        advisors: List<Advisor> = emptyList(),
+        advisorParams: Map<String, Any> = emptyMap()
+    ): Flux<String> {
+        require(userMessage.isNotBlank()) { "userMessage must not be blank" }
+        require(provider.isNotBlank()) { "provider must not be blank" }
+        require(model.isNotBlank()) { "model must not be blank" }
+
+        logger.info(
+            "[ai] Starting completion stream provider={} model={} promptLength={} hasSystemPrompt={} advisorCount={}",
+            provider,
+            model,
+            userMessage.length,
+            !systemPrompt.isNullOrBlank(),
+            advisors.size
+        )
+
+        return aiCallObserver.observeStream(
+            provider = provider,
+            model = model,
+            useCase = useCase,
+            prompt = userMessage,
+            systemPrompt = systemPrompt
+        ) {
+            when (provider.trim().lowercase()) {
+                "zhipuai", "minimax", "google_genai" -> streamWithSpringChatModel(
+                    provider = provider,
+                    prompt = userMessage,
+                    systemPrompt = systemPrompt,
+                    model = model,
+                    advisors = advisors,
+                    advisorParams = advisorParams
+                )
+                else -> throw IllegalArgumentException("Unsupported AI provider '$provider'")
+            }
+        }
+    }
+
     private fun completeInternal(
         provider: String,
         model: String,
@@ -249,7 +293,9 @@ class AiAdapter(
         provider: String,
         prompt: String,
         systemPrompt: String?,
-        model: String
+        model: String,
+        advisors: List<Advisor> = emptyList(),
+        advisorParams: Map<String, Any> = emptyMap()
     ): Flux<String> {
         val normalizedProvider = provider.trim().lowercase()
         val chatModel = springChatModels[normalizedProvider]
@@ -262,7 +308,9 @@ class AiAdapter(
             requestSpec = ChatClient.builder(chatModel).build().prompt(),
             prompt = prompt,
             systemPrompt = systemPrompt,
-            chatOptions = buildChatOptions(normalizedProvider, model)
+            chatOptions = buildChatOptions(normalizedProvider, model),
+            advisors = advisors,
+            advisorParams = advisorParams
         )
 
         val stream = promptSpec.stream().content()
@@ -297,13 +345,25 @@ class AiAdapter(
         prompt: String,
         systemPrompt: String?,
         chatOptions: ChatOptions,
-        toolCallbacks: List<ToolCallback> = emptyList()
+        toolCallbacks: List<ToolCallback> = emptyList(),
+        advisors: List<Advisor> = emptyList(),
+        advisorParams: Map<String, Any> = emptyMap()
     ): ChatClient.ChatClientRequestSpec {
         if (!systemPrompt.isNullOrBlank()) {
             requestSpec.system(systemPrompt)
         }
 
         requestSpec.options(chatOptions)
+        if (advisors.isNotEmpty() || advisorParams.isNotEmpty()) {
+            requestSpec.advisors { advisorSpec ->
+                if (advisors.isNotEmpty()) {
+                    advisorSpec.advisors(advisors)
+                }
+                if (advisorParams.isNotEmpty()) {
+                    advisorSpec.params(advisorParams)
+                }
+            }
+        }
         if (toolCallbacks.isNotEmpty()) {
             requestSpec.toolCallbacks(toolCallbacks)
         }

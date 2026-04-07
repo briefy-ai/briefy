@@ -18,6 +18,11 @@ spring:
       chat: none
       embedding: none
       image: none
+    chat:
+      memory:
+        repository:
+          jdbc:
+            initialize-schema: always
 
 ai:
   observability:

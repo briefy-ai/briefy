@@ -1,6 +1,7 @@
 package com.briefy.api.api
 
 import com.briefy.api.domain.chat.ChatMessageRepository
+import com.briefy.api.domain.chat.Conversation
 import com.briefy.api.domain.chat.ConversationRepository
 import com.briefy.api.domain.knowledgegraph.briefing.Briefing
 import com.briefy.api.domain.knowledgegraph.briefing.BriefingEnrichmentIntent
@@ -16,13 +17,19 @@ import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.hamcrest.Matchers.containsString
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.`when`
+import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.eq
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.ai.chat.memory.ChatMemory
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.http.MediaType
+import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.test.web.servlet.MockMvc
@@ -58,6 +65,12 @@ class ChatControllerTest {
     @Autowired
     lateinit var chatMessageRepository: ChatMessageRepository
 
+    @Autowired
+    lateinit var chatMemory: ChatMemory
+
+    @Autowired
+    lateinit var jdbcTemplate: JdbcTemplate
+
     @MockitoBean
     lateinit var currentUserProvider: CurrentUserProvider
 
@@ -69,6 +82,7 @@ class ChatControllerTest {
 
     @BeforeEach
     fun setupCurrentUser() {
+        jdbcTemplate.execute("DELETE FROM spring_ai_chat_memory")
         chatMessageRepository.deleteAll()
         conversationRepository.deleteAll()
         briefingRepository.deleteAll()
@@ -81,12 +95,14 @@ class ChatControllerTest {
         val source = createActiveSource("https://example.com/chat-source", "Referenced source content")
         val briefing = createReadyBriefing("Referenced briefing content")
         `when`(
-            aiAdapter.stream(
-                org.mockito.kotlin.eq("google_genai"),
-                org.mockito.kotlin.eq("gemini-2.5-flash"),
-                org.mockito.kotlin.any(),
-                org.mockito.kotlin.anyOrNull(),
-                org.mockito.kotlin.eq("chat_conversation")
+            aiAdapter.streamWithAdvisors(
+                eq("google_genai"),
+                eq("gemini-2.5-flash"),
+                any(),
+                anyOrNull(),
+                eq("chat_conversation"),
+                any(),
+                any()
             )
         ).thenReturn(Flux.just("Hello", " from", " model"))
 
@@ -141,6 +157,25 @@ class ChatControllerTest {
 
         mockMvc.perform(get("/api/chat/conversations/$conversationId"))
             .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `deleting a conversation clears spring ai chat memory`() {
+        val now = Instant.now()
+        val conversation = conversationRepository.save(
+            Conversation(
+                id = UUID.randomUUID(),
+                userId = testUserId,
+                createdAt = now,
+                updatedAt = now
+            )
+        )
+        chatMemory.add(conversation.id.toString(), org.springframework.ai.chat.messages.UserMessage("Remember this"))
+
+        mockMvc.perform(delete("/api/chat/conversations/${conversation.id}"))
+            .andExpect(status().isNoContent)
+
+        assertTrue(chatMemory.get(conversation.id.toString()).isEmpty())
     }
 
     private fun createActiveSource(url: String, text: String): Source {
