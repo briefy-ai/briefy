@@ -157,6 +157,7 @@ class AiAdapter(
             provider = provider,
             model = model,
             useCase = useCase,
+            sessionId = null,
             prompt = prompt,
             systemPrompt = systemPrompt
         ) {
@@ -178,6 +179,7 @@ class AiAdapter(
         userMessage: String,
         systemPrompt: String? = null,
         useCase: String? = null,
+        sessionId: String? = null,
         advisors: List<Advisor> = emptyList(),
         advisorParams: Map<String, Any> = emptyMap(),
         toolCallbacks: List<ToolCallback> = emptyList()
@@ -200,6 +202,7 @@ class AiAdapter(
             provider = provider,
             model = model,
             useCase = useCase,
+            sessionId = sessionId,
             prompt = userMessage,
             systemPrompt = systemPrompt
         ) {
