@@ -33,6 +33,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import reactor.core.scheduler.Schedulers
+import org.springframework.security.core.Authentication
 import org.springframework.security.core.context.SecurityContextHolder
 import java.time.Instant
 import java.util.UUID
@@ -517,7 +518,7 @@ class ChatService(
     }
 
     private fun buildTopicLookupCallback(
-        authentication: org.springframework.security.core.Authentication?
+        authentication: Authentication?
     ) = FunctionToolCallback.builder(
         "topic_lookup",
         Function<TopicLookupToolRequest, String> { request ->
