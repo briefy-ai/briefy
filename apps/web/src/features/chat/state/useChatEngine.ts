@@ -90,7 +90,7 @@ export interface ChatEngineState {
   deleteConversation: (id: string) => Promise<void>
 }
 
-export function useChatEngine(): ChatEngineState {
+export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
   const [contentReferences, setContentReferences] = useState<ContentReference[]>([])
@@ -106,16 +106,28 @@ export function useChatEngine(): ChatEngineState {
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const refreshConversationSummaries = useCallback(async () => {
+    if (!isChatEnabled) {
+      setConversationSummaries([])
+      setNextConversationCursor(null)
+      setHasMoreConversations(false)
+      setIsLoadingConversationList(false)
+      return
+    }
+
     setIsLoadingConversationList(true)
     try {
       const response = await listChatConversations({ limit: 50 })
       setConversationSummaries(response.items)
       setNextConversationCursor(response.nextCursor)
       setHasMoreConversations(response.hasMore)
+    } catch {
+      setConversationSummaries([])
+      setNextConversationCursor(null)
+      setHasMoreConversations(false)
     } finally {
       setIsLoadingConversationList(false)
     }
-  }, [])
+  }, [isChatEnabled])
 
   const loadMoreConversationSummaries = useCallback(async () => {
     if (!nextConversationCursor || isLoadingConversationList || isLoadingMoreConversations) {
@@ -141,8 +153,26 @@ export function useChatEngine(): ChatEngineState {
   }, [isLoadingConversationList, isLoadingMoreConversations, nextConversationCursor])
 
   useEffect(() => {
+    if (!isChatEnabled) {
+      abortControllerRef.current?.abort()
+      abortControllerRef.current = null
+      setMessages([])
+      setInputValue('')
+      setContentReferences([])
+      setConversationId('new')
+      setConversationSummaries([])
+      setNextConversationCursor(null)
+      setHasMoreConversations(false)
+      setIsSubmitting(false)
+      setIsLoadingConversation(false)
+      setIsLoadingConversationList(false)
+      setIsLoadingMoreConversations(false)
+      setDeletingConversationId(null)
+      return
+    }
+
     void refreshConversationSummaries()
-  }, [refreshConversationSummaries])
+  }, [isChatEnabled, refreshConversationSummaries])
 
   const addContentReference = useCallback((ref: ContentReference) => {
     setContentReferences((prev) => {
@@ -160,7 +190,7 @@ export function useChatEngine(): ChatEngineState {
   }, [])
 
   const loadConversation = useCallback(async (id: string) => {
-    if (id === conversationId || isLoadingConversation) return
+    if (!isChatEnabled || id === conversationId || isLoadingConversation) return
 
     abortControllerRef.current?.abort()
     abortControllerRef.current = null
@@ -181,12 +211,12 @@ export function useChatEngine(): ChatEngineState {
     } finally {
       setIsLoadingConversation(false)
     }
-  }, [conversationId, isLoadingConversation])
+  }, [conversationId, isChatEnabled, isLoadingConversation])
 
   const submitMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim()
-      if (!trimmed || isSubmitting || isLoadingConversation) return
+      if (!isChatEnabled || !trimmed || isSubmitting || isLoadingConversation) return
 
       const refs = [...contentReferences]
       const pendingAssistantId = `assistant_text:pending-${crypto.randomUUID()}`
@@ -269,12 +299,14 @@ export function useChatEngine(): ChatEngineState {
           abortController.signal
         )
       } catch (error) {
-        if (!abortController.signal.aborted) {
-          setMessages((prev) => {
-            const next = prev.filter((message) => message.id !== pendingAssistantId)
-            return [...next, createErrorMessage(extractErrorMessage(error, 'Failed to send chat message'))]
-          })
-        }
+        setMessages((prev) => {
+          const next = prev.filter((message) => message.id !== pendingAssistantId)
+          if (abortController.signal.aborted) {
+            return next
+          }
+
+          return [...next, createErrorMessage(extractErrorMessage(error, 'Failed to send chat message'))]
+        })
       } finally {
         if (abortControllerRef.current === abortController) {
           abortControllerRef.current = null
@@ -283,7 +315,7 @@ export function useChatEngine(): ChatEngineState {
         await refreshConversationSummaries()
       }
     },
-    [contentReferences, conversationId, isLoadingConversation, isSubmitting, refreshConversationSummaries]
+    [contentReferences, conversationId, isChatEnabled, isLoadingConversation, isSubmitting, refreshConversationSummaries]
   )
 
   const resetToNewConversation = useCallback(() => {
@@ -303,7 +335,7 @@ export function useChatEngine(): ChatEngineState {
 
   const deleteConversation = useCallback(
     async (id: string) => {
-      if (deletingConversationId === id) {
+      if (!isChatEnabled || deletingConversationId === id) {
         return
       }
 
@@ -333,7 +365,7 @@ export function useChatEngine(): ChatEngineState {
         setDeletingConversationId((current) => (current === id ? null : current))
       }
     },
-    [conversationId, deletingConversationId, resetToNewConversation]
+    [conversationId, deletingConversationId, isChatEnabled, resetToNewConversation]
   )
 
   return {

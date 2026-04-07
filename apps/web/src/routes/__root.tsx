@@ -50,7 +50,10 @@ function RootLayoutContent() {
   const isSettingsPath = pathname.startsWith('/settings')
   const isOnboardingPath = pathname.startsWith('/onboarding')
   const isChatPath = pathname === '/chat'
-  const isChatEligible = !isLoading && Boolean(user) && !isSettingsPath && !isOnboardingPath
+  const isChatEligible = !isLoading && Boolean(user) && !isSettingsPath && !isOnboardingPath && !isChatPath
+  const pageBottomInset = hasAudioPlayer
+    ? 'calc(env(safe-area-inset-bottom, 0px) + 5rem)'
+    : undefined
 
   useEffect(() => {
     if (!isChatEligible) {
@@ -166,13 +169,16 @@ function RootLayoutContent() {
       <main
         className={cn(
           isChatPath
-            ? 'h-[calc(100dvh-3.5rem)] overflow-hidden'
+            ? 'overflow-hidden'
             : 'mx-auto max-w-5xl px-6 py-8'
         )}
         style={{
-          paddingBottom: !isChatPath && hasAudioPlayer
-            ? 'calc(env(safe-area-inset-bottom, 0px) + 5rem)'
+          height: isChatPath
+            ? hasAudioPlayer
+              ? 'calc(100dvh - 3.5rem - env(safe-area-inset-bottom, 0px) - 5rem)'
+              : 'calc(100dvh - 3.5rem)'
             : undefined,
+          paddingBottom: !isChatPath ? pageBottomInset : undefined,
         }}
       >
         <Outlet />

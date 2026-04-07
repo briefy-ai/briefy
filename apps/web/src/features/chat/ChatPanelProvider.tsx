@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, type ReactNode } fro
 import { useNavigate, useRouterState } from '@tanstack/react-router'
 import type { ChatSourceContext } from './types'
 import { ChatPanel } from './components/ChatPanel'
+import { useChatEngineContext } from './ChatEngineProvider'
 import { useChatPanelController } from './state/useChatPanelController'
 
 interface ChatPanelContextValue {
@@ -20,6 +21,7 @@ const ChatPanelContext = createContext<ChatPanelContextValue | null>(null)
 
 export function ChatPanelProvider({ children }: { children: ReactNode }) {
   const controller = useChatPanelController()
+  const engine = useChatEngineContext()
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (state) => state.location.pathname })
 
@@ -31,9 +33,10 @@ export function ChatPanelProvider({ children }: { children: ReactNode }) {
   }, [pathname, controller])
 
   const handleExpand = useCallback(() => {
+    engine.clearConversation()
     controller.closePanel()
     void navigate({ to: '/chat' })
-  }, [controller, navigate])
+  }, [controller, engine, navigate])
 
   return (
     <ChatPanelContext.Provider
