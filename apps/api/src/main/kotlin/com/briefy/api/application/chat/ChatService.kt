@@ -1,5 +1,9 @@
 package com.briefy.api.application.chat
 
+import com.briefy.api.application.briefing.BriefingErrorResponse
+import com.briefy.api.application.chat.tool.TopicLookupError
+import com.briefy.api.application.chat.tool.TopicLookupRequest
+import com.briefy.api.application.chat.tool.TopicLookupTool
 import com.briefy.api.domain.knowledgegraph.briefing.BriefingStatus
 import com.briefy.api.domain.chat.ChatEntityType
 import com.briefy.api.domain.chat.ChatMessage
@@ -10,7 +14,6 @@ import com.briefy.api.domain.chat.Conversation
 import com.briefy.api.domain.chat.ConversationRepository
 import com.briefy.api.domain.knowledgegraph.briefing.Briefing
 import com.briefy.api.domain.knowledgegraph.briefing.BriefingRepository
-import com.briefy.api.application.briefing.BriefingErrorResponse
 import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
@@ -22,6 +25,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor
 import org.springframework.ai.chat.memory.ChatMemory
+import org.springframework.ai.tool.function.FunctionToolCallback
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.codec.ServerSentEvent
 import org.springframework.stereotype.Service
@@ -31,6 +35,7 @@ import reactor.core.publisher.Mono
 import reactor.core.scheduler.Schedulers
 import java.time.Instant
 import java.util.UUID
+import java.util.function.Function
 
 @Service
 class ChatService(
@@ -41,6 +46,7 @@ class ChatService(
     private val currentUserProvider: CurrentUserProvider,
     private val idGenerator: IdGenerator,
     private val aiAdapter: AiAdapter,
+    private val topicLookupTool: TopicLookupTool,
     private val chatMemory: ChatMemory,
     private val objectMapper: ObjectMapper,
     private val transactionTemplate: TransactionTemplate,
@@ -74,6 +80,7 @@ class ChatService(
         val preparedTurn = prepareTurn(userId, command)
         val assistantContent = StringBuilder()
         val memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build()
+        val topicLookupCallback = buildTopicLookupCallback()
 
         return aiAdapter.streamWithAdvisors(
             provider = chatProvider,
@@ -82,7 +89,8 @@ class ChatService(
             systemPrompt = preparedTurn.systemPrompt,
             useCase = "chat_conversation",
             advisors = listOf(memoryAdvisor),
-            advisorParams = mapOf(ChatMemory.CONVERSATION_ID to preparedTurn.conversation.id.toString())
+            advisorParams = mapOf(ChatMemory.CONVERSATION_ID to preparedTurn.conversation.id.toString()),
+            toolCallbacks = listOf(topicLookupCallback)
         )
             .filter { it.isNotEmpty() }
             .map { token ->
@@ -401,9 +409,11 @@ class ChatService(
     private fun buildSystemPrompt(references: List<ResolvedReference>): String {
         val instructions = buildString {
             appendLine("You are Briefy, a knowledge assistant for a personal research and reading platform.")
+            appendLine("The user saves sources and organizes them into topics inside Briefy.")
             appendLine("Answer clearly and directly.")
-            appendLine("If referenced content is provided, prioritize it and say when the answer depends on that context.")
-            appendLine("If no referenced content is provided, answer from general knowledge.")
+            appendLine("When the user asks about their library, topics, sources, reading habits, or interests, use your tools to look up real data before answering. Never ask the user for permission to use a tool — just use it.")
+            appendLine("If referenced content is provided below, prioritize it and say when the answer depends on that context.")
+            appendLine("For questions unrelated to the user's library, answer from general knowledge.")
         }
 
         if (references.isEmpty()) {
@@ -504,6 +514,40 @@ class ChatService(
         }
     }
 
+    private fun buildTopicLookupCallback() = FunctionToolCallback.builder(
+        "topic_lookup",
+        Function<TopicLookupToolRequest, String> { request ->
+            executeTopicLookup(request)
+        }
+    )
+        .description(
+            "Browse the user's topics and the sources within them. " +
+                "Without topicId: lists topics filtered by status (ACTIVE/SUGGESTED/ARCHIVED, default ACTIVE) and optional name filter. " +
+                "With topicId: returns the topic details and its linked sources with title, URL, type, read status, and word count. " +
+                "Set includeSourceIds=true in list mode to also get source IDs per topic."
+        )
+        .inputType(TopicLookupToolRequest::class.java)
+        .build()
+
+    private fun executeTopicLookup(request: TopicLookupToolRequest): String {
+        val topicId = request.topicId?.trim()?.takeIf { it.isNotBlank() }?.let { rawTopicId ->
+            runCatching { UUID.fromString(rawTopicId) }.getOrElse {
+                return objectMapper.writeValueAsString(TopicLookupError("Invalid 'topicId' argument for topic_lookup."))
+            }
+        }
+
+        return objectMapper.writeValueAsString(
+            topicLookupTool.lookup(
+                TopicLookupRequest(
+                    topicId = topicId,
+                    filter = request.filter?.trim()?.takeIf { it.isNotBlank() },
+                    includeSourceIds = request.includeSourceIds ?: false,
+                    status = request.status
+                )
+            )
+        )
+    }
+
     private fun toMessageResponse(message: ChatMessage): ChatMessageResponse {
         return ChatMessageResponse(
             id = message.id,
@@ -565,4 +609,11 @@ class ChatService(
     companion object {
         const val NEW_CONVERSATION_ID = "new"
     }
+
+    private data class TopicLookupToolRequest(
+        val topicId: String? = null,
+        val filter: String? = null,
+        val includeSourceIds: Boolean? = null,
+        val status: String? = null
+    )
 }

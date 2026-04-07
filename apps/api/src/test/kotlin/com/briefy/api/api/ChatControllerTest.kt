@@ -17,6 +17,10 @@ import com.briefy.api.domain.knowledgegraph.source.Source
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
 import com.briefy.api.domain.knowledgegraph.source.Url
+import com.briefy.api.domain.knowledgegraph.topic.Topic
+import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLink
+import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkRepository
 import com.briefy.api.infrastructure.ai.AiAdapter
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -29,6 +33,7 @@ import org.mockito.Mockito.`when`
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
+import org.springframework.ai.tool.ToolCallback
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.ai.chat.memory.ChatMemory
 import org.springframework.boot.test.context.SpringBootTest
@@ -65,6 +70,12 @@ class ChatControllerTest {
     lateinit var briefingRepository: BriefingRepository
 
     @Autowired
+    lateinit var topicRepository: TopicRepository
+
+    @Autowired
+    lateinit var topicLinkRepository: TopicLinkRepository
+
+    @Autowired
     lateinit var conversationRepository: ConversationRepository
 
     @Autowired
@@ -90,6 +101,8 @@ class ChatControllerTest {
         jdbcTemplate.execute("DELETE FROM spring_ai_chat_memory")
         chatMessageRepository.deleteAll()
         conversationRepository.deleteAll()
+        topicLinkRepository.deleteAll()
+        topicRepository.deleteAll()
         briefingRepository.deleteAll()
         sourceRepository.deleteAll()
         `when`(currentUserProvider.requireUserId()).thenReturn(testUserId)
@@ -106,6 +119,7 @@ class ChatControllerTest {
                 any(),
                 anyOrNull(),
                 eq("chat_conversation"),
+                any(),
                 any(),
                 any()
             )
@@ -181,6 +195,68 @@ class ChatControllerTest {
             .andExpect(status().isNoContent)
 
         assertTrue(chatMemory.get(conversation.id.toString()).isEmpty())
+    }
+
+    fun `chat registers topic lookup callback on streaming path`() {
+        val source = createActiveSource("https://example.com/topic-source", "Topic source content")
+        val topic = topicRepository.save(
+            Topic.activeUser(
+                id = UUID.randomUUID(),
+                userId = testUserId,
+                name = "AI policy"
+            )
+        )
+        topicLinkRepository.save(
+            TopicLink.activeUserForSource(
+                id = UUID.randomUUID(),
+                topicId = topic.id,
+                sourceId = source.id,
+                userId = testUserId
+            )
+        )
+
+        `when`(
+            aiAdapter.streamWithAdvisors(
+                eq("google_genai"),
+                eq("gemini-2.5-flash"),
+                any(),
+                anyOrNull(),
+                eq("chat_conversation"),
+                any(),
+                any(),
+                any()
+            )
+        ).thenAnswer { invocation ->
+            val callbacks = invocation.getArgument<List<ToolCallback>>(7)
+            val payload = callbacks.single { it.toolDefinition.name() == "topic_lookup" }
+                .call("""{"topicId":"${topic.id}"}""")
+
+            assertTrue(payload.contains("AI policy"))
+            assertTrue(payload.contains(source.id.toString()))
+            assertTrue(payload.contains("\"isRead\":false"))
+
+            Flux.just("Topic", " lookup", " works")
+        }
+
+        val createResult = mockMvc.perform(
+            post("/api/chat/conversations/new/messages")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "text": "Show my topic sources",
+                      "contentReferences": []
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(request().asyncStarted())
+            .andReturn()
+
+        mockMvc.perform(asyncDispatch(createResult))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+            .andExpect(content().string(containsString("Topic lookup works")))
     }
 
     @Test
