@@ -1,5 +1,8 @@
 package com.briefy.api.application.chat
 
+import com.briefy.api.application.chat.tool.SourceLookupError
+import com.briefy.api.application.chat.tool.SourceLookupRequest
+import com.briefy.api.application.chat.tool.SourceLookupTool
 import com.briefy.api.application.chat.tool.TopicLookupError
 import com.briefy.api.application.chat.tool.TopicLookupRequest
 import com.briefy.api.application.chat.tool.TopicLookupTool
@@ -45,6 +48,7 @@ class ChatService(
     private val idGenerator: IdGenerator,
     private val aiAdapter: AiAdapter,
     private val topicLookupTool: TopicLookupTool,
+    private val sourceLookupTool: SourceLookupTool,
     private val chatMemory: ChatMemory,
     private val objectMapper: ObjectMapper,
     private val transactionTemplate: TransactionTemplate,
@@ -63,6 +67,7 @@ class ChatService(
         val assistantContent = StringBuilder()
         val memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build()
         val topicLookupCallback = buildTopicLookupCallback()
+        val sourceLookupCallback = buildSourceLookupCallback()
 
         return aiAdapter.streamWithAdvisors(
             provider = chatProvider,
@@ -72,7 +77,7 @@ class ChatService(
             useCase = "chat_conversation",
             advisors = listOf(memoryAdvisor),
             advisorParams = mapOf(ChatMemory.CONVERSATION_ID to preparedTurn.conversation.id.toString()),
-            toolCallbacks = listOf(topicLookupCallback)
+            toolCallbacks = listOf(topicLookupCallback, sourceLookupCallback)
         )
             .filter { it.isNotEmpty() }
             .map { token ->
@@ -413,6 +418,25 @@ class ChatService(
         .inputType(TopicLookupToolRequest::class.java)
         .build()
 
+    private fun buildSourceLookupCallback() = FunctionToolCallback.builder(
+        "source_lookup",
+        Function<SourceLookupToolRequest, String> { request ->
+            executeSourceLookup(request)
+        }
+    )
+        .description(
+            "Browse, search, and read the user's saved sources (articles, videos, research papers, blog posts). " +
+                "Operations: (1) LIST - no sourceId, no query: lists sources with optional filters (sourceType, topicId, filter text). " +
+                "(2) GET - sourceId provided: returns source metadata (title, author, URL, type, topics, published date). " +
+                "(3) CONTENT - sourceId + includeContent=true: returns the source's full text content (truncated to about 3000 words). " +
+                "(4) SEARCH - query provided: semantic similarity search across all sources using embeddings. " +
+                "(5) SIMILAR - sourceId + findSimilar=true: finds sources similar to the given source. " +
+                "Use 'limit' to control max results (default 20, max 50). sourceType values: NEWS, BLOG, RESEARCH, VIDEO. " +
+                "Start with LIST or SEARCH to discover sources, then use GET or CONTENT for details."
+        )
+        .inputType(SourceLookupToolRequest::class.java)
+        .build()
+
     private fun executeTopicLookup(request: TopicLookupToolRequest): String {
         val topicId = request.topicId?.trim()?.takeIf { it.isNotBlank() }?.let { rawTopicId ->
             runCatching { UUID.fromString(rawTopicId) }.getOrElse {
@@ -430,6 +454,76 @@ class ChatService(
                 )
             )
         )
+    }
+
+    private fun executeSourceLookup(request: SourceLookupToolRequest): String {
+        val trimmedQuery = request.query?.trim()?.takeIf { it.isNotBlank() }
+        val trimmedFilter = request.filter?.trim()?.takeIf { it.isNotBlank() }
+        val hasSourceId = !request.sourceId.isNullOrBlank()
+        val isSearch = trimmedQuery != null
+        val isSimilar = !isSearch && request.findSimilar == true
+        val isContent = !isSearch && !isSimilar && request.includeContent == true
+
+        val sourceId = if (isSimilar || isContent || (!isSearch && hasSourceId)) {
+            parseLookupUuid(
+                rawValue = request.sourceId,
+                fieldName = "sourceId",
+                toolName = "source_lookup"
+            ) ?: return objectMapper.writeValueAsString(
+                SourceLookupError("Invalid 'sourceId' argument for source_lookup.")
+            )
+        } else {
+            null
+        }
+
+        if (isSimilar && sourceId == null) {
+            return objectMapper.writeValueAsString(
+                SourceLookupError("The 'findSimilar' argument for source_lookup requires 'sourceId'.")
+            )
+        }
+
+        if (isContent && sourceId == null) {
+            return objectMapper.writeValueAsString(
+                SourceLookupError("The 'includeContent' argument for source_lookup requires 'sourceId'.")
+            )
+        }
+
+        val topicId = if (!isSearch && !hasSourceId) {
+            parseLookupUuid(
+                rawValue = request.topicId,
+                fieldName = "topicId",
+                toolName = "source_lookup"
+            ) ?: request.topicId?.trim()?.takeIf { it.isNotBlank() }?.let {
+                return objectMapper.writeValueAsString(
+                    SourceLookupError("Invalid 'topicId' argument for source_lookup.")
+                )
+            }
+        } else {
+            null
+        }
+
+        return objectMapper.writeValueAsString(
+            sourceLookupTool.lookup(
+                SourceLookupRequest(
+                    sourceId = sourceId,
+                    query = trimmedQuery,
+                    filter = trimmedFilter,
+                    sourceType = if (!isSearch && !hasSourceId) request.sourceType else null,
+                    topicId = topicId,
+                    includeContent = isContent,
+                    findSimilar = isSimilar,
+                    limit = request.limit
+                )
+            )
+        )
+    }
+
+    private fun parseLookupUuid(rawValue: String?, fieldName: String, toolName: String): UUID? {
+        val normalizedValue = rawValue?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return runCatching { UUID.fromString(normalizedValue) }.getOrElse {
+            logger.debug("[chat] Invalid {} argument for {}", fieldName, toolName)
+            null
+        }
     }
 
     private fun toMessageResponse(message: ChatMessage): ChatMessageResponse {
@@ -494,5 +588,16 @@ class ChatService(
         val filter: String? = null,
         val includeSourceIds: Boolean? = null,
         val status: String? = null
+    )
+
+    private data class SourceLookupToolRequest(
+        val sourceId: String? = null,
+        val query: String? = null,
+        val filter: String? = null,
+        val sourceType: String? = null,
+        val topicId: String? = null,
+        val includeContent: Boolean? = null,
+        val findSimilar: Boolean? = null,
+        val limit: Int? = null
     )
 }

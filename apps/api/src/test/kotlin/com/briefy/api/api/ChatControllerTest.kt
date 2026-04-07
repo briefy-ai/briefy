@@ -255,6 +255,54 @@ class ChatControllerTest {
             .andExpect(content().string(containsString("Topic lookup works")))
     }
 
+    @Test
+    fun `chat registers source lookup callback on streaming path`() {
+        val source = createActiveSource("https://example.com/source-lookup", "Source lookup content")
+
+        `when`(
+            aiAdapter.streamWithAdvisors(
+                eq("google_genai"),
+                eq("gemini-2.5-flash"),
+                any(),
+                anyOrNull(),
+                eq("chat_conversation"),
+                any(),
+                any(),
+                any()
+            )
+        ).thenAnswer { invocation ->
+            val callbacks = invocation.getArgument<List<ToolCallback>>(7)
+            val payload = callbacks.single { it.toolDefinition.name() == "source_lookup" }
+                .call("""{"sourceId":"${source.id}","includeContent":true}""")
+
+            assertTrue(payload.contains("Chat Source"))
+            assertTrue(payload.contains(source.id.toString()))
+            assertTrue(payload.contains("Source lookup content"))
+
+            Flux.just("Source", " lookup", " works")
+        }
+
+        val createResult = mockMvc.perform(
+            post("/api/chat/conversations/new/messages")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "text": "Show my saved source",
+                      "contentReferences": []
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(request().asyncStarted())
+            .andReturn()
+
+        mockMvc.perform(asyncDispatch(createResult))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+            .andExpect(content().string(containsString("Source lookup works")))
+    }
+
     private fun createActiveSource(url: String, text: String): Source {
         return sourceRepository.save(
             Source(
