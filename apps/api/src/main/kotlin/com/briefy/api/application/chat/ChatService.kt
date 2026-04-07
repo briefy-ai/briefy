@@ -36,6 +36,8 @@ import org.springframework.transaction.support.TransactionTemplate
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import reactor.core.scheduler.Schedulers
+import org.springframework.security.core.Authentication
+import org.springframework.security.core.context.SecurityContextHolder
 import java.time.Instant
 import java.util.UUID
 import java.util.function.Function
@@ -84,8 +86,9 @@ class ChatService(
         val preparedTurn = prepareTurn(userId, command)
         val assistantContent = StringBuilder()
         val memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build()
-        val topicLookupCallback = buildTopicLookupCallback()
-        val sourceLookupCallback = buildSourceLookupCallback()
+        val authentication = SecurityContextHolder.getContext().authentication
+        val topicLookupCallback = buildTopicLookupCallback(authentication)
+        val sourceLookupCallback = buildSourceLookupCallback(authentication)
 
         return aiAdapter.streamWithAdvisors(
             provider = chatProvider,
@@ -519,10 +522,19 @@ class ChatService(
         }
     }
 
-    private fun buildTopicLookupCallback() = FunctionToolCallback.builder(
+    private fun buildTopicLookupCallback(
+        authentication: Authentication?
+    ) = FunctionToolCallback.builder(
         "topic_lookup",
         Function<TopicLookupToolRequest, String> { request ->
-            executeTopicLookup(request)
+            val context = SecurityContextHolder.createEmptyContext()
+            context.authentication = authentication
+            SecurityContextHolder.setContext(context)
+            try {
+                executeTopicLookup(request)
+            } finally {
+                SecurityContextHolder.clearContext()
+            }
         }
     )
         .description(
@@ -534,10 +546,19 @@ class ChatService(
         .inputType(TopicLookupToolRequest::class.java)
         .build()
 
-    private fun buildSourceLookupCallback() = FunctionToolCallback.builder(
+    private fun buildSourceLookupCallback(
+        authentication: Authentication?
+    ) = FunctionToolCallback.builder(
         "source_lookup",
         Function<SourceLookupToolRequest, String> { request ->
-            executeSourceLookup(request)
+            val context = SecurityContextHolder.createEmptyContext()
+            context.authentication = authentication
+            SecurityContextHolder.setContext(context)
+            try {
+                executeSourceLookup(request)
+            } finally {
+                SecurityContextHolder.clearContext()
+            }
         }
     )
         .description(
