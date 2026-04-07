@@ -295,9 +295,11 @@ class ChatService(
     private fun buildSystemPrompt(references: List<ResolvedReference>): String {
         val instructions = buildString {
             appendLine("You are Briefy, a knowledge assistant for a personal research and reading platform.")
+            appendLine("The user saves sources and organizes them into topics inside Briefy.")
             appendLine("Answer clearly and directly.")
-            appendLine("If referenced content is provided, prioritize it and say when the answer depends on that context.")
-            appendLine("If no referenced content is provided, answer from general knowledge.")
+            appendLine("When the user asks about their library, topics, sources, reading habits, or interests, use your tools to look up real data before answering. Never ask the user for permission to use a tool — just use it.")
+            appendLine("If referenced content is provided below, prioritize it and say when the answer depends on that context.")
+            appendLine("For questions unrelated to the user's library, answer from general knowledge.")
         }
 
         if (references.isEmpty()) {
