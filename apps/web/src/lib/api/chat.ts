@@ -1,7 +1,8 @@
-import { apiDelete, apiGet, apiPostEventStream } from './client'
+import { apiDelete, apiGet, apiPost, apiPostEventStream } from './client'
 import type {
   ChatConversationPageResponse,
   ChatConversationResponse,
+  ChatMessageDto,
   ChatStreamEvent,
   SendChatMessageRequest,
 } from './types'
@@ -43,4 +44,14 @@ export async function getChatConversation(id: string): Promise<ChatConversationR
 
 export async function deleteChatConversation(id: string): Promise<void> {
   await apiDelete(`/api/chat/conversations/${id}`)
+}
+
+export async function persistBriefingResult(
+  conversationId: string,
+  briefingId: string
+): Promise<ChatMessageDto> {
+  return apiPost<ChatMessageDto>(
+    `/api/chat/conversations/${conversationId}/briefing-result`,
+    { briefingId }
+  )
 }

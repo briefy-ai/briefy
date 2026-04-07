@@ -9,6 +9,16 @@ import java.util.UUID
 interface ChatMessageRepository : JpaRepository<ChatMessage, UUID> {
     fun findByConversationIdOrderByCreatedAtAsc(conversationId: UUID): List<ChatMessage>
     fun findTopByConversationIdOrderByCreatedAtDesc(conversationId: UUID): ChatMessage?
+    fun existsByConversationIdAndEntityTypeAndEntityId(
+        conversationId: UUID,
+        entityType: ChatEntityType,
+        entityId: UUID
+    ): Boolean
+    fun findFirstByConversationIdAndEntityIdAndTypeInOrderByCreatedAtAsc(
+        conversationId: UUID,
+        entityId: UUID,
+        types: Collection<ChatMessageType>
+    ): ChatMessage?
     @Query(
         """
         select m.conversationId as conversationId, m.content as content
