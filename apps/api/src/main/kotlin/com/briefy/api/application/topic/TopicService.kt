@@ -233,25 +233,14 @@ class TopicService(
     fun getTopic(id: UUID): TopicDetailResponse {
         val userId = currentUserProvider.requireUserId()
         val topic = topicRepository.findByIdAndUserId(id, userId) ?: throw TopicNotFoundException(id)
-        val linkStatus = when (topic.status) {
-            TopicStatus.SUGGESTED -> TopicLinkStatus.SUGGESTED
-            TopicStatus.ACTIVE -> TopicLinkStatus.ACTIVE
-            TopicStatus.ARCHIVED -> TopicLinkStatus.ACTIVE
-        }
+        return loadTopicWithSources(userId, topic).toDetailResponse()
+    }
 
-        val links = topicLinkRepository.findByUserIdAndTopicIdAndTargetTypeAndStatusAndSourceStatusOrderByAssignedAtDesc(
-            userId = userId,
-            topicId = id,
-            targetType = TopicLinkTargetType.SOURCE,
-            topicLinkStatus = linkStatus,
-            sourceStatus = SourceStatus.ACTIVE
-        )
-
-        val sourcesById = sourceRepository.findAllByUserIdAndIdIn(userId, links.map { it.targetId }.distinct())
-            .associateBy { it.id }
-        val orderedSources = links.mapNotNull { sourcesById[it.targetId] }
-
-        return topic.toDetailResponse(orderedSources)
+    @Transactional(readOnly = true)
+    fun getTopicWithSources(id: UUID): TopicWithSources {
+        val userId = currentUserProvider.requireUserId()
+        val topic = topicRepository.findByIdAndUserId(id, userId) ?: throw TopicNotFoundException(id)
+        return loadTopicWithSources(userId, topic)
     }
 
     private fun ensureSourceIsActive(userId: UUID, sourceId: UUID): Source {
@@ -358,4 +347,36 @@ class TopicService(
             topicLinkRepository.saveAll(linksToSave)
         }
     }
+
+    private fun loadTopicWithSources(userId: UUID, topic: Topic): TopicWithSources {
+        val linkStatus = when (topic.status) {
+            TopicStatus.SUGGESTED -> TopicLinkStatus.SUGGESTED
+            TopicStatus.ACTIVE -> TopicLinkStatus.ACTIVE
+            TopicStatus.ARCHIVED -> TopicLinkStatus.ACTIVE
+        }
+
+        val links = topicLinkRepository.findByUserIdAndTopicIdAndTargetTypeAndStatusAndSourceStatusOrderByAssignedAtDesc(
+            userId = userId,
+            topicId = topic.id,
+            targetType = TopicLinkTargetType.SOURCE,
+            topicLinkStatus = linkStatus,
+            sourceStatus = SourceStatus.ACTIVE
+        )
+
+        val sourcesById = sourceRepository.findAllByUserIdAndIdIn(userId, links.map { it.targetId }.distinct())
+            .associateBy { it.id }
+        val orderedSources = links.mapNotNull { sourcesById[it.targetId] }
+
+        return TopicWithSources(
+            topic = topic,
+            sources = orderedSources
+        )
+    }
+}
+
+data class TopicWithSources(
+    val topic: Topic,
+    val sources: List<Source>
+) {
+    fun toDetailResponse(): TopicDetailResponse = topic.toDetailResponse(sources)
 }
