@@ -179,19 +179,21 @@ class AiAdapter(
         systemPrompt: String? = null,
         useCase: String? = null,
         advisors: List<Advisor> = emptyList(),
-        advisorParams: Map<String, Any> = emptyMap()
+        advisorParams: Map<String, Any> = emptyMap(),
+        toolCallbacks: List<ToolCallback> = emptyList()
     ): Flux<String> {
         require(userMessage.isNotBlank()) { "userMessage must not be blank" }
         require(provider.isNotBlank()) { "provider must not be blank" }
         require(model.isNotBlank()) { "model must not be blank" }
 
         logger.info(
-            "[ai] Starting completion stream provider={} model={} promptLength={} hasSystemPrompt={} advisorCount={}",
+            "[ai] Starting completion stream provider={} model={} promptLength={} hasSystemPrompt={} advisorCount={} toolCount={}",
             provider,
             model,
             userMessage.length,
             !systemPrompt.isNullOrBlank(),
-            advisors.size
+            advisors.size,
+            toolCallbacks.size
         )
 
         return aiCallObserver.observeStream(
@@ -208,7 +210,8 @@ class AiAdapter(
                     systemPrompt = systemPrompt,
                     model = model,
                     advisors = advisors,
-                    advisorParams = advisorParams
+                    advisorParams = advisorParams,
+                    toolCallbacks = toolCallbacks
                 )
                 else -> throw IllegalArgumentException("Unsupported AI provider '$provider'")
             }
@@ -295,7 +298,8 @@ class AiAdapter(
         systemPrompt: String?,
         model: String,
         advisors: List<Advisor> = emptyList(),
-        advisorParams: Map<String, Any> = emptyMap()
+        advisorParams: Map<String, Any> = emptyMap(),
+        toolCallbacks: List<ToolCallback> = emptyList()
     ): Flux<String> {
         val normalizedProvider = provider.trim().lowercase()
         val chatModel = springChatModels[normalizedProvider]
@@ -309,6 +313,7 @@ class AiAdapter(
             prompt = prompt,
             systemPrompt = systemPrompt,
             chatOptions = buildChatOptions(normalizedProvider, model),
+            toolCallbacks = toolCallbacks,
             advisors = advisors,
             advisorParams = advisorParams
         )
