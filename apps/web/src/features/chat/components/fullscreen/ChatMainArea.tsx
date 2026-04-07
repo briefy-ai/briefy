@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { PanelLeft, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ACTION_KEYS } from '../../constants'
 import type { ChatIntentId } from '../../types'
 import { useChatEngineContext } from '../../ChatEngineProvider'
 import { ChatMessageHandlersProvider, type ChatMessageHandlers } from '../ChatMessageHandlers'
@@ -73,17 +72,10 @@ export function ChatMainArea({ sidebarOpen, onToggleSidebar }: ChatMainAreaProps
         }
       },
       isActionPending: (actionKey: string) => {
-        if (actionKey === ACTION_KEYS.SELECT_INTENT) return engine.isBriefingActionPending
-        if (engine.activeBriefingId && actionKey === ACTION_KEYS.approvePlan(engine.activeBriefingId)) {
-          return engine.isBriefingActionPending
-        }
-        if (engine.activeBriefingId && actionKey === ACTION_KEYS.retry(engine.activeBriefingId)) {
-          return engine.isBriefingActionPending
-        }
-        return false
+        return engine.pendingBriefingActionKey === actionKey
       },
     }),
-    [engine.activeBriefingId, engine.isBriefingActionPending, handleApprovePlan, handleRetry, handleSelectIntent, navigate]
+    [engine.pendingBriefingActionKey, handleApprovePlan, handleRetry, handleSelectIntent, navigate]
   )
 
   return (

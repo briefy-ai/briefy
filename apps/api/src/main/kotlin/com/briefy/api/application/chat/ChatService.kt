@@ -201,18 +201,19 @@ class ChatService(
 
     fun persistBriefingResult(command: PersistBriefingResultCommand): ChatMessageResponse {
         val userId = currentUserProvider.requireUserId()
-        val conversation = conversationRepository.findByIdAndUserId(command.conversationId, userId)
-            ?: throw ChatConversationNotFoundException(command.conversationId)
-        val briefing = briefingRepository.findByIdAndUserId(command.briefingId, userId)
-            ?: throw ChatReferenceAccessException("briefing", command.briefingId)
-
-        if (briefing.status != BriefingStatus.READY && briefing.status != BriefingStatus.FAILED) {
-            throw InvalidChatRequestException(
-                "Briefing '${command.briefingId}' is not in a terminal state (status=${briefing.status})"
-            )
-        }
 
         return transactionTemplate.execute {
+            val conversation = conversationRepository.findWithLockByIdAndUserId(command.conversationId, userId)
+                ?: throw ChatConversationNotFoundException(command.conversationId)
+            val briefing = briefingRepository.findByIdAndUserId(command.briefingId, userId)
+                ?: throw ChatReferenceAccessException("briefing", command.briefingId)
+
+            if (briefing.status != BriefingStatus.READY && briefing.status != BriefingStatus.FAILED) {
+                throw InvalidChatRequestException(
+                    "Briefing '${command.briefingId}' is not in a terminal state (status=${briefing.status})"
+                )
+            }
+
             val persistedMessageTypes = listOf(ChatMessageType.BRIEFING_RESULT, ChatMessageType.BRIEFING_ERROR)
             val existingPersistedMessage = chatMessageRepository
                 .findFirstByConversationIdAndEntityIdAndTypeInOrderByCreatedAtAsc(

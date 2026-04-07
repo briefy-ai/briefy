@@ -15,7 +15,7 @@ import type {
   ChatConversationSummaryResponse,
   ChatMessageDto,
 } from '@/lib/api/types'
-import { isActiveBriefingStatus, isTerminalBriefingStatus } from '../constants'
+import { ACTION_KEYS, isActiveBriefingStatus, isTerminalBriefingStatus } from '../constants'
 import type { ExecutionProgressSnapshot } from './chatMessageMapper'
 import { mergeBriefingMessages } from './chatMessageMapper'
 import { useBriefingPolling } from '../transport/useBriefingPolling'
@@ -112,6 +112,17 @@ function createErrorMessage(message: string): ChatMessage {
   }
 }
 
+function toBriefingActionKey(action: ChatActionDto): string {
+  switch (action.type) {
+    case 'create_briefing':
+      return ACTION_KEYS.SELECT_INTENT
+    case 'approve_plan':
+      return action.briefingId ? ACTION_KEYS.approvePlan(action.briefingId) : 'approve_plan'
+    case 'retry_briefing':
+      return action.briefingId ? ACTION_KEYS.retry(action.briefingId) : 'retry'
+  }
+}
+
 export interface ChatEngineState {
   messages: ChatMessage[]
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>
@@ -127,6 +138,7 @@ export interface ChatEngineState {
   conversationId: string
   isSubmitting: boolean
   isBriefingActionPending: boolean
+  pendingBriefingActionKey: string | null
   activeBriefingId: string | null
   activeBriefingStatus: BriefingStatus | null
   conversationSummaries: ChatConversationSummaryResponse[]
@@ -157,8 +169,18 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
   const [activeBriefingId, setActiveBriefingId] = useState<string | null>(null)
   const [activeBriefingStatus, setActiveBriefingStatus] = useState<BriefingStatus | null>(null)
   const [activeBriefingConversationId, setActiveBriefingConversationId] = useState<string | null>(null)
-  const [isBriefingActionPending, setIsBriefingActionPending] = useState(false)
+  const [pendingBriefingActionKey, setPendingBriefingActionKey] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const conversationIdRef = useRef(conversationId)
+  const activeBriefingConversationIdRef = useRef(activeBriefingConversationId)
+
+  useEffect(() => {
+    conversationIdRef.current = conversationId
+  }, [conversationId])
+
+  useEffect(() => {
+    activeBriefingConversationIdRef.current = activeBriefingConversationId
+  }, [activeBriefingConversationId])
 
   const refreshConversationSummaries = useCallback(async () => {
     if (!isChatEnabled) {
@@ -226,7 +248,7 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
       setActiveBriefingId(null)
       setActiveBriefingStatus(null)
       setActiveBriefingConversationId(null)
-      setIsBriefingActionPending(false)
+      setPendingBriefingActionKey(null)
       return
     }
 
@@ -342,13 +364,15 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
 
             if (event.type === 'message') {
               const uiMsg = toUiMessage(event.message)
-              if (uiMsg) {
-                setMessages((prev) =>
-                  prev.map((message) =>
-                    message.id === pendingAssistantId ? uiMsg : message
-                  )
+              setMessages((prev) => {
+                if (!uiMsg) {
+                  return prev.filter((message) => message.id !== pendingAssistantId)
+                }
+
+                return prev.map((message) =>
+                  message.id === pendingAssistantId ? uiMsg : message
                 )
-              }
+              })
               return true
             }
 
@@ -398,10 +422,11 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
 
   const submitBriefingAction = useCallback(
     async (action: ChatActionDto, displayText: string) => {
-      if (!isChatEnabled || isBriefingActionPending || isSubmitting) return
+      if (!isChatEnabled || pendingBriefingActionKey !== null || isSubmitting) return
 
       const requestConversationId = conversationId
-      setIsBriefingActionPending(true)
+      const pendingActionKey = toBriefingActionKey(action)
+      setPendingBriefingActionKey(pendingActionKey)
 
       try {
         await streamConversationMessage(
@@ -456,11 +481,11 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
           createErrorMessage(extractErrorMessage(error, 'Briefing action failed')),
         ])
       } finally {
-        setIsBriefingActionPending(false)
+        setPendingBriefingActionKey(null)
         await refreshConversationSummaries()
       }
     },
-    [conversationId, isBriefingActionPending, isChatEnabled, isSubmitting, refreshConversationSummaries]
+    [conversationId, isChatEnabled, isSubmitting, pendingBriefingActionKey, refreshConversationSummaries]
   )
 
   const loadExecutionSnapshot = useCallback(
@@ -483,9 +508,10 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
     async (briefing: BriefingResponse) => {
       setActiveBriefingStatus(briefing.status)
       const execution = await loadExecutionSnapshot(briefing)
-      const briefingConversationId = activeBriefingConversationId
+      const briefingConversationId = activeBriefingConversationIdRef.current
+      const currentConversationId = conversationIdRef.current
 
-      if (briefingConversationId && conversationId === briefingConversationId) {
+      if (briefingConversationId && currentConversationId === briefingConversationId) {
         setMessages((prev) => mergeBriefingMessages(prev, briefing, execution))
       }
 
@@ -500,7 +526,7 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
         setActiveBriefingConversationId(null)
       }
     },
-    [activeBriefingConversationId, conversationId, loadExecutionSnapshot]
+    [loadExecutionSnapshot]
   )
 
   useBriefingPolling({
@@ -520,7 +546,7 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
     setInputValue('')
     setIsSubmitting(false)
     setIsLoadingConversation(false)
-    setIsBriefingActionPending(false)
+    setPendingBriefingActionKey(null)
   }, [])
 
   const clearConversation = useCallback(() => {
@@ -582,7 +608,8 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
     clearConversation,
     conversationId,
     isSubmitting,
-    isBriefingActionPending,
+    isBriefingActionPending: pendingBriefingActionKey !== null,
+    pendingBriefingActionKey,
     activeBriefingId,
     activeBriefingStatus,
     conversationSummaries,

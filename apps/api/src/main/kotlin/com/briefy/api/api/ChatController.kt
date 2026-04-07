@@ -119,6 +119,7 @@ data class SendChatMessageRequest(
     val text: String,
     @field:Valid
     val contentReferences: List<ChatContentReferenceRequest> = emptyList(),
+    @field:Valid
     val action: ChatActionRequest? = null
 )
 

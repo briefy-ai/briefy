@@ -184,6 +184,27 @@ class ChatControllerTest {
     }
 
     @Test
+    fun `send message validates nested action request`() {
+        mockMvc.perform(
+            post("/api/chat/conversations/new/messages")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "text": "Create briefing",
+                      "contentReferences": [],
+                      "action": {
+                        "type": ""
+                      }
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.message").value(containsString("action type is required")))
+    }
+
+    @Test
     fun `persist briefing result rejects briefing not linked to conversation`() {
         val conversation = createConversation()
         val briefing = createReadyBriefing("Referenced briefing content")
