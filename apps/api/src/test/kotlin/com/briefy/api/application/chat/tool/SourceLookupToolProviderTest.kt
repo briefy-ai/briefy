@@ -135,7 +135,15 @@ class SourceLookupToolProviderTest {
         val sourceA = source(title = "First", sourceType = SourceType.NEWS, text = "alpha beta")
         val sourceB = source(title = "Second", sourceType = SourceType.BLOG, text = "gamma delta")
         whenever(currentUserProvider.requireUserId()).thenReturn(userId)
-        whenever(sourceRepository.searchSources(userId, "policy", 21)).thenReturn(
+        whenever(
+            sourceRepository.searchSources(
+                userId = userId,
+                query = "policy",
+                limit = 21,
+                topicIds = null,
+                sourceType = null
+            )
+        ).thenReturn(
             listOf(
                 searchProjection(sourceA.id, "First", SourceType.NEWS),
                 searchProjection(sourceB.id, "Second", SourceType.BLOG)
@@ -144,15 +152,68 @@ class SourceLookupToolProviderTest {
         whenever(sourceRepository.findAllByUserIdAndIdIn(userId, listOf(sourceA.id, sourceB.id))).thenReturn(
             listOf(sourceB, sourceA)
         )
-        whenever(topicLinkRepository.findActiveTopicsBySourceIds(userId, listOf(sourceA.id, sourceB.id))).thenReturn(emptyList())
 
         val result = tool.lookup(SourceLookupRequest(filter = "policy"))
 
         assertTrue(result is SourceList)
         val list = result as SourceList
         assertEquals(listOf(sourceA.id, sourceB.id), list.sources.map { it.id })
-        verify(sourceRepository).searchSources(userId, "policy", 21)
+        verify(sourceRepository).searchSources(
+            userId = userId,
+            query = "policy",
+            limit = 21,
+            topicIds = null,
+            sourceType = null
+        )
         verify(sourceRepository).findAllByUserIdAndIdIn(userId, listOf(sourceA.id, sourceB.id))
+    }
+
+    @Test
+    fun `list mode with text filter forwards topic and source type filters to search and skips sentinel hydration`() {
+        val userId = UUID.randomUUID()
+        val topicId = UUID.randomUUID()
+        val sourceA = source(title = "First", sourceType = SourceType.RESEARCH, text = "alpha beta")
+        val sentinelId = UUID.randomUUID()
+        whenever(currentUserProvider.requireUserId()).thenReturn(userId)
+        whenever(
+            sourceRepository.searchSources(
+                userId = userId,
+                query = "policy",
+                limit = 2,
+                topicIds = listOf(topicId),
+                sourceType = SourceType.RESEARCH
+            )
+        ).thenReturn(
+            listOf(
+                searchProjection(sourceA.id, "First", SourceType.RESEARCH),
+                searchProjection(sentinelId, "Sentinel", SourceType.RESEARCH)
+            )
+        )
+        whenever(sourceRepository.findAllByUserIdAndIdIn(userId, listOf(sourceA.id))).thenReturn(
+            listOf(sourceA)
+        )
+
+        val result = tool.lookup(
+            SourceLookupRequest(
+                filter = "policy",
+                topicId = topicId,
+                sourceType = "research",
+                limit = 1
+            )
+        )
+
+        assertTrue(result is SourceList)
+        val list = result as SourceList
+        assertEquals(listOf(sourceA.id), list.sources.map { it.id })
+        assertTrue(list.truncated)
+        verify(sourceRepository).searchSources(
+            userId = userId,
+            query = "policy",
+            limit = 2,
+            topicIds = listOf(topicId),
+            sourceType = SourceType.RESEARCH
+        )
+        verify(sourceRepository).findAllByUserIdAndIdIn(userId, listOf(sourceA.id))
     }
 
     @Test

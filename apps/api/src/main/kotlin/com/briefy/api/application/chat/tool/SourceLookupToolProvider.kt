@@ -99,18 +99,23 @@ class SourceLookupToolProvider(
         topicId: UUID?,
         limit: Int
     ): SourceLookupResult {
-        val rankedMatches = sourceRepository.searchSources(userId, filter, limit + 1)
+        val rankedMatches = sourceRepository.searchSources(
+            userId = userId,
+            query = filter,
+            limit = limit + 1,
+            topicIds = topicId?.let(::listOf),
+            sourceType = sourceType
+        )
         val truncated = rankedMatches.size > limit
+        val idsToHydrate = rankedMatches.take(limit).map { it.id }
         val hydratedSourcesById = sourceRepository.findAllByUserIdAndIdIn(
             userId,
-            rankedMatches.map { it.id }
+            idsToHydrate
         ).associateBy { it.id }
-        val activeTopicIdsBySourceId = loadActiveTopicIdsBySourceId(userId, hydratedSourcesById.keys.toList())
 
         val sources = rankedMatches
-            .mapNotNull { projection -> hydratedSourcesById[projection.id] }
-            .filter { source -> matchesFilters(source, sourceType, topicId, activeTopicIdsBySourceId) }
             .take(limit)
+            .mapNotNull { projection -> hydratedSourcesById[projection.id] }
 
         return SourceList(
             sources = sources.map(::toSourceListItem),
@@ -212,34 +217,6 @@ class SourceLookupToolProvider(
             }
     }
 
-    private fun loadActiveTopicIdsBySourceId(
-        userId: UUID,
-        sourceIds: List<UUID>
-    ): Map<UUID, Set<UUID>> {
-        if (sourceIds.isEmpty()) {
-            return emptyMap()
-        }
-
-        return topicLinkRepository.findActiveTopicsBySourceIds(userId, sourceIds)
-            .groupBy { it.sourceId }
-            .mapValues { (_, topics) -> topics.map { it.topicId }.toSet() }
-    }
-
-    private fun matchesFilters(
-        source: Source,
-        sourceType: SourceType?,
-        topicId: UUID?,
-        activeTopicIdsBySourceId: Map<UUID, Set<UUID>>
-    ): Boolean {
-        if (sourceType != null && source.sourceType != sourceType) {
-            return false
-        }
-        if (topicId != null && topicId !in activeTopicIdsBySourceId[source.id].orEmpty()) {
-            return false
-        }
-        return true
-    }
-
     private fun truncateContent(text: String): TruncatedContent {
         val words = text.split(Regex("\\s+")).filter { it.isNotBlank() }
         if (words.size <= MAX_CONTENT_WORDS) {
@@ -279,8 +256,9 @@ class SourceLookupToolProvider(
     }
 
     private fun invalidSourceTypeError(): SourceLookupError {
+        val validValues = SourceType.entries.joinToString(", ") { it.name }
         return SourceLookupError(
-            "Invalid 'sourceType' argument for source_lookup. Expected NEWS, BLOG, RESEARCH, or VIDEO."
+            "Invalid 'sourceType' argument for source_lookup. Expected one of: $validValues."
         )
     }
 

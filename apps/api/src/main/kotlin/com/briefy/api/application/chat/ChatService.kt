@@ -459,14 +459,27 @@ class ChatService(
     private fun executeSourceLookup(request: SourceLookupToolRequest): String {
         val trimmedQuery = request.query?.trim()?.takeIf { it.isNotBlank() }
         val trimmedFilter = request.filter?.trim()?.takeIf { it.isNotBlank() }
-        val hasSourceId = !request.sourceId.isNullOrBlank()
         val isSearch = trimmedQuery != null
         val isSimilar = !isSearch && request.findSimilar == true
         val isContent = !isSearch && !isSimilar && request.includeContent == true
+        val rawSourceId = request.sourceId?.trim()?.takeIf { it.isNotBlank() }
+        val hasSourceId = rawSourceId != null
+
+        if (isSimilar && rawSourceId == null) {
+            return objectMapper.writeValueAsString(
+                SourceLookupError("The 'findSimilar' argument for source_lookup requires 'sourceId'.")
+            )
+        }
+
+        if (isContent && rawSourceId == null) {
+            return objectMapper.writeValueAsString(
+                SourceLookupError("The 'includeContent' argument for source_lookup requires 'sourceId'.")
+            )
+        }
 
         val sourceId = if (isSimilar || isContent || (!isSearch && hasSourceId)) {
             parseLookupUuid(
-                rawValue = request.sourceId,
+                rawValue = rawSourceId,
                 fieldName = "sourceId",
                 toolName = "source_lookup"
             ) ?: return objectMapper.writeValueAsString(
@@ -474,18 +487,6 @@ class ChatService(
             )
         } else {
             null
-        }
-
-        if (isSimilar && sourceId == null) {
-            return objectMapper.writeValueAsString(
-                SourceLookupError("The 'findSimilar' argument for source_lookup requires 'sourceId'.")
-            )
-        }
-
-        if (isContent && sourceId == null) {
-            return objectMapper.writeValueAsString(
-                SourceLookupError("The 'includeContent' argument for source_lookup requires 'sourceId'.")
-            )
         }
 
         val topicId = if (!isSearch && !hasSourceId) {
