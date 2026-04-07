@@ -2,7 +2,7 @@ CREATE TABLE spring_ai_chat_memory (
     conversation_id VARCHAR(36) NOT NULL,
     content TEXT NOT NULL,
     type VARCHAR(10) NOT NULL CHECK (type IN ('USER', 'ASSISTANT', 'SYSTEM', 'TOOL')),
-    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX spring_ai_chat_memory_conversation_id_timestamp_idx
