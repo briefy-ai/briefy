@@ -1,8 +1,13 @@
 package com.briefy.api.application.chat
 
+import com.briefy.api.application.briefing.BriefingErrorResponse
+import com.briefy.api.application.chat.tool.SourceLookupError
+import com.briefy.api.application.chat.tool.SourceLookupRequest
+import com.briefy.api.application.chat.tool.SourceLookupTool
 import com.briefy.api.application.chat.tool.TopicLookupError
 import com.briefy.api.application.chat.tool.TopicLookupRequest
 import com.briefy.api.application.chat.tool.TopicLookupTool
+import com.briefy.api.domain.knowledgegraph.briefing.BriefingStatus
 import com.briefy.api.domain.chat.ChatEntityType
 import com.briefy.api.domain.chat.ChatMessage
 import com.briefy.api.domain.chat.ChatMessageRepository
@@ -31,6 +36,8 @@ import org.springframework.transaction.support.TransactionTemplate
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import reactor.core.scheduler.Schedulers
+import org.springframework.security.core.Authentication
+import org.springframework.security.core.context.SecurityContextHolder
 import java.time.Instant
 import java.util.UUID
 import java.util.function.Function
@@ -45,9 +52,11 @@ class ChatService(
     private val idGenerator: IdGenerator,
     private val aiAdapter: AiAdapter,
     private val topicLookupTool: TopicLookupTool,
+    private val sourceLookupTool: SourceLookupTool,
     private val chatMemory: ChatMemory,
     private val objectMapper: ObjectMapper,
     private val transactionTemplate: TransactionTemplate,
+    private val briefingChatHandler: BriefingChatHandler,
     @param:Value("\${chat.conversation.provider:google_genai}")
     private val chatProvider: String,
     @param:Value("\${chat.conversation.model:gemini-2.5-flash}")
@@ -59,10 +68,27 @@ class ChatService(
 
     fun sendMessage(command: SendChatMessageCommand): Flux<ServerSentEvent<String>> {
         val userId = currentUserProvider.requireUserId()
+
+        if (command.action != null) {
+            val conversation = transactionTemplate.execute {
+                resolveConversation(userId, command.conversationIdOrNew)
+            } ?: error("Failed to resolve conversation")
+            return briefingChatHandler.handle(conversation, command)
+        }
+
+        return sendConversationMessage(userId, command)
+    }
+
+    private fun sendConversationMessage(
+        userId: UUID,
+        command: SendChatMessageCommand
+    ): Flux<ServerSentEvent<String>> {
         val preparedTurn = prepareTurn(userId, command)
         val assistantContent = StringBuilder()
         val memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build()
-        val topicLookupCallback = buildTopicLookupCallback()
+        val authentication = SecurityContextHolder.getContext().authentication
+        val topicLookupCallback = buildTopicLookupCallback(authentication)
+        val sourceLookupCallback = buildSourceLookupCallback(authentication)
 
         return aiAdapter.streamWithAdvisors(
             provider = chatProvider,
@@ -73,7 +99,7 @@ class ChatService(
             sessionId = preparedTurn.conversation.id.toString(),
             advisors = listOf(memoryAdvisor),
             advisorParams = mapOf(ChatMemory.CONVERSATION_ID to preparedTurn.conversation.id.toString()),
-            toolCallbacks = listOf(topicLookupCallback)
+            toolCallbacks = listOf(topicLookupCallback, sourceLookupCallback)
         )
             .filter { it.isNotEmpty() }
             .map { token ->
@@ -190,6 +216,102 @@ class ChatService(
         }
     }
 
+    fun persistBriefingResult(command: PersistBriefingResultCommand): ChatMessageResponse {
+        val userId = currentUserProvider.requireUserId()
+
+        return transactionTemplate.execute {
+            val conversation = conversationRepository.findWithLockByIdAndUserId(command.conversationId, userId)
+                ?: throw ChatConversationNotFoundException(command.conversationId)
+            val briefing = briefingRepository.findByIdAndUserId(command.briefingId, userId)
+                ?: throw ChatReferenceAccessException("briefing", command.briefingId)
+
+            if (briefing.status != BriefingStatus.READY && briefing.status != BriefingStatus.FAILED) {
+                throw InvalidChatRequestException(
+                    "Briefing '${command.briefingId}' is not in a terminal state (status=${briefing.status})"
+                )
+            }
+
+            val persistedMessageTypes = listOf(ChatMessageType.BRIEFING_RESULT, ChatMessageType.BRIEFING_ERROR)
+            val existingPersistedMessage = chatMessageRepository
+                .findFirstByConversationIdAndEntityIdAndTypeInOrderByCreatedAtAsc(
+                    conversationId = conversation.id,
+                    entityId = command.briefingId,
+                    types = persistedMessageTypes
+                )
+            if (existingPersistedMessage != null) {
+                return@execute toMessageResponse(existingPersistedMessage)
+            }
+
+            val isLinkedToConversation = chatMessageRepository.existsByConversationIdAndEntityTypeAndEntityId(
+                conversationId = conversation.id,
+                entityType = ChatEntityType.BRIEFING,
+                entityId = command.briefingId
+            )
+            if (!isLinkedToConversation) {
+                throw InvalidChatRequestException(
+                    "Briefing '${command.briefingId}' is not linked to conversation '${conversation.id}'"
+                )
+            }
+
+            val now = Instant.now()
+            val isSuccess = briefing.status == BriefingStatus.READY
+
+            val payload = if (isSuccess) {
+                objectMapper.createObjectNode().apply {
+                    put("briefingId", command.briefingId.toString())
+                    put("title", briefing.title ?: "Briefing")
+                    put("status", briefing.status.name.lowercase())
+                }
+            } else {
+                buildBriefingErrorPayload(command.briefingId, briefing)
+            }
+
+            val message = ChatMessage(
+                id = idGenerator.newId(),
+                conversationId = conversation.id,
+                role = ChatMessageRole.SYSTEM,
+                type = if (isSuccess) ChatMessageType.BRIEFING_RESULT else ChatMessageType.BRIEFING_ERROR,
+                content = null,
+                payload = payload,
+                entityType = ChatEntityType.BRIEFING,
+                entityId = command.briefingId,
+                createdAt = now
+            )
+
+            conversation.touch(now)
+            conversationRepository.save(conversation)
+            chatMessageRepository.save(message)
+
+            toMessageResponse(message)
+        } ?: error("Failed to persist briefing result")
+    }
+
+    private fun buildBriefingErrorPayload(briefingId: UUID, briefing: Briefing): JsonNode {
+        val payload = objectMapper.createObjectNode().apply {
+            put("briefingId", briefingId.toString())
+            put("status", briefing.status.name.lowercase())
+        }
+        val error = parseBriefingError(briefing.errorJson)
+
+        payload.put("message", error?.message ?: briefing.errorJson ?: "Briefing generation failed")
+        payload.put("retryable", error?.retryable ?: false)
+        error?.code?.let { payload.put("code", it) }
+        error?.details?.takeIf { it.isNotEmpty() }?.let { details ->
+            payload.set<JsonNode>("details", objectMapper.valueToTree(details))
+        }
+        return payload
+    }
+
+    private fun parseBriefingError(rawError: String?): BriefingErrorResponse? {
+        if (rawError.isNullOrBlank()) {
+            return null
+        }
+
+        return runCatching {
+            objectMapper.readValue(rawError, BriefingErrorResponse::class.java)
+        }.getOrNull()
+    }
+
     private fun prepareTurn(userId: UUID, command: SendChatMessageCommand): PreparedChatTurn {
         val trimmedText = command.text.trim()
         if (trimmedText.isBlank()) {
@@ -296,9 +418,11 @@ class ChatService(
     private fun buildSystemPrompt(references: List<ResolvedReference>): String {
         val instructions = buildString {
             appendLine("You are Briefy, a knowledge assistant for a personal research and reading platform.")
+            appendLine("The user saves sources and organizes them into topics inside Briefy.")
             appendLine("Answer clearly and directly.")
-            appendLine("If referenced content is provided, prioritize it and say when the answer depends on that context.")
-            appendLine("If no referenced content is provided, answer from general knowledge.")
+            appendLine("When the user asks about their library, topics, sources, reading habits, or interests, use your tools to look up real data before answering. Never ask the user for permission to use a tool — just use it.")
+            appendLine("If referenced content is provided below, prioritize it and say when the answer depends on that context.")
+            appendLine("For questions unrelated to the user's library, answer from general knowledge.")
         }
 
         if (references.isEmpty()) {
@@ -399,10 +523,19 @@ class ChatService(
         }
     }
 
-    private fun buildTopicLookupCallback() = FunctionToolCallback.builder(
+    private fun buildTopicLookupCallback(
+        authentication: Authentication?
+    ) = FunctionToolCallback.builder(
         "topic_lookup",
         Function<TopicLookupToolRequest, String> { request ->
-            executeTopicLookup(request)
+            val context = SecurityContextHolder.createEmptyContext()
+            context.authentication = authentication
+            SecurityContextHolder.setContext(context)
+            try {
+                executeTopicLookup(request)
+            } finally {
+                SecurityContextHolder.clearContext()
+            }
         }
     )
         .description(
@@ -412,6 +545,34 @@ class ChatService(
                 "Set includeSourceIds=true in list mode to also get source IDs per topic."
         )
         .inputType(TopicLookupToolRequest::class.java)
+        .build()
+
+    private fun buildSourceLookupCallback(
+        authentication: Authentication?
+    ) = FunctionToolCallback.builder(
+        "source_lookup",
+        Function<SourceLookupToolRequest, String> { request ->
+            val context = SecurityContextHolder.createEmptyContext()
+            context.authentication = authentication
+            SecurityContextHolder.setContext(context)
+            try {
+                executeSourceLookup(request)
+            } finally {
+                SecurityContextHolder.clearContext()
+            }
+        }
+    )
+        .description(
+            "Browse, search, and read the user's saved sources (articles, videos, research papers, blog posts). " +
+                "Operations: (1) LIST - no sourceId, no query: lists sources with optional filters (sourceType, topicId, filter text). " +
+                "(2) GET - sourceId provided: returns source metadata (title, author, URL, type, topics, published date). " +
+                "(3) CONTENT - sourceId + includeContent=true: returns the source's full text content (truncated to about 3000 words). " +
+                "(4) SEARCH - query provided: semantic similarity search across all sources using embeddings. " +
+                "(5) SIMILAR - sourceId + findSimilar=true: finds sources similar to the given source. " +
+                "Use 'limit' to control max results (default 20, max 50). sourceType values: NEWS, BLOG, RESEARCH, VIDEO. " +
+                "Start with LIST or SEARCH to discover sources, then use GET or CONTENT for details."
+        )
+        .inputType(SourceLookupToolRequest::class.java)
         .build()
 
     private fun executeTopicLookup(request: TopicLookupToolRequest): String {
@@ -433,17 +594,93 @@ class ChatService(
         )
     }
 
+    private fun executeSourceLookup(request: SourceLookupToolRequest): String {
+        val trimmedQuery = request.query?.trim()?.takeIf { it.isNotBlank() }
+        val trimmedFilter = request.filter?.trim()?.takeIf { it.isNotBlank() }
+        val isSearch = trimmedQuery != null
+        val isSimilar = !isSearch && request.findSimilar == true
+        val isContent = !isSearch && !isSimilar && request.includeContent == true
+        val rawSourceId = request.sourceId?.trim()?.takeIf { it.isNotBlank() }
+        val hasSourceId = rawSourceId != null
+
+        if (isSimilar && rawSourceId == null) {
+            return objectMapper.writeValueAsString(
+                SourceLookupError("The 'findSimilar' argument for source_lookup requires 'sourceId'.")
+            )
+        }
+
+        if (isContent && rawSourceId == null) {
+            return objectMapper.writeValueAsString(
+                SourceLookupError("The 'includeContent' argument for source_lookup requires 'sourceId'.")
+            )
+        }
+
+        val sourceId = if (isSimilar || isContent || (!isSearch && hasSourceId)) {
+            parseLookupUuid(
+                rawValue = rawSourceId,
+                fieldName = "sourceId",
+                toolName = "source_lookup"
+            ) ?: return objectMapper.writeValueAsString(
+                SourceLookupError("Invalid 'sourceId' argument for source_lookup.")
+            )
+        } else {
+            null
+        }
+
+        val topicId = if (!isSearch && !hasSourceId) {
+            parseLookupUuid(
+                rawValue = request.topicId,
+                fieldName = "topicId",
+                toolName = "source_lookup"
+            ) ?: request.topicId?.trim()?.takeIf { it.isNotBlank() }?.let {
+                return objectMapper.writeValueAsString(
+                    SourceLookupError("Invalid 'topicId' argument for source_lookup.")
+                )
+            }
+        } else {
+            null
+        }
+
+        return objectMapper.writeValueAsString(
+            sourceLookupTool.lookup(
+                SourceLookupRequest(
+                    sourceId = sourceId,
+                    query = trimmedQuery,
+                    filter = trimmedFilter,
+                    sourceType = if (!isSearch && !hasSourceId) request.sourceType else null,
+                    topicId = topicId,
+                    includeContent = isContent,
+                    findSimilar = isSimilar,
+                    limit = request.limit
+                )
+            )
+        )
+    }
+
+    private fun parseLookupUuid(rawValue: String?, fieldName: String, toolName: String): UUID? {
+        val normalizedValue = rawValue?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return runCatching { UUID.fromString(normalizedValue) }.getOrElse {
+            logger.debug("[chat] Invalid {} argument for {}", fieldName, toolName)
+            null
+        }
+    }
+
     private fun toMessageResponse(message: ChatMessage): ChatMessageResponse {
         return ChatMessageResponse(
             id = message.id,
             role = message.role.name.lowercase(),
             type = message.type.name.lowercase(),
             content = message.content,
+            payload = toResponsePayload(message.payload),
             contentReferences = extractContentReferences(message.payload),
             entityType = message.entityType?.name?.lowercase(),
             entityId = message.entityId,
             createdAt = message.createdAt
         )
+    }
+
+    private fun toResponsePayload(payload: JsonNode?): Any? {
+        return payload?.let { objectMapper.convertValue(it, Any::class.java) }
     }
 
     private fun extractContentReferences(payload: JsonNode?): List<ChatContentReferenceResponse> {
@@ -495,5 +732,16 @@ class ChatService(
         val filter: String? = null,
         val includeSourceIds: Boolean? = null,
         val status: String? = null
+    )
+
+    private data class SourceLookupToolRequest(
+        val sourceId: String? = null,
+        val query: String? = null,
+        val filter: String? = null,
+        val sourceType: String? = null,
+        val topicId: String? = null,
+        val includeContent: Boolean? = null,
+        val findSimilar: Boolean? = null,
+        val limit: Int? = null
     )
 }

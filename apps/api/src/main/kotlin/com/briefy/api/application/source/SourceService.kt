@@ -212,7 +212,9 @@ class SourceService(
         val items = sourceRepository.searchSources(
             userId = userId,
             query = trimmedQuery,
-            limit = normalizedLimit
+            limit = normalizedLimit,
+            topicIds = null,
+            sourceType = null
         )
         val activeTopicsBySourceId = loadActiveTopicsBySourceId(userId, items.map { it.id })
 

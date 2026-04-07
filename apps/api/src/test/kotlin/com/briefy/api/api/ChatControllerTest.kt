@@ -1,11 +1,16 @@
 package com.briefy.api.api
 
+import com.briefy.api.domain.chat.ChatEntityType
+import com.briefy.api.domain.chat.ChatMessage
 import com.briefy.api.domain.chat.ChatMessageRepository
+import com.briefy.api.domain.chat.ChatMessageRole
+import com.briefy.api.domain.chat.ChatMessageType
 import com.briefy.api.domain.chat.Conversation
 import com.briefy.api.domain.chat.ConversationRepository
 import com.briefy.api.domain.knowledgegraph.briefing.Briefing
 import com.briefy.api.domain.knowledgegraph.briefing.BriefingEnrichmentIntent
 import com.briefy.api.domain.knowledgegraph.briefing.BriefingRepository
+import com.briefy.api.domain.knowledgegraph.briefing.BriefingStatus
 import com.briefy.api.domain.knowledgegraph.source.Content
 import com.briefy.api.domain.knowledgegraph.source.Metadata
 import com.briefy.api.domain.knowledgegraph.source.Source
@@ -28,9 +33,9 @@ import org.mockito.Mockito.`when`
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
+import org.springframework.ai.chat.memory.ChatMemory
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.ai.chat.memory.ChatMemory
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.http.MediaType
@@ -257,6 +262,152 @@ class ChatControllerTest {
             .andExpect(content().string(containsString("Topic lookup works")))
     }
 
+    @Test
+    fun `chat registers source lookup callback on streaming path`() {
+        val source = createActiveSource("https://example.com/source-lookup", "Source lookup content")
+
+        `when`(
+            aiAdapter.streamWithAdvisors(
+                eq("google_genai"),
+                eq("gemini-2.5-flash"),
+                any(),
+                anyOrNull(),
+                eq("chat_conversation"),
+                any(),
+                any(),
+                any()
+            )
+        ).thenAnswer { invocation ->
+            val callbacks = invocation.getArgument<List<ToolCallback>>(7)
+            val payload = callbacks.single { it.toolDefinition.name() == "source_lookup" }
+                .call("""{"sourceId":"${source.id}","includeContent":true}""")
+
+            assertTrue(payload.contains("Chat Source"))
+            assertTrue(payload.contains(source.id.toString()))
+            assertTrue(payload.contains("Source lookup content"))
+
+            Flux.just("Source", " lookup", " works")
+        }
+
+        val createResult = mockMvc.perform(
+            post("/api/chat/conversations/new/messages")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "text": "Show my saved source",
+                      "contentReferences": []
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(request().asyncStarted())
+            .andReturn()
+
+        mockMvc.perform(asyncDispatch(createResult))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+            .andExpect(content().string(containsString("Source lookup works")))
+    }
+
+    @Test
+    fun `send message validates nested action request`() {
+        mockMvc.perform(
+            post("/api/chat/conversations/new/messages")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "text": "Create briefing",
+                      "contentReferences": [],
+                      "action": {
+                        "type": ""
+                      }
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.message").value(containsString("action type is required")))
+    }
+
+    @Test
+    fun `persist briefing result rejects briefing not linked to conversation`() {
+        val conversation = createConversation()
+        val briefing = createReadyBriefing("Referenced briefing content")
+
+        mockMvc.perform(
+            post("/api/chat/conversations/${conversation.id}/briefing-result")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{ "briefingId": "${briefing.id}" }""")
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.message").value(containsString("not linked to conversation")))
+    }
+
+    @Test
+    fun `persist briefing result stores parsed failed briefing payload`() {
+        val conversation = createConversation()
+        val briefing = createFailedBriefing(
+            """
+            {
+              "code": "planner_failed",
+              "message": "Planner crashed",
+              "retryable": false,
+              "details": {
+                "step": "planning"
+              }
+            }
+            """.trimIndent()
+        )
+        linkBriefingToConversation(conversation.id, briefing.id)
+
+        mockMvc.perform(
+            post("/api/chat/conversations/${conversation.id}/briefing-result")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{ "briefingId": "${briefing.id}" }""")
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.type").value("briefing_error"))
+            .andExpect(jsonPath("$.payload.briefingId").value(briefing.id.toString()))
+            .andExpect(jsonPath("$.payload.status").value("failed"))
+            .andExpect(jsonPath("$.payload.message").value("Planner crashed"))
+            .andExpect(jsonPath("$.payload.retryable").value(false))
+            .andExpect(jsonPath("$.payload.code").value("planner_failed"))
+            .andExpect(jsonPath("$.payload.details.step").value("planning"))
+    }
+
+    @Test
+    fun `approve plan action does not persist user action when approval fails`() {
+        val conversation = createConversation()
+        val briefing = createReadyBriefing("Already completed briefing")
+
+        val requestResult = mockMvc.perform(
+            post("/api/chat/conversations/${conversation.id}/messages")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "text": "Approved plan",
+                      "contentReferences": [],
+                      "action": {
+                        "type": "approve_plan",
+                        "briefingId": "${briefing.id}"
+                      }
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(request().asyncStarted())
+            .andReturn()
+
+        mockMvc.perform(asyncDispatch(requestResult))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.message").value(containsString("Can only approve plans in plan_pending_approval status")))
+
+        assertTrue(chatMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.id).isEmpty())
+    }
+
     private fun createActiveSource(url: String, text: String): Source {
         return sourceRepository.save(
             Source(
@@ -288,8 +439,52 @@ class ChatControllerTest {
         )
         briefing.contentMarkdown = contentMarkdown
         briefing.title = "Stored Briefing"
+        briefing.status = BriefingStatus.READY
+        briefing.generationCompletedAt = now
         briefing.updatedAt = now
         return briefingRepository.save(briefing)
+    }
+
+    private fun createFailedBriefing(errorJson: String): Briefing {
+        val now = Instant.now()
+        val briefing = Briefing.create(
+            id = UUID.randomUUID(),
+            userId = testUserId,
+            enrichmentIntent = BriefingEnrichmentIntent.DEEP_DIVE,
+            now = now
+        )
+        briefing.status = BriefingStatus.FAILED
+        briefing.errorJson = errorJson
+        briefing.failedAt = now
+        briefing.updatedAt = now
+        return briefingRepository.save(briefing)
+    }
+
+    private fun createConversation(): Conversation {
+        val now = Instant.now()
+        return conversationRepository.save(
+            Conversation(
+                id = UUID.randomUUID(),
+                userId = testUserId,
+                createdAt = now,
+                updatedAt = now
+            )
+        )
+    }
+
+    private fun linkBriefingToConversation(conversationId: UUID, briefingId: UUID) {
+        chatMessageRepository.save(
+            ChatMessage(
+                id = UUID.randomUUID(),
+                conversationId = conversationId,
+                role = ChatMessageRole.SYSTEM,
+                type = ChatMessageType.BRIEFING_PLAN,
+                payload = objectMapper.createObjectNode().put("id", briefingId.toString()),
+                entityType = ChatEntityType.BRIEFING,
+                entityId = briefingId,
+                createdAt = Instant.now()
+            )
+        )
     }
 
     private fun extractConversationId(streamBody: String): UUID {
