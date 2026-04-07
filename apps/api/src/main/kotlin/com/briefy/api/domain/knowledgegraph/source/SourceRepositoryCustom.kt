@@ -18,7 +18,9 @@ interface SourceRepositoryCustom {
     fun searchSources(
         userId: UUID,
         query: String,
-        limit: Int
+        limit: Int,
+        topicIds: List<UUID>?,
+        sourceType: SourceType?
     ): List<SourceSearchProjection>
 }
 

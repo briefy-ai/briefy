@@ -2,9 +2,9 @@ package com.briefy.api.api
 
 import com.briefy.api.domain.chat.ChatEntityType
 import com.briefy.api.domain.chat.ChatMessage
+import com.briefy.api.domain.chat.ChatMessageRepository
 import com.briefy.api.domain.chat.ChatMessageRole
 import com.briefy.api.domain.chat.ChatMessageType
-import com.briefy.api.domain.chat.ChatMessageRepository
 import com.briefy.api.domain.chat.Conversation
 import com.briefy.api.domain.chat.ConversationRepository
 import com.briefy.api.domain.knowledgegraph.briefing.Briefing
@@ -33,9 +33,9 @@ import org.mockito.Mockito.`when`
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
+import org.springframework.ai.chat.memory.ChatMemory
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.ai.chat.memory.ChatMemory
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.http.MediaType
@@ -197,6 +197,7 @@ class ChatControllerTest {
         assertTrue(chatMemory.get(conversation.id.toString()).isEmpty())
     }
 
+    @Test
     fun `chat registers topic lookup callback on streaming path`() {
         val source = createActiveSource("https://example.com/topic-source", "Topic source content")
         val topic = topicRepository.save(
@@ -257,6 +258,54 @@ class ChatControllerTest {
             .andExpect(status().isOk)
             .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
             .andExpect(content().string(containsString("Topic lookup works")))
+    }
+
+    @Test
+    fun `chat registers source lookup callback on streaming path`() {
+        val source = createActiveSource("https://example.com/source-lookup", "Source lookup content")
+
+        `when`(
+            aiAdapter.streamWithAdvisors(
+                eq("google_genai"),
+                eq("gemini-2.5-flash"),
+                any(),
+                anyOrNull(),
+                eq("chat_conversation"),
+                any(),
+                any(),
+                any()
+            )
+        ).thenAnswer { invocation ->
+            val callbacks = invocation.getArgument<List<ToolCallback>>(7)
+            val payload = callbacks.single { it.toolDefinition.name() == "source_lookup" }
+                .call("""{"sourceId":"${source.id}","includeContent":true}""")
+
+            assertTrue(payload.contains("Chat Source"))
+            assertTrue(payload.contains(source.id.toString()))
+            assertTrue(payload.contains("Source lookup content"))
+
+            Flux.just("Source", " lookup", " works")
+        }
+
+        val createResult = mockMvc.perform(
+            post("/api/chat/conversations/new/messages")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {
+                      "text": "Show my saved source",
+                      "contentReferences": []
+                    }
+                    """.trimIndent()
+                )
+        )
+            .andExpect(request().asyncStarted())
+            .andReturn()
+
+        mockMvc.perform(asyncDispatch(createResult))
+            .andExpect(status().isOk)
+            .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
+            .andExpect(content().string(containsString("Source lookup works")))
     }
 
     @Test
