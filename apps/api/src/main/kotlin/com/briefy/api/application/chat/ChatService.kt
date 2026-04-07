@@ -96,6 +96,7 @@ class ChatService(
             userMessage = preparedTurn.userText,
             systemPrompt = preparedTurn.systemPrompt,
             useCase = "chat_conversation",
+            sessionId = preparedTurn.conversation.id.toString(),
             advisors = listOf(memoryAdvisor),
             advisorParams = mapOf(ChatMemory.CONVERSATION_ID to preparedTurn.conversation.id.toString()),
             toolCallbacks = listOf(topicLookupCallback, sourceLookupCallback)

@@ -73,6 +73,7 @@ class AiCallObserver(
         provider: String,
         model: String,
         useCase: String?,
+        sessionId: String?,
         prompt: String,
         systemPrompt: String?,
         operation: () -> Flux<String>
@@ -99,6 +100,9 @@ class AiCallObserver(
             span.setAttribute(AttributeKey.stringArrayKey("langfuse.tags"), tags)
             if (userId != null) {
                 span.setAttribute("langfuse.user.id", userId)
+            }
+            if (!sessionId.isNullOrBlank()) {
+                span.setAttribute("langfuse.session.id", sessionId)
             }
 
             captureInput(span, prompt, systemPrompt)

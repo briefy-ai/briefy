@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import reactor.core.publisher.Flux
 
 class AiCallObserverTest {
     @Test
@@ -104,6 +105,55 @@ class AiCallObserverTest {
         assertNull(parent.attributes.get(AttributeKey.stringKey("output.value")))
         assertNull(parent.attributes.get(AttributeKey.stringKey("ai.error.category")))
         assertNull(parent.attributes.get(AttributeKey.longKey("ai.latency_ms")))
+    }
+
+    @Test
+    fun `records langfuse session id for streamed calls when provided`() {
+        val spanExporter = InMemorySpanExporter.create()
+        val tracerProvider = SdkTracerProvider.builder()
+            .addSpanProcessor(SimpleSpanProcessor.create(spanExporter))
+            .build()
+        val tracer = OpenTelemetrySdk.builder().setTracerProvider(tracerProvider).build().getTracer("test")
+        val observer = AiCallObserver(tracer, enabledProperties(), AiPayloadSanitizer())
+
+        observer.observeStream(
+            provider = "google_genai",
+            model = "gemini-2.5-flash-lite",
+            useCase = "chat_conversation",
+            sessionId = "conversation-123",
+            prompt = "prompt",
+            systemPrompt = null
+        ) {
+            Flux.just("hello", " world")
+        }.collectList().block()
+
+        val span = spanExporter.finishedSpanItems.single()
+        assertEquals("conversation-123", span.attributes.get(AttributeKey.stringKey("langfuse.session.id")))
+        assertEquals("hello world", span.attributes.get(AttributeKey.stringKey("ai.output.preview")))
+    }
+
+    @Test
+    fun `does not record langfuse session id for streamed calls when absent`() {
+        val spanExporter = InMemorySpanExporter.create()
+        val tracerProvider = SdkTracerProvider.builder()
+            .addSpanProcessor(SimpleSpanProcessor.create(spanExporter))
+            .build()
+        val tracer = OpenTelemetrySdk.builder().setTracerProvider(tracerProvider).build().getTracer("test")
+        val observer = AiCallObserver(tracer, enabledProperties(), AiPayloadSanitizer())
+
+        observer.observeStream(
+            provider = "google_genai",
+            model = "gemini-2.5-flash-lite",
+            useCase = "chat_conversation",
+            sessionId = null,
+            prompt = "prompt",
+            systemPrompt = null
+        ) {
+            Flux.just("ok")
+        }.collectList().block()
+
+        val span = spanExporter.finishedSpanItems.single()
+        assertNull(span.attributes.get(AttributeKey.stringKey("langfuse.session.id")))
     }
 
     private fun enabledProperties(): AiObservabilityProperties {

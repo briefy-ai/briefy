@@ -119,6 +119,7 @@ class ChatControllerTest {
                 any(),
                 anyOrNull(),
                 eq("chat_conversation"),
+                anyOrNull(),
                 any(),
                 any(),
                 any()
@@ -223,12 +224,13 @@ class ChatControllerTest {
                 any(),
                 anyOrNull(),
                 eq("chat_conversation"),
+                anyOrNull(),
                 any(),
                 any(),
                 any()
             )
         ).thenAnswer { invocation ->
-            val callbacks = invocation.getArgument<List<ToolCallback>>(7)
+            val callbacks = invocation.getArgument<List<ToolCallback>>(8)
             val payload = callbacks.single { it.toolDefinition.name() == "topic_lookup" }
                 .call("""{"topicId":"${topic.id}"}""")
 
