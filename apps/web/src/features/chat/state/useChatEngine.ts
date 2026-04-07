@@ -3,54 +3,101 @@ import {
   deleteChatConversation,
   getChatConversation,
   listChatConversations,
+  persistBriefingResult,
   streamConversationMessage,
 } from '@/lib/api/chat'
+import { getBriefing, getBriefingRunSummary, listBriefingRunEvents } from '@/lib/api/briefings'
 import { extractErrorMessage } from '@/lib/api/errorMessage'
 import type {
+  BriefingResponse,
+  BriefingStatus,
+  ChatActionDto,
   ChatConversationSummaryResponse,
   ChatMessageDto,
 } from '@/lib/api/types'
-import type { ChatMessage, ContentReference } from '../types'
+import { ACTION_KEYS, isActiveBriefingStatus, isTerminalBriefingStatus } from '../constants'
+import type { ExecutionProgressSnapshot } from './chatMessageMapper'
+import { mergeBriefingMessages } from './chatMessageMapper'
+import { useBriefingPolling } from '../transport/useBriefingPolling'
+import type { ChatActionType, ChatMessage, ContentReference } from '../types'
 
 function toDirection(role: ChatMessageDto['role']): ChatMessage['direction'] {
   return role === 'user' ? 'inbound' : 'outbound'
 }
 
-function toUiMessage(message: ChatMessageDto): ChatMessage {
+function toUiMessage(message: ChatMessageDto): ChatMessage | null {
+  const base = {
+    id: message.id,
+    role: message.role as ChatMessage['role'],
+    direction: toDirection(message.role),
+    createdAt: message.createdAt,
+    entityType: (message.entityType ?? undefined) as ChatMessage['entityType'],
+    entityId: message.entityId ?? undefined,
+  }
+
   switch (message.type) {
     case 'assistant_text':
-      return {
-        id: message.id,
-        type: 'assistant_text',
-        role: message.role,
-        direction: toDirection(message.role),
-        createdAt: message.createdAt,
-        payload: { text: message.content ?? '' },
-        entityType: message.entityType ?? undefined,
-        entityId: message.entityId ?? undefined,
-      }
+      return { ...base, type: 'assistant_text', payload: { text: message.content ?? '' } }
     case 'system_text':
-      return {
-        id: message.id,
-        type: 'system_text',
-        role: message.role,
-        direction: toDirection(message.role),
-        createdAt: message.createdAt,
-        payload: { text: message.content ?? '' },
-        entityType: message.entityType ?? undefined,
-        entityId: message.entityId ?? undefined,
-      }
+      return { ...base, type: 'system_text', payload: { text: message.content ?? '' } }
     case 'user_text':
+      return { ...base, type: 'user_text', payload: { text: message.content ?? '' } }
+    case 'user_action': {
+      const p = message.payload ?? {}
       return {
-        id: message.id,
-        type: 'user_text',
-        role: message.role,
-        direction: toDirection(message.role),
-        createdAt: message.createdAt,
-        payload: { text: message.content ?? '' },
-        entityType: message.entityType ?? undefined,
-        entityId: message.entityId ?? undefined,
+        ...base,
+        type: 'user_action',
+        payload: {
+          actionType: ((p.actionType as string) ?? 'select_intent') as ChatActionType,
+          label: (p.label as string) ?? message.content ?? '',
+          payload: p as Record<string, string>,
+        },
       }
+    }
+    case 'briefing_plan': {
+      const p = message.payload ?? {}
+      return {
+        ...base,
+        type: 'plan_preview',
+        payload: {
+          briefingId: (p.id as string) ?? message.entityId ?? '',
+          intent: (p.enrichmentIntent as string) ?? '',
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          steps: (p.plan as any[]) ?? [],
+        },
+      }
+    }
+    case 'briefing_result': {
+      const p = message.payload ?? {}
+      return {
+        ...base,
+        type: 'briefing_result',
+        payload: {
+          briefingId: (p.briefingId as string) ?? message.entityId ?? '',
+          title: (p.title as string) ?? 'Briefing',
+          status: (p.status as BriefingStatus) ?? 'ready',
+        },
+      }
+    }
+    case 'briefing_error': {
+      const p = message.payload ?? {}
+      return {
+        ...base,
+        type: 'error',
+        payload: {
+          message: (p.message as string) ?? 'Briefing generation failed',
+          retryAction: p.retryable
+            ? {
+                actionType: 'retry' as const,
+                briefingId: (p.briefingId as string) ?? message.entityId ?? '',
+                label: 'Retry briefing generation',
+              }
+            : undefined,
+        },
+      }
+    }
+    default:
+      return null
   }
 }
 
@@ -65,6 +112,17 @@ function createErrorMessage(message: string): ChatMessage {
   }
 }
 
+function toBriefingActionKey(action: ChatActionDto): string {
+  switch (action.type) {
+    case 'create_briefing':
+      return ACTION_KEYS.SELECT_INTENT
+    case 'approve_plan':
+      return action.briefingId ? ACTION_KEYS.approvePlan(action.briefingId) : 'approve_plan'
+    case 'retry_briefing':
+      return action.briefingId ? ACTION_KEYS.retry(action.briefingId) : 'retry'
+  }
+}
+
 export interface ChatEngineState {
   messages: ChatMessage[]
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>
@@ -75,9 +133,14 @@ export interface ChatEngineState {
   removeContentReference: (id: string) => void
   clearContentReferences: () => void
   submitMessage: (text: string) => Promise<void>
+  submitBriefingAction: (action: ChatActionDto, displayText: string) => Promise<void>
   clearConversation: () => void
   conversationId: string
   isSubmitting: boolean
+  isBriefingActionPending: boolean
+  pendingBriefingActionKey: string | null
+  activeBriefingId: string | null
+  activeBriefingStatus: BriefingStatus | null
   conversationSummaries: ChatConversationSummaryResponse[]
   isLoadingConversationList: boolean
   isLoadingMoreConversations: boolean
@@ -103,7 +166,21 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
   const [isLoadingConversation, setIsLoadingConversation] = useState(false)
   const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null)
   const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null)
+  const [activeBriefingId, setActiveBriefingId] = useState<string | null>(null)
+  const [activeBriefingStatus, setActiveBriefingStatus] = useState<BriefingStatus | null>(null)
+  const [activeBriefingConversationId, setActiveBriefingConversationId] = useState<string | null>(null)
+  const [pendingBriefingActionKey, setPendingBriefingActionKey] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const conversationIdRef = useRef(conversationId)
+  const activeBriefingConversationIdRef = useRef(activeBriefingConversationId)
+
+  useEffect(() => {
+    conversationIdRef.current = conversationId
+  }, [conversationId])
+
+  useEffect(() => {
+    activeBriefingConversationIdRef.current = activeBriefingConversationId
+  }, [activeBriefingConversationId])
 
   const refreshConversationSummaries = useCallback(async () => {
     if (!isChatEnabled) {
@@ -168,6 +245,10 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
       setIsLoadingConversationList(false)
       setIsLoadingMoreConversations(false)
       setDeletingConversationId(null)
+      setActiveBriefingId(null)
+      setActiveBriefingStatus(null)
+      setActiveBriefingConversationId(null)
+      setPendingBriefingActionKey(null)
       return
     }
 
@@ -200,7 +281,7 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
     try {
       const conversation = await getChatConversation(id)
       setConversationId(conversation.id)
-      setMessages(conversation.messages.map(toUiMessage))
+      setMessages(conversation.messages.map(toUiMessage).filter((m): m is ChatMessage => m !== null))
       setInputValue('')
       setContentReferences([])
     } catch (error) {
@@ -282,11 +363,32 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
             }
 
             if (event.type === 'message') {
-              setMessages((prev) =>
-                prev.map((message) =>
-                  message.id === pendingAssistantId ? toUiMessage(event.message) : message
+              const uiMsg = toUiMessage(event.message)
+              setMessages((prev) => {
+                if (!uiMsg) {
+                  return prev.filter((message) => message.id !== pendingAssistantId)
+                }
+
+                return prev.map((message) =>
+                  message.id === pendingAssistantId ? uiMsg : message
                 )
-              )
+              })
+              return true
+            }
+
+            if (event.type === 'briefing_action') {
+              const uiMessages = event.messages.map(toUiMessage).filter((m): m is ChatMessage => m !== null)
+              setMessages((prev) => {
+                const filtered = prev.filter((m) => m.id !== pendingAssistantId)
+                return [...filtered, ...uiMessages]
+              })
+
+              const planMsg = event.messages.find((m) => m.type === 'briefing_plan')
+              if (planMsg?.entityId) {
+                setActiveBriefingId(planMsg.entityId)
+                setActiveBriefingStatus('plan_pending_approval')
+                setActiveBriefingConversationId(event.conversationId)
+              }
               return true
             }
 
@@ -318,6 +420,123 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
     [contentReferences, conversationId, isChatEnabled, isLoadingConversation, isSubmitting, refreshConversationSummaries]
   )
 
+  const submitBriefingAction = useCallback(
+    async (action: ChatActionDto, displayText: string) => {
+      if (!isChatEnabled || pendingBriefingActionKey !== null || isSubmitting) return
+
+      const requestConversationId = conversationId
+      const pendingActionKey = toBriefingActionKey(action)
+      setPendingBriefingActionKey(pendingActionKey)
+
+      try {
+        await streamConversationMessage(
+          requestConversationId,
+          {
+            text: displayText,
+            contentReferences: [],
+            action,
+          },
+          (event) => {
+            if (event.conversationId) {
+              setConversationId(event.conversationId)
+            }
+
+            if (event.type === 'briefing_action') {
+              const uiMessages = event.messages.map(toUiMessage).filter((m): m is ChatMessage => m !== null)
+              setMessages((prev) => [...prev, ...uiMessages])
+
+              const planMsg = event.messages.find((m) => m.type === 'briefing_plan')
+              if (planMsg?.entityId) {
+                setActiveBriefingId(planMsg.entityId)
+                setActiveBriefingStatus('plan_pending_approval')
+                setActiveBriefingConversationId(event.conversationId)
+              }
+
+              if (action.type === 'approve_plan' && action.briefingId) {
+                setActiveBriefingId(action.briefingId)
+                setActiveBriefingStatus('approved')
+                setActiveBriefingConversationId(event.conversationId)
+              }
+
+              if (action.type === 'retry_briefing' && action.briefingId) {
+                setActiveBriefingId(action.briefingId)
+                setActiveBriefingStatus('generating')
+                setActiveBriefingConversationId(event.conversationId)
+              }
+
+              return true
+            }
+
+            if (event.type === 'error') {
+              setMessages((prev) => [...prev, createErrorMessage(event.message)])
+              return true
+            }
+
+            return false
+          }
+        )
+      } catch (error) {
+        setMessages((prev) => [
+          ...prev,
+          createErrorMessage(extractErrorMessage(error, 'Briefing action failed')),
+        ])
+      } finally {
+        setPendingBriefingActionKey(null)
+        await refreshConversationSummaries()
+      }
+    },
+    [conversationId, isChatEnabled, isSubmitting, pendingBriefingActionKey, refreshConversationSummaries]
+  )
+
+  const loadExecutionSnapshot = useCallback(
+    async (briefing: BriefingResponse): Promise<ExecutionProgressSnapshot | null> => {
+      if (!briefing.executionRunId) return null
+      try {
+        const [summary, eventsPage] = await Promise.all([
+          getBriefingRunSummary(briefing.executionRunId),
+          listBriefingRunEvents(briefing.executionRunId, { limit: 200 }),
+        ])
+        return { summary, recentEvents: eventsPage.items }
+      } catch {
+        return null
+      }
+    },
+    []
+  )
+
+  const handleBriefingPollUpdate = useCallback(
+    async (briefing: BriefingResponse) => {
+      setActiveBriefingStatus(briefing.status)
+      const execution = await loadExecutionSnapshot(briefing)
+      const briefingConversationId = activeBriefingConversationIdRef.current
+      const currentConversationId = conversationIdRef.current
+
+      if (briefingConversationId && currentConversationId === briefingConversationId) {
+        setMessages((prev) => mergeBriefingMessages(prev, briefing, execution))
+      }
+
+      if (isTerminalBriefingStatus(briefing.status) && briefingConversationId) {
+        try {
+          await persistBriefingResult(briefingConversationId, briefing.id)
+        } catch {
+          // Result persistence is best-effort
+        }
+        setActiveBriefingId(null)
+        setActiveBriefingStatus(null)
+        setActiveBriefingConversationId(null)
+      }
+    },
+    [loadExecutionSnapshot]
+  )
+
+  useBriefingPolling({
+    briefingId: activeBriefingId,
+    enabled: activeBriefingStatus != null && isActiveBriefingStatus(activeBriefingStatus),
+    intervalMs: 3000,
+    fetchBriefing: getBriefing,
+    onUpdate: handleBriefingPollUpdate,
+  })
+
   const resetToNewConversation = useCallback(() => {
     abortControllerRef.current?.abort()
     abortControllerRef.current = null
@@ -327,6 +546,7 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
     setInputValue('')
     setIsSubmitting(false)
     setIsLoadingConversation(false)
+    setPendingBriefingActionKey(null)
   }, [])
 
   const clearConversation = useCallback(() => {
@@ -340,6 +560,7 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
       }
 
       const isActiveConversation = conversationId === id
+      const isActiveBriefingConversation = activeBriefingConversationId === id
 
       if (isActiveConversation) {
         abortControllerRef.current?.abort()
@@ -356,6 +577,11 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
         if (isActiveConversation) {
           resetToNewConversation()
         }
+        if (isActiveBriefingConversation) {
+          setActiveBriefingId(null)
+          setActiveBriefingStatus(null)
+          setActiveBriefingConversationId(null)
+        }
       } catch (error) {
         setMessages((prev) => [
           ...prev,
@@ -365,7 +591,7 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
         setDeletingConversationId((current) => (current === id ? null : current))
       }
     },
-    [conversationId, deletingConversationId, isChatEnabled, resetToNewConversation]
+    [activeBriefingConversationId, conversationId, deletingConversationId, isChatEnabled, resetToNewConversation]
   )
 
   return {
@@ -378,9 +604,14 @@ export function useChatEngine(isChatEnabled: boolean): ChatEngineState {
     removeContentReference,
     clearContentReferences,
     submitMessage,
+    submitBriefingAction,
     clearConversation,
     conversationId,
     isSubmitting,
+    isBriefingActionPending: pendingBriefingActionKey !== null,
+    pendingBriefingActionKey,
+    activeBriefingId,
+    activeBriefingStatus,
     conversationSummaries,
     isLoadingConversationList,
     isLoadingMoreConversations,

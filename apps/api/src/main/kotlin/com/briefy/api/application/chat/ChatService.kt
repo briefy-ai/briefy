@@ -1,8 +1,10 @@
 package com.briefy.api.application.chat
 
+import com.briefy.api.application.briefing.BriefingErrorResponse
 import com.briefy.api.application.chat.tool.TopicLookupError
 import com.briefy.api.application.chat.tool.TopicLookupRequest
 import com.briefy.api.application.chat.tool.TopicLookupTool
+import com.briefy.api.domain.knowledgegraph.briefing.BriefingStatus
 import com.briefy.api.domain.chat.ChatEntityType
 import com.briefy.api.domain.chat.ChatMessage
 import com.briefy.api.domain.chat.ChatMessageRepository
@@ -48,6 +50,7 @@ class ChatService(
     private val chatMemory: ChatMemory,
     private val objectMapper: ObjectMapper,
     private val transactionTemplate: TransactionTemplate,
+    private val briefingChatHandler: BriefingChatHandler,
     @param:Value("\${chat.conversation.provider:google_genai}")
     private val chatProvider: String,
     @param:Value("\${chat.conversation.model:gemini-2.5-flash}")
@@ -59,6 +62,21 @@ class ChatService(
 
     fun sendMessage(command: SendChatMessageCommand): Flux<ServerSentEvent<String>> {
         val userId = currentUserProvider.requireUserId()
+
+        if (command.action != null) {
+            val conversation = transactionTemplate.execute {
+                resolveConversation(userId, command.conversationIdOrNew)
+            } ?: error("Failed to resolve conversation")
+            return briefingChatHandler.handle(conversation, command)
+        }
+
+        return sendConversationMessage(userId, command)
+    }
+
+    private fun sendConversationMessage(
+        userId: UUID,
+        command: SendChatMessageCommand
+    ): Flux<ServerSentEvent<String>> {
         val preparedTurn = prepareTurn(userId, command)
         val assistantContent = StringBuilder()
         val memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build()
@@ -187,6 +205,102 @@ class ChatService(
             conversationRepository.deleteById(conversation.id)
             chatMemory.clear(conversation.id.toString())
         }
+    }
+
+    fun persistBriefingResult(command: PersistBriefingResultCommand): ChatMessageResponse {
+        val userId = currentUserProvider.requireUserId()
+
+        return transactionTemplate.execute {
+            val conversation = conversationRepository.findWithLockByIdAndUserId(command.conversationId, userId)
+                ?: throw ChatConversationNotFoundException(command.conversationId)
+            val briefing = briefingRepository.findByIdAndUserId(command.briefingId, userId)
+                ?: throw ChatReferenceAccessException("briefing", command.briefingId)
+
+            if (briefing.status != BriefingStatus.READY && briefing.status != BriefingStatus.FAILED) {
+                throw InvalidChatRequestException(
+                    "Briefing '${command.briefingId}' is not in a terminal state (status=${briefing.status})"
+                )
+            }
+
+            val persistedMessageTypes = listOf(ChatMessageType.BRIEFING_RESULT, ChatMessageType.BRIEFING_ERROR)
+            val existingPersistedMessage = chatMessageRepository
+                .findFirstByConversationIdAndEntityIdAndTypeInOrderByCreatedAtAsc(
+                    conversationId = conversation.id,
+                    entityId = command.briefingId,
+                    types = persistedMessageTypes
+                )
+            if (existingPersistedMessage != null) {
+                return@execute toMessageResponse(existingPersistedMessage)
+            }
+
+            val isLinkedToConversation = chatMessageRepository.existsByConversationIdAndEntityTypeAndEntityId(
+                conversationId = conversation.id,
+                entityType = ChatEntityType.BRIEFING,
+                entityId = command.briefingId
+            )
+            if (!isLinkedToConversation) {
+                throw InvalidChatRequestException(
+                    "Briefing '${command.briefingId}' is not linked to conversation '${conversation.id}'"
+                )
+            }
+
+            val now = Instant.now()
+            val isSuccess = briefing.status == BriefingStatus.READY
+
+            val payload = if (isSuccess) {
+                objectMapper.createObjectNode().apply {
+                    put("briefingId", command.briefingId.toString())
+                    put("title", briefing.title ?: "Briefing")
+                    put("status", briefing.status.name.lowercase())
+                }
+            } else {
+                buildBriefingErrorPayload(command.briefingId, briefing)
+            }
+
+            val message = ChatMessage(
+                id = idGenerator.newId(),
+                conversationId = conversation.id,
+                role = ChatMessageRole.SYSTEM,
+                type = if (isSuccess) ChatMessageType.BRIEFING_RESULT else ChatMessageType.BRIEFING_ERROR,
+                content = null,
+                payload = payload,
+                entityType = ChatEntityType.BRIEFING,
+                entityId = command.briefingId,
+                createdAt = now
+            )
+
+            conversation.touch(now)
+            conversationRepository.save(conversation)
+            chatMessageRepository.save(message)
+
+            toMessageResponse(message)
+        } ?: error("Failed to persist briefing result")
+    }
+
+    private fun buildBriefingErrorPayload(briefingId: UUID, briefing: Briefing): JsonNode {
+        val payload = objectMapper.createObjectNode().apply {
+            put("briefingId", briefingId.toString())
+            put("status", briefing.status.name.lowercase())
+        }
+        val error = parseBriefingError(briefing.errorJson)
+
+        payload.put("message", error?.message ?: briefing.errorJson ?: "Briefing generation failed")
+        payload.put("retryable", error?.retryable ?: false)
+        error?.code?.let { payload.put("code", it) }
+        error?.details?.takeIf { it.isNotEmpty() }?.let { details ->
+            payload.set<JsonNode>("details", objectMapper.valueToTree(details))
+        }
+        return payload
+    }
+
+    private fun parseBriefingError(rawError: String?): BriefingErrorResponse? {
+        if (rawError.isNullOrBlank()) {
+            return null
+        }
+
+        return runCatching {
+            objectMapper.readValue(rawError, BriefingErrorResponse::class.java)
+        }.getOrNull()
     }
 
     private fun prepareTurn(userId: UUID, command: SendChatMessageCommand): PreparedChatTurn {
@@ -440,11 +554,16 @@ class ChatService(
             role = message.role.name.lowercase(),
             type = message.type.name.lowercase(),
             content = message.content,
+            payload = toResponsePayload(message.payload),
             contentReferences = extractContentReferences(message.payload),
             entityType = message.entityType?.name?.lowercase(),
             entityId = message.entityId,
             createdAt = message.createdAt
         )
+    }
+
+    private fun toResponsePayload(payload: JsonNode?): Any? {
+        return payload?.let { objectMapper.convertValue(it, Any::class.java) }
     }
 
     private fun extractContentReferences(payload: JsonNode?): List<ChatContentReferenceResponse> {
