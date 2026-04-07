@@ -9,6 +9,7 @@ import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkStatus
 import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkTargetType
 import com.briefy.api.infrastructure.security.CurrentUserProvider
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 @Component
@@ -18,6 +19,7 @@ class TopicLookupToolProvider(
     private val currentUserProvider: CurrentUserProvider
 ) : TopicLookupTool {
 
+    @Transactional(readOnly = true)
     override fun lookup(request: TopicLookupRequest): TopicLookupResult {
         return request.topicId?.let(::lookupTopicDetail) ?: lookupTopicList(request)
     }
