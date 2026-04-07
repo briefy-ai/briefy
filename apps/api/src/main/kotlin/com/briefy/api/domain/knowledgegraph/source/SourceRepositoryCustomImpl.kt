@@ -66,8 +66,17 @@ class SourceRepositoryCustomImpl(
         return query.resultList
     }
 
-    override fun searchSources(userId: UUID, query: String, limit: Int): List<SourceSearchProjection> {
-        val sql = """
+    override fun searchSources(
+        userId: UUID,
+        query: String,
+        limit: Int,
+        topicIds: List<UUID>?,
+        sourceType: SourceType?
+    ): List<SourceSearchProjection> {
+        val normalizedTopicIds = topicIds?.distinct()?.takeIf { it.isNotEmpty() }
+        val sql = buildString {
+            appendLine(
+                """
             SELECT DISTINCT s.id, s.metadata_title, s.metadata_author, s.url_platform, s.source_type, s.updated_at
             FROM sources s
             LEFT JOIN topic_links tl
@@ -85,14 +94,29 @@ class SourceRepositoryCustomImpl(
                 OR s.url_platform ILIKE :pattern
                 OR t.name ILIKE :pattern
               )
-            ORDER BY s.updated_at DESC, s.id DESC
-        """.trimIndent()
+                """.trimIndent()
+            )
+            if (normalizedTopicIds != null) {
+                appendLine("  AND tl.topic_id IN (:topicIds)")
+            }
+            if (sourceType != null) {
+                appendLine("  AND s.source_type = :sourceType")
+            }
+            appendLine("ORDER BY s.updated_at DESC, s.id DESC")
+        }
 
         @Suppress("UNCHECKED_CAST")
-        val rows = entityManager.createNativeQuery(sql)
+        val nativeQuery = entityManager.createNativeQuery(sql)
             .setParameter("userId", userId)
             .setParameter("pattern", "%${query.trim()}%")
             .setMaxResults(limit)
+        if (normalizedTopicIds != null) {
+            nativeQuery.setParameter("topicIds", normalizedTopicIds)
+        }
+        if (sourceType != null) {
+            nativeQuery.setParameter("sourceType", sourceType.name)
+        }
+        val rows = nativeQuery
             .resultList as List<Array<Any?>>
 
         return rows.map { row ->
