@@ -4,11 +4,8 @@ import {
   BookOpen,
   CheckSquare,
   Clock3,
-  FlaskConical,
   Link2,
   MoreHorizontal,
-  Newspaper,
-  Play,
   RotateCcw,
   Trash2,
   User,
@@ -38,6 +35,7 @@ import { archiveSourcesBatch, createSource, deleteSource, listSources, restoreSo
 import { deleteBriefing, listBriefings } from '@/lib/api/briefings'
 import { ApiClientError } from '@/lib/api/client'
 import { requireAuthWithOnboarding } from '@/lib/auth/requireAuth'
+import { SOURCE_TYPE_ICON } from '@/lib/source-utils'
 import { cn } from '@/lib/utils'
 import type { BriefingSummaryResponse, Source } from '@/lib/api/types'
 import { FilterBar, type FilterState } from '../sources/-components/FilterBar'
@@ -854,13 +852,6 @@ function BriefingsTab() {
 
 // ─── Source Card ──────────────────────────────────────────────────────────────
 
-const SOURCE_TYPE_ICON: Record<string, typeof Newspaper> = {
-  news: Newspaper,
-  blog: BookOpen,
-  research: FlaskConical,
-  video: Play,
-}
-
 const SOURCE_STATUS_CONFIG: Record<
   Source['status'],
   { variant: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }
@@ -895,7 +886,7 @@ function SourceCard({
   const domain = extractDomain(source.url.normalized)
   const hasPendingTopicSuggestions = showPendingSuggestionIndicator && source.pendingSuggestedTopicsCount > 0
   const showUnreadIndicator = showPendingSuggestionIndicator && source.status === 'active' && !source.read
-  const TypeIcon = SOURCE_TYPE_ICON[source.sourceType]
+  const TypeIcon = SOURCE_TYPE_ICON[source.sourceType] ?? BookOpen
   const topics = source.topics ?? []
 
   return (

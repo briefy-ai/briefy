@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Command } from 'cmdk'
 import { useNavigate } from '@tanstack/react-router'
-import { BookOpen, FlaskConical, Newspaper, Play, Search } from 'lucide-react'
+import { BookOpen, Search } from 'lucide-react'
 import { searchSources } from '@/lib/api/sources'
 import type { SourceSearchResultDto } from '@/lib/api/types'
-
-const SOURCE_TYPE_ICON: Record<string, typeof Newspaper> = {
-  news: Newspaper,
-  blog: BookOpen,
-  research: FlaskConical,
-  video: Play,
-}
+import { SOURCE_TYPE_ICON } from '@/lib/source-utils'
 
 export function SourceSearchDialog() {
   const [open, setOpen] = useState(false)

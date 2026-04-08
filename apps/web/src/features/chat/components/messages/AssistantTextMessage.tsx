@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { MarkdownContent } from '@/components/content/MarkdownContent'
+import { RichContent } from '../../blocks/RichContent'
 import type { ChatMessage } from '../../types'
 import type { MessageComponentProps } from '../messageTypes'
 
@@ -9,8 +9,8 @@ export const AssistantTextMessage = memo(function AssistantTextMessage({
   message,
 }: MessageComponentProps<AssistantTextChatMessage>) {
   return (
-    <div className="max-w-[90%] rounded-xl border border-border/50 bg-card px-3 py-2">
-      <MarkdownContent content={message.payload.text} variant="compact" className="text-sm" />
+    <div className="max-w-[90%] px-1 py-1">
+      <RichContent content={message.payload.text} isStreaming={Boolean(message.mutable)} />
     </div>
   )
 })
