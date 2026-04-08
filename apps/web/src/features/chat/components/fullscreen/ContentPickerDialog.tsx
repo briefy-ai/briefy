@@ -1,25 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Command } from 'cmdk'
-import {
-  BookOpen,
-  Check,
-  FileText,
-  FlaskConical,
-  Newspaper,
-  Play,
-  Search,
-} from 'lucide-react'
+import { BookOpen, Check, FileText, Search } from 'lucide-react'
 import { searchSources, listSources } from '@/lib/api/sources'
 import { listBriefings } from '@/lib/api/briefings'
 import type { BriefingSummaryResponse, Source, SourceSearchResultDto } from '@/lib/api/types'
+import { SOURCE_TYPE_ICON } from '@/lib/source-utils'
 import type { ContentReference } from '../../types'
-
-const SOURCE_TYPE_ICON: Record<string, typeof Newspaper> = {
-  news: Newspaper,
-  blog: BookOpen,
-  research: FlaskConical,
-  video: Play,
-}
 
 interface ContentPickerProps {
   open: boolean

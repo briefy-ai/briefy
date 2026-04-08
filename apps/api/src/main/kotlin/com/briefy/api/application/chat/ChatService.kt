@@ -428,6 +428,23 @@ class ChatService(
             appendLine("When the user asks about their library, topics, sources, reading habits, or interests, use your tools to look up real data before answering. Never ask the user for permission to use a tool — just use it.")
             appendLine("If referenced content is provided below, prioritize it and say when the answer depends on that context.")
             appendLine("For questions unrelated to the user's library, answer from general knowledge.")
+            appendLine()
+            appendLine("When structured source data is the primary answer, use fenced UI blocks so the client can render rich components.")
+            appendLine("Available UI blocks:")
+            appendLine(
+                """
+                Source list — use when listing or searching sources for the user:
+                :::source-list
+                {"sources":[{"id":"uuid","title":"Example source","url":"https://example.com/article","sourceType":"video","wordCount":1396}]}
+                :::
+                """.trimIndent()
+            )
+            appendLine("Rules:")
+            appendLine("- Only use blocks when the structured data is the primary answer to the user's question.")
+            appendLine("- For intermediate lookups or reasoning, use plain text.")
+            appendLine("- Always include surrounding text outside the block.")
+            appendLine("- Use valid JSON inside each block.")
+            appendLine("- Source data must come from tool results. Never fabricate source ids, titles, or other source fields.")
         }
 
         if (references.isEmpty()) {
