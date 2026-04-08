@@ -13,6 +13,10 @@ function formatSourceType(sourceType?: string): string | null {
     return null
   }
 
+  if (sourceType === 'article') {
+    return 'News'
+  }
+
   return sourceType.charAt(0).toUpperCase() + sourceType.slice(1)
 }
 

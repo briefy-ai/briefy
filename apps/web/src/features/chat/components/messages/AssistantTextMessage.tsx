@@ -9,7 +9,7 @@ export const AssistantTextMessage = memo(function AssistantTextMessage({
   message,
 }: MessageComponentProps<AssistantTextChatMessage>) {
   return (
-    <div className="max-w-[90%] rounded-xl border border-border/50 bg-card px-3 py-2">
+    <div className="max-w-[90%] px-1 py-1">
       <RichContent content={message.payload.text} isStreaming={Boolean(message.mutable)} />
     </div>
   )

@@ -444,6 +444,7 @@ class ChatService(
             appendLine("- For intermediate lookups or reasoning, use plain text.")
             appendLine("- Always include surrounding text outside the block.")
             appendLine("- Use valid JSON inside each block.")
+            appendLine("- For source-list blocks, use sourceType values from the app taxonomy only: news, blog, research, or video.")
             appendLine("- Source data must come from tool results. Never fabricate source ids, titles, or other source fields.")
         }
 
