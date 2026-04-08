@@ -227,5 +227,10 @@ chat:
   conversation:
     provider: ${CHAT_CONVERSATION_PROVIDER:google_genai}
     model: ${CHAT_CONVERSATION_MODEL:gemini-2.5-flash}
+    tools:
+      web-search:
+        enabled: ${CHAT_WEB_SEARCH_ENABLED:false}
+      web-fetch:
+        enabled: ${CHAT_WEB_FETCH_ENABLED:false}
     memory:
       max-messages: ${CHAT_CONVERSATION_MEMORY_MAX_MESSAGES:20}
