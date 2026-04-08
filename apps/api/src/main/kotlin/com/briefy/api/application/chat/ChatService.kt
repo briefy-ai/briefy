@@ -41,6 +41,7 @@ import org.springframework.security.core.context.SecurityContextHolder
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.util.UUID
 import java.util.function.Function
 
@@ -418,7 +419,7 @@ class ChatService(
     }
 
     private fun buildSystemPrompt(references: List<ResolvedReference>): String {
-        val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
+        val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH))
         val instructions = buildString {
             appendLine("You are Briefy, a knowledge assistant for a personal research and reading platform.")
             appendLine("Today's date is $today.")

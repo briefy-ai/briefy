@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.ai.tool.ToolCallback
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import org.springframework.ai.tool.function.FunctionToolCallback
 import java.util.UUID
 import java.util.function.Function
@@ -180,7 +181,7 @@ class AiSubagentExecutionRunner(
     private fun buildSystemPrompt(context: SubagentExecutionContext): String {
         val availableTools = buildAvailableTools()
         val rules = buildToolUsageRules()
-        val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
+        val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH))
         return """You are "${context.personaName}", an AI research persona working on a briefing.
 
 Today's date is $today.

@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 @Component
 class AiBriefingPlanGenerator(
@@ -149,7 +150,7 @@ class AiBriefingPlanGenerator(
         private const val MAX_PERSONA_NAME_CHARS = 120
         private val FENCED_JSON_REGEX = Regex("```(?:json)?\\s*(\\{[\\s\\S]*\\})\\s*```", RegexOption.IGNORE_CASE)
         private fun buildSystemPrompt(): String {
-            val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
+            val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.ENGLISH))
             return """
 You are a planning engine for briefing generation.
 Today's date is $today.
