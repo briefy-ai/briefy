@@ -22,7 +22,10 @@ class WebToolConfiguration {
         @Value("\${briefing.execution.tools.web-search.brave-base-url:https://api.search.brave.com}") braveBaseUrl: String,
         @Value("\${briefing.execution.tools.web-search.timeout-ms:10000}") timeoutMs: Int
     ): WebSearchTool {
-        require(braveApiKey.isNotBlank()) { "briefing.execution.tools.web-search.brave-api-key must be set" }
+        require(braveApiKey.isNotBlank()) {
+            "Brave API key must be set via BRAVE_SEARCH_API_KEY " +
+                "(property: briefing.execution.tools.web-search.brave-api-key)"
+        }
         return BraveWebSearchProvider(
             apiKey = braveApiKey,
             objectMapper = objectMapper,

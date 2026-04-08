@@ -2,6 +2,7 @@ package com.briefy.api.application.briefing.tool
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.context.annotation.Bean
@@ -57,6 +58,23 @@ class WebToolConfigurationTest {
             .run { context ->
                 assertThat(context).doesNotHaveBean(WebSearchTool::class.java)
                 assertThat(context).doesNotHaveBean(WebFetchTool::class.java)
+            }
+    }
+
+    @Test
+    fun `chat enabled web search without key surfaces env var guidance`() {
+        contextRunner
+            .withPropertyValues(
+                "chat.conversation.tools.web-search.enabled=true",
+                "briefing.execution.tools.web-search.enabled=false",
+                "briefing.execution.tools.web-fetch.enabled=false",
+                "briefing.execution.tools.source-lookup.enabled=false"
+            )
+            .run { context ->
+                assertThat(context).hasFailed()
+                val message = context.startupFailure?.message.orEmpty()
+                assertTrue(message.contains("BRAVE_SEARCH_API_KEY"))
+                assertTrue(message.contains("briefing.execution.tools.web-search.brave-api-key"))
             }
     }
 
