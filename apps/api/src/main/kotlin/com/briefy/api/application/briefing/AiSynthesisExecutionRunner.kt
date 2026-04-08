@@ -3,6 +3,8 @@ package com.briefy.api.application.briefing
 import com.briefy.api.infrastructure.ai.AiAdapter
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 class AiSynthesisExecutionRunner(
     private val aiAdapter: AiAdapter,
@@ -44,7 +46,10 @@ class AiSynthesisExecutionRunner(
     }
 
     private fun buildSystemPrompt(): String {
+        val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
         return """You synthesize multi-persona research into one cohesive briefing.
+
+Today's date is $today.
 
 Requirements:
 1. Resolve disagreements explicitly; do not hide conflicts.

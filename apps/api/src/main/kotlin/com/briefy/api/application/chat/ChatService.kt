@@ -39,6 +39,8 @@ import reactor.core.scheduler.Schedulers
 import org.springframework.security.core.Authentication
 import org.springframework.security.core.context.SecurityContextHolder
 import java.time.Instant
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.function.Function
 
@@ -416,8 +418,10 @@ class ChatService(
     }
 
     private fun buildSystemPrompt(references: List<ResolvedReference>): String {
+        val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
         val instructions = buildString {
             appendLine("You are Briefy, a knowledge assistant for a personal research and reading platform.")
+            appendLine("Today's date is $today.")
             appendLine("The user saves sources and organizes them into topics inside Briefy.")
             appendLine("Answer clearly and directly.")
             appendLine("When the user asks about their library, topics, sources, reading habits, or interests, use your tools to look up real data before answering. Never ask the user for permission to use a tool — just use it.")

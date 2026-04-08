@@ -6,6 +6,8 @@ import com.briefy.api.infrastructure.ai.AiAdapter
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 @Component
 class AiBriefingPlanGenerator(
@@ -28,7 +30,7 @@ class AiBriefingPlanGenerator(
             provider = provider,
             model = model,
             prompt = buildPrompt(enrichmentIntent, sources, personas),
-            systemPrompt = SYSTEM_PROMPT,
+            systemPrompt = buildSystemPrompt(),
             useCase = "briefing_planning"
         )
 
@@ -146,11 +148,15 @@ class AiBriefingPlanGenerator(
         private const val MAX_TASK_CHARS = 600
         private const val MAX_PERSONA_NAME_CHARS = 120
         private val FENCED_JSON_REGEX = Regex("```(?:json)?\\s*(\\{[\\s\\S]*\\})\\s*```", RegexOption.IGNORE_CASE)
-        private const val SYSTEM_PROMPT = """
+        private fun buildSystemPrompt(): String {
+            val today = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"))
+            return """
 You are a planning engine for briefing generation.
+Today's date is $today.
 Return strict JSON only with this shape:
 {"steps":[{"personaName":"string","task":"string"}]}
 No markdown, no commentary.
 """
+        }
     }
 }
