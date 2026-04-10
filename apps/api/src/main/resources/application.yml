@@ -226,7 +226,7 @@ cover-image:
 chat:
   conversation:
     provider: ${CHAT_CONVERSATION_PROVIDER:google_genai}
-    model: ${CHAT_CONVERSATION_MODEL:gemini-2.5-flash}
+    model: ${CHAT_CONVERSATION_MODEL:gemini-3.1-flash-lite-preview}
     tools:
       web-search:
         enabled: ${CHAT_WEB_SEARCH_ENABLED:false}
