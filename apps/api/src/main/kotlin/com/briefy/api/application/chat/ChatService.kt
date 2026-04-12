@@ -68,7 +68,7 @@ class ChatService(
     private val briefingChatHandler: BriefingChatHandler,
     @param:Value("\${chat.conversation.provider:google_genai}")
     private val chatProvider: String,
-    @param:Value("\${chat.conversation.model:gemini-2.5-flash}")
+    @param:Value("\${chat.conversation.model:gemini-3.1-flash-lite-preview}")
     private val chatModel: String
 ) {
     private val logger = LoggerFactory.getLogger(ChatService::class.java)

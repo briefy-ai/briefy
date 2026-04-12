@@ -1,6 +1,9 @@
 import ReactMarkdown from 'react-markdown'
+import rehypeKatex from 'rehype-katex'
 import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import 'katex/dist/katex.min.css'
 import { cn } from '@/lib/utils'
 
 const VARIANT_CLASSES = {
@@ -36,12 +39,15 @@ export function MarkdownContent({
 }: MarkdownContentProps) {
   if (!content.trim()) return null
 
-  const remarkPlugins = preserveSoftBreaks ? [remarkGfm, remarkBreaks] : [remarkGfm]
+  const remarkPlugins = preserveSoftBreaks
+    ? [remarkGfm, remarkMath, remarkBreaks]
+    : [remarkGfm, remarkMath]
 
   return (
     <div className={cn(VARIANT_CLASSES[variant], className)} data-testid={dataTestId}>
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
+        rehypePlugins={[rehypeKatex]}
         components={{
           a: ({ href = '', children, ...props }) => {
             const external = isExternalHref(href)
