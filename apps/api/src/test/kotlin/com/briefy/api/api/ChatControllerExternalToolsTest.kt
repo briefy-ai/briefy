@@ -129,7 +129,7 @@ class ChatControllerExternalToolsTest {
         `when`(
             aiAdapter.streamWithAdvisors(
                 eq("google_genai"),
-                eq("gemini-2.5-flash"),
+                eq("gemini-3.1-flash-lite-preview"),
                 any(),
                 anyOrNull(),
                 eq("chat_conversation"),
@@ -182,7 +182,7 @@ class ChatControllerExternalToolsTest {
         `when`(
             aiAdapter.streamWithAdvisors(
                 eq("google_genai"),
-                eq("gemini-2.5-flash"),
+                eq("gemini-3.1-flash-lite-preview"),
                 any(),
                 anyOrNull(),
                 eq("chat_conversation"),
