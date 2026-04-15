@@ -121,7 +121,7 @@ class BriefingService(
                 enrichmentIntent = briefing.enrichmentIntent.name.lowercase(),
                 title = briefing.title,
                 sourceCount = briefingSourceRepository.countByBriefingId(briefing.id),
-                contentSnippet = briefing.contentMarkdown?.take(200),
+                contentSnippet = briefing.contentMarkdown?.let { stripMarkdown(it).take(200) },
                 createdAt = briefing.createdAt,
                 updatedAt = briefing.updatedAt
             )
@@ -376,5 +376,24 @@ class BriefingService(
             return null
         }
         return runCatching { objectMapper.readValue(json, typeReference) }.getOrNull()
+    }
+
+    private fun stripMarkdown(markdown: String): String {
+        return markdown
+            .replace(Regex("^#{1,6}\\s+.*$", RegexOption.MULTILINE), "")
+            .replace(Regex("\\*\\*(.+?)\\*\\*"), "$1")
+            .replace(Regex("__(.+?)__"), "$1")
+            .replace(Regex("\\*(.+?)\\*"), "$1")
+            .replace(Regex("_(.+?)_"), "$1")
+            .replace(Regex("~~(.+?)~~"), "$1")
+            .replace(Regex("!\\[.*?]\\(.*?\\)"), "")
+            .replace(Regex("\\[(.+?)]\\(.*?\\)"), "$1")
+            .replace(Regex("^>\\s?", RegexOption.MULTILINE), "")
+            .replace(Regex("^[-*+]\\s+", RegexOption.MULTILINE), "")
+            .replace(Regex("^\\d+\\.\\s+", RegexOption.MULTILINE), "")
+            .replace(Regex("`{1,3}"), "")
+            .replace(Regex("\\n{2,}"), " ")
+            .replace(Regex("\\n"), " ")
+            .trim()
     }
 }
