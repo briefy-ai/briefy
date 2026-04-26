@@ -70,6 +70,7 @@ auth:
 oauth:
   server:
     base-url: ${OAUTH_SERVER_BASE_URL:http://localhost:8080}
+    web-base-url: ${BRIEFY_WEB_BASE_URL:http://localhost:3000}
     refresh-token-days: ${OAUTH_REFRESH_TOKEN_DAYS:90}
 
 security:

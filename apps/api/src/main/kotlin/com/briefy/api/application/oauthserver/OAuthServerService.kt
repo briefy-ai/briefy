@@ -24,8 +24,8 @@ class OAuthServerService(
     private val accessGrantRepository: OAuthAccessGrantRepository,
     private val jwtService: JwtService,
     private val idGenerator: IdGenerator,
-    @Value("\${auth.jwt.access-token-minutes:15}") private val accessTokenMinutes: Long,
-    @Value("\${oauth.server.refresh-token-days:90}") private val refreshTokenDays: Long
+    @param:Value("\${auth.jwt.access-token-minutes:15}") private val accessTokenMinutes: Long,
+    @param:Value("\${oauth.server.refresh-token-days:90}") private val refreshTokenDays: Long
 ) {
     private val logger = LoggerFactory.getLogger(OAuthServerService::class.java)
     private val secureRandom = SecureRandom()
@@ -52,14 +52,15 @@ class OAuthServerService(
 
         if (client.requirePkce) {
             if (codeChallenge.isNullOrBlank()) throw OAuthPkceRequiredException()
-            if (codeChallengeMethod != "S256") throw OAuthPkceRequiredException()
+            if (codeChallengeMethod != "S256") {
+                throw OAuthInvalidRequestException("Unsupported code_challenge_method: only S256 is supported")
+            }
         }
 
         return AuthorizationRequestContext(
             client = client,
             redirectUri = redirectUri,
             scopes = requestedScopes,
-            state = null,
             codeChallenge = codeChallenge ?: "",
             codeChallengeMethod = codeChallengeMethod ?: "S256"
         )
@@ -121,10 +122,10 @@ class OAuthServerService(
         val grant = accessGrantRepository.findByRefreshTokenHash(tokenHash)
             ?: throw OAuthInvalidTokenException()
 
-        if (!grant.isActive()) throw OAuthInvalidTokenException("Token has been revoked")
+        val now = Instant.now()
+        if (!grant.isActive(now)) throw OAuthInvalidTokenException("Token has been revoked or expired")
         if (grant.clientId != clientId) throw OAuthInvalidTokenException("client_id mismatch")
 
-        val now = Instant.now()
         grant.recordUse(now)
         accessGrantRepository.save(grant)
 
@@ -134,7 +135,7 @@ class OAuthServerService(
             accessToken = accessToken,
             expiresIn = accessTokenMinutes * 60,
             refreshToken = null,
-            scope = grant.scopes
+            scope = grant.scopeList().joinToString(" ")
         )
     }
 
@@ -149,7 +150,7 @@ class OAuthServerService(
 
     @Transactional(readOnly = true)
     fun listActiveGrants(userId: UUID): List<ConnectedAppInfo> {
-        val grants = accessGrantRepository.findByUserIdAndRevokedAtIsNull(userId)
+        val grants = accessGrantRepository.findActiveByUserId(userId, Instant.now())
         val clientIds = grants.map { it.clientId }.distinct()
         val clients = clientIds.mapNotNull { clientRepository.findByClientId(it) }.associateBy { it.clientId }
 
@@ -181,6 +182,9 @@ class OAuthServerService(
         val refreshToken = generateOpaqueToken()
         val tokenHash = hashToken(refreshToken)
 
+        accessGrantRepository.findByUserIdAndClientIdAndRevokedAtIsNull(userId, clientId)
+            .forEach { it.revoke(now) }
+
         val grant = OAuthAccessGrant(
             id = idGenerator.newId(),
             clientId = clientId,
@@ -188,7 +192,8 @@ class OAuthServerService(
             scopes = scopes.joinToString(","),
             refreshTokenHash = tokenHash,
             issuedAt = now,
-            lastUsedAt = now
+            lastUsedAt = now,
+            expiresAt = now.plusSeconds(refreshTokenDays * SECONDS_PER_DAY)
         )
         accessGrantRepository.save(grant)
 
@@ -219,5 +224,9 @@ class OAuthServerService(
         val bytes = ByteArray(48)
         secureRandom.nextBytes(bytes)
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    }
+
+    private companion object {
+        const val SECONDS_PER_DAY = 24 * 60 * 60L
     }
 }

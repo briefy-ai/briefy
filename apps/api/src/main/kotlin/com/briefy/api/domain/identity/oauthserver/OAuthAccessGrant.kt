@@ -31,10 +31,13 @@ class OAuthAccessGrant(
     @Column(name = "last_used_at", nullable = false)
     var lastUsedAt: Instant,
 
+    @Column(name = "expires_at", nullable = false)
+    val expiresAt: Instant,
+
     @Column(name = "revoked_at")
     var revokedAt: Instant? = null
 ) {
-    fun isActive(): Boolean = revokedAt == null
+    fun isActive(now: Instant): Boolean = revokedAt == null && expiresAt.isAfter(now)
 
     fun revoke(now: Instant) {
         revokedAt = now

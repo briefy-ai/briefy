@@ -24,6 +24,7 @@ import com.briefy.api.application.topic.TopicLinkNotFoundException
 import com.briefy.api.application.topic.TopicNotFoundException
 import com.briefy.api.application.oauthserver.OAuthClientNotFoundException
 import com.briefy.api.application.oauthserver.OAuthInvalidGrantException
+import com.briefy.api.application.oauthserver.OAuthInvalidRequestException
 import com.briefy.api.application.oauthserver.OAuthInvalidRedirectUriException
 import com.briefy.api.application.oauthserver.OAuthInvalidScopeException
 import com.briefy.api.application.oauthserver.OAuthInvalidTokenException
@@ -405,6 +406,12 @@ class GlobalExceptionHandler {
     fun handleOAuthInvalidRedirectUri(ex: OAuthInvalidRedirectUriException): ResponseEntity<ErrorResponse> {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse(HttpStatus.BAD_REQUEST.value(), "invalid_request", ex.message ?: "Invalid redirect_uri"))
+    }
+
+    @ExceptionHandler(OAuthInvalidRequestException::class)
+    fun handleOAuthInvalidRequest(ex: OAuthInvalidRequestException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(HttpStatus.BAD_REQUEST.value(), "invalid_request", ex.message ?: "Invalid request"))
     }
 
     @ExceptionHandler(OAuthInvalidScopeException::class)

@@ -73,6 +73,10 @@ export default defineConfig(({ mode }) => {
         target: env.API_PROXY_TARGET || 'http://localhost:8081',
         changeOrigin: true,
       },
+      '/oauth': {
+        target: env.API_PROXY_TARGET || 'http://localhost:8081',
+        changeOrigin: true,
+      },
     },
   },
 }

@@ -1,5 +1,6 @@
 package com.briefy.api.api.oauth
 
+import com.briefy.api.application.oauthserver.OAuthInvalidRequestException
 import com.briefy.api.application.oauthserver.OAuthServerService
 import com.briefy.api.application.oauthserver.TokenResponse
 import com.fasterxml.jackson.annotation.JsonProperty
@@ -29,14 +30,14 @@ class OAuthTokenController(
 
         return when (grantType) {
             "authorization_code" -> {
-                requireNotNull(code) { "code is required" }
-                requireNotNull(redirectUri) { "redirect_uri is required" }
-                requireNotNull(codeVerifier) { "code_verifier is required" }
+                if (code == null) throw OAuthInvalidRequestException("code is required")
+                if (redirectUri == null) throw OAuthInvalidRequestException("redirect_uri is required")
+                if (codeVerifier == null) throw OAuthInvalidRequestException("code_verifier is required")
                 val result = oauthServerService.exchangeAuthorizationCode(code, clientId, redirectUri, codeVerifier)
                 ResponseEntity.ok(result.toApiResponse())
             }
             "refresh_token" -> {
-                requireNotNull(refreshToken) { "refresh_token is required" }
+                if (refreshToken == null) throw OAuthInvalidRequestException("refresh_token is required")
                 val result = oauthServerService.refreshAccessToken(refreshToken, clientId)
                 ResponseEntity.ok(result.toApiResponse())
             }

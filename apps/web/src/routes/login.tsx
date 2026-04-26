@@ -1,28 +1,37 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { createFileRoute, Link, redirect, useNavigate } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { login } from '@/lib/api/auth'
 import { ApiClientError } from '@/lib/api/client'
-import { redirectAuthenticatedUser } from '@/lib/auth/requireAuth'
+import { loadCurrentUser } from '@/lib/auth/session'
 import { useAuth } from '@/lib/auth/useAuth'
 
 export const Route = createFileRoute('/login')({
   beforeLoad: async () => {
-    await redirectAuthenticatedUser()
+    const user = await loadCurrentUser()
+    if (!user || getSafeOAuthNextFromLocation()) return
+    throw redirect(redirectToDefault(user.onboardingCompleted))
   },
   component: LoginPage,
 })
 
 function LoginPage() {
   const navigate = useNavigate()
-  const { refreshUser } = useAuth()
+  const { user, isLoading, refreshUser } = useAuth()
+  const [next] = useState(() => getSafeOAuthNextFromLocation())
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (!isLoading && user && next) {
+      window.location.assign(next)
+    }
+  }, [isLoading, user, next])
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
@@ -32,6 +41,10 @@ function LoginPage() {
     try {
       await login({ email: email.trim(), password })
       const user = await refreshUser()
+      if (next) {
+        window.location.assign(next)
+        return
+      }
       await navigate({ to: user?.onboardingCompleted ? '/sources' : '/onboarding' })
     } catch (e) {
       if (e instanceof ApiClientError) {
@@ -130,4 +143,20 @@ function LoginPage() {
       </div>
     </div>
   )
+}
+
+function isSafeOAuthNext(next: string): boolean {
+  return next === '/oauth/authorize' || next.startsWith('/oauth/authorize?')
+}
+
+function getSafeOAuthNextFromLocation(): string | undefined {
+  if (typeof window === 'undefined') return undefined
+  const next = new URLSearchParams(window.location.search).get('next')
+  return next && isSafeOAuthNext(next) ? next : undefined
+}
+
+function redirectToDefault(onboardingCompleted: boolean) {
+  return onboardingCompleted
+    ? { to: '/library' as const, search: { tab: 'sources' as const } }
+    : { to: '/onboarding' as const }
 }

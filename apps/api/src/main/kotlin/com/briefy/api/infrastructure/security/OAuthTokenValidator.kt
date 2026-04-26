@@ -14,7 +14,7 @@ class OAuthTokenValidator(private val jwtService: JwtService) {
 
     fun extractFromRequest(request: HttpServletRequest): OAuthPrincipal? {
         val authHeader = request.getHeader("Authorization") ?: return null
-        if (!authHeader.startsWith("Bearer ")) return null
-        return validate(authHeader.removePrefix("Bearer ").trim())
+        if (!authHeader.startsWith("Bearer ", ignoreCase = true)) return null
+        return validate(authHeader.substringAfter(" ").trim())
     }
 }

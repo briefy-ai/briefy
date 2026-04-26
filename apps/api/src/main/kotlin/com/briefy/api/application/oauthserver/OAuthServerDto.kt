@@ -7,7 +7,6 @@ data class AuthorizationRequestContext(
     val client: OAuthClient,
     val redirectUri: String,
     val scopes: List<String>,
-    val state: String?,
     val codeChallenge: String,
     val codeChallengeMethod: String
 )

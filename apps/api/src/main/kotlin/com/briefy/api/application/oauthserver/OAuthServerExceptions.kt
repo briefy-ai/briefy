@@ -18,6 +18,9 @@ class OAuthInvalidTokenException(message: String = "Invalid or expired token") :
 class OAuthUnsupportedGrantTypeException(grantType: String) :
     RuntimeException("Unsupported grant_type: $grantType")
 
+class OAuthInvalidRequestException(message: String) :
+    RuntimeException(message)
+
 class OAuthPkceRequiredException :
     RuntimeException("PKCE is required for this client")
 

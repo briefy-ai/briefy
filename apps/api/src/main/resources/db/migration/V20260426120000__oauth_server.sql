@@ -11,7 +11,7 @@ CREATE TABLE oauth_clients (
 CREATE TABLE oauth_authorization_codes (
     id UUID PRIMARY KEY,
     code_hash VARCHAR(255) NOT NULL UNIQUE,
-    client_id VARCHAR(100) NOT NULL,
+    client_id VARCHAR(100) NOT NULL REFERENCES oauth_clients(client_id),
     user_id UUID NOT NULL REFERENCES users(id),
     scopes TEXT NOT NULL,
     code_challenge VARCHAR(255) NOT NULL,
@@ -24,12 +24,13 @@ CREATE INDEX oauth_authorization_codes_expires_at_idx ON oauth_authorization_cod
 
 CREATE TABLE oauth_access_grants (
     id UUID PRIMARY KEY,
-    client_id VARCHAR(100) NOT NULL,
+    client_id VARCHAR(100) NOT NULL REFERENCES oauth_clients(client_id),
     user_id UUID NOT NULL REFERENCES users(id),
     scopes TEXT NOT NULL,
     refresh_token_hash VARCHAR(255) NOT NULL UNIQUE,
     issued_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_used_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMPTZ NOT NULL,
     revoked_at TIMESTAMPTZ
 );
 

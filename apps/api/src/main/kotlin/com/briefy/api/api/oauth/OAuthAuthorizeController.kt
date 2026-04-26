@@ -6,6 +6,8 @@ import com.briefy.api.application.oauthserver.OAuthServerService
 import com.briefy.api.infrastructure.security.AuthenticatedUser
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.context.SecurityContextHolder
@@ -21,7 +23,8 @@ import java.nio.charset.StandardCharsets
 @RestController
 @RequestMapping("/oauth/authorize")
 class OAuthAuthorizeController(
-    private val oauthServerService: OAuthServerService
+    private val oauthServerService: OAuthServerService,
+    @param:Value("\${oauth.server.web-base-url:http://localhost:3000}") private val webBaseUrl: String
 ) {
     private val logger = LoggerFactory.getLogger(OAuthAuthorizeController::class.java)
 
@@ -42,7 +45,7 @@ class OAuthAuthorizeController(
 
         val principal = currentUser()
         if (principal == null) {
-            val loginUrl = "/login?next=${encode(request.requestURI + "?" + request.queryString)}"
+            val loginUrl = buildLoginUrl(request)
             return ResponseEntity.status(302).location(URI.create(loginUrl)).build()
         }
 
@@ -78,36 +81,37 @@ class OAuthAuthorizeController(
         @RequestParam("code_challenge") codeChallenge: String,
         @RequestParam("code_challenge_method") codeChallengeMethod: String,
         @RequestParam("approved", defaultValue = "false") approved: Boolean
-    ): ResponseEntity<Void> {
+    ): ResponseEntity<*> {
         val principal = currentUser()
-            ?: return ResponseEntity.status(302).location(URI.create("/login")).build()
-
-        if (!approved) {
-            val deniedUri = buildRedirectUri(redirectUri, null, "access_denied", "User denied access", state)
-            return ResponseEntity.status(302).location(URI.create(deniedUri)).build()
-        }
+            ?: return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(webLoginUrl())).build<Void>()
 
         val context = try {
             oauthServerService.validateAuthorizationRequest(clientId, redirectUri, scope, codeChallenge, codeChallengeMethod)
         } catch (e: OAuthClientNotFoundException) {
-            val errorUri = buildRedirectUri(redirectUri, null, "invalid_client", "Unknown client", state)
-            return ResponseEntity.status(302).location(URI.create(errorUri)).build()
+            return errorPage("invalid_client", "Unknown client")
+        } catch (e: OAuthInvalidRedirectUriException) {
+            return errorPage("invalid_request", "Redirect URI not allowed")
         } catch (e: Exception) {
             val errorUri = buildRedirectUri(redirectUri, null, "invalid_request", e.message ?: "Invalid request", state)
-            return ResponseEntity.status(302).location(URI.create(errorUri)).build()
+            return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(errorUri)).build<Void>()
+        }
+
+        if (!approved) {
+            val deniedUri = buildRedirectUri(context.redirectUri, null, "access_denied", "User denied access", state)
+            return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(deniedUri)).build<Void>()
         }
 
         val code = oauthServerService.issueAuthorizationCode(
             clientId = clientId,
             userId = principal.id,
-            redirectUri = redirectUri,
+            redirectUri = context.redirectUri,
             scopes = context.scopes,
-            codeChallenge = codeChallenge
+            codeChallenge = context.codeChallenge
         )
 
         logger.info("[oauth] Consent granted clientId={} userId={}", clientId, principal.id)
-        val successUri = buildRedirectUri(redirectUri, code, null, null, state)
-        return ResponseEntity.status(302).location(URI.create(successUri)).build()
+        val successUri = buildRedirectUri(context.redirectUri, code, null, null, state)
+        return ResponseEntity.status(HttpStatus.FOUND).location(URI.create(successUri)).build<Void>()
     }
 
     private fun currentUser(): AuthenticatedUser? {
@@ -127,10 +131,12 @@ class OAuthAuthorizeController(
         if (error != null) params.add("error=${encode(error)}")
         if (errorDescription != null) params.add("error_description=${encode(errorDescription)}")
         if (state != null) params.add("state=${encode(state)}")
-        return if (params.isEmpty()) base else "$base?${params.joinToString("&")}"
+        val separator = if (base.contains("?")) "&" else "?"
+        return if (params.isEmpty()) base else "$base$separator${params.joinToString("&")}"
     }
 
     private fun errorPage(error: String, description: String): ResponseEntity<String> {
+        val safeDescription = escapeHtml(description)
         val html = """
             <!DOCTYPE html>
             <html lang="en">
@@ -140,7 +146,7 @@ class OAuthAuthorizeController(
             h1{font-size:1.25rem;margin:0 0 12px}p{color:#6b7280;margin:0}</style></head>
             <body><div class="card">
             <h1>Authorization Error</h1>
-            <p>$description (${escapeHtml(error)})</p>
+            <p>$safeDescription (${escapeHtml(error)})</p>
             </div></body></html>
         """.trimIndent()
         return ResponseEntity.badRequest().contentType(MediaType.TEXT_HTML).body(html)
@@ -220,6 +226,14 @@ class OAuthAuthorizeController(
         "mcp:read" -> "Read your Sources, Briefings, Takeaways, and Topics"
         else -> escapeHtml(scope)
     }
+
+    private fun buildLoginUrl(request: HttpServletRequest): String {
+        val query = request.queryString?.let { "?$it" } ?: ""
+        val authorizeUrl = "${request.requestURI}$query"
+        return "${webLoginUrl()}?next=${encode(authorizeUrl)}"
+    }
+
+    private fun webLoginUrl(): String = "${webBaseUrl.trimEnd('/')}/login"
 
     private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)
 
