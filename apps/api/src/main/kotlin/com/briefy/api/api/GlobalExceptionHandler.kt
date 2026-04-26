@@ -22,6 +22,15 @@ import com.briefy.api.application.topic.TopicAlreadyExistsException
 import com.briefy.api.application.topic.TopicAlreadyLinkedToSourceException
 import com.briefy.api.application.topic.TopicLinkNotFoundException
 import com.briefy.api.application.topic.TopicNotFoundException
+import com.briefy.api.application.oauthserver.OAuthClientNotFoundException
+import com.briefy.api.application.oauthserver.OAuthInvalidGrantException
+import com.briefy.api.application.oauthserver.OAuthInvalidRequestException
+import com.briefy.api.application.oauthserver.OAuthInvalidRedirectUriException
+import com.briefy.api.application.oauthserver.OAuthInvalidScopeException
+import com.briefy.api.application.oauthserver.OAuthInvalidTokenException
+import com.briefy.api.application.oauthserver.OAuthPkceRequiredException
+import com.briefy.api.application.oauthserver.OAuthPkceVerificationException
+import com.briefy.api.application.oauthserver.OAuthUnsupportedGrantTypeException
 import com.briefy.api.infrastructure.extraction.ExtractionProviderException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -385,6 +394,60 @@ class GlobalExceptionHandler {
                 error = "Not Found",
                 message = ex.message ?: "Share link audio is not available"
             ))
+    }
+
+    @ExceptionHandler(OAuthClientNotFoundException::class)
+    fun handleOAuthClientNotFound(ex: OAuthClientNotFoundException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(HttpStatus.BAD_REQUEST.value(), "invalid_client", ex.message ?: "Unknown client"))
+    }
+
+    @ExceptionHandler(OAuthInvalidRedirectUriException::class)
+    fun handleOAuthInvalidRedirectUri(ex: OAuthInvalidRedirectUriException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(HttpStatus.BAD_REQUEST.value(), "invalid_request", ex.message ?: "Invalid redirect_uri"))
+    }
+
+    @ExceptionHandler(OAuthInvalidRequestException::class)
+    fun handleOAuthInvalidRequest(ex: OAuthInvalidRequestException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(HttpStatus.BAD_REQUEST.value(), "invalid_request", ex.message ?: "Invalid request"))
+    }
+
+    @ExceptionHandler(OAuthInvalidScopeException::class)
+    fun handleOAuthInvalidScope(ex: OAuthInvalidScopeException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(HttpStatus.BAD_REQUEST.value(), "invalid_scope", ex.message ?: "Invalid scope"))
+    }
+
+    @ExceptionHandler(OAuthInvalidGrantException::class)
+    fun handleOAuthInvalidGrant(ex: OAuthInvalidGrantException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(HttpStatus.BAD_REQUEST.value(), "invalid_grant", ex.message ?: "Invalid grant"))
+    }
+
+    @ExceptionHandler(OAuthInvalidTokenException::class)
+    fun handleOAuthInvalidToken(ex: OAuthInvalidTokenException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse(HttpStatus.UNAUTHORIZED.value(), "invalid_token", ex.message ?: "Invalid token"))
+    }
+
+    @ExceptionHandler(OAuthPkceRequiredException::class)
+    fun handleOAuthPkceRequired(ex: OAuthPkceRequiredException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(HttpStatus.BAD_REQUEST.value(), "invalid_request", ex.message ?: "PKCE required"))
+    }
+
+    @ExceptionHandler(OAuthPkceVerificationException::class)
+    fun handleOAuthPkceVerification(ex: OAuthPkceVerificationException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(HttpStatus.BAD_REQUEST.value(), "invalid_grant", ex.message ?: "PKCE verification failed"))
+    }
+
+    @ExceptionHandler(OAuthUnsupportedGrantTypeException::class)
+    fun handleOAuthUnsupportedGrantType(ex: OAuthUnsupportedGrantTypeException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(HttpStatus.BAD_REQUEST.value(), "unsupported_grant_type", ex.message ?: "Unsupported grant type"))
     }
 
     @ExceptionHandler(Exception::class)

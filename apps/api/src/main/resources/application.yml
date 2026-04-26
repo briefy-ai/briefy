@@ -67,6 +67,12 @@ auth:
     secure: ${AUTH_COOKIE_SECURE:false}
     same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
 
+oauth:
+  server:
+    base-url: ${OAUTH_SERVER_BASE_URL:http://localhost:8080}
+    web-base-url: ${BRIEFY_WEB_BASE_URL:http://localhost:3000}
+    refresh-token-days: ${OAUTH_REFRESH_TOKEN_DAYS:90}
+
 security:
   encryption-key: ${ENCRYPTION_KEY:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
 
