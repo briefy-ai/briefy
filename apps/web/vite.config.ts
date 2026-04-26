@@ -52,7 +52,7 @@ export default defineConfig(({ mode }) => {
       },
       workbox: {
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api/, /^\/oauth\//, /^\/\.well-known\//],
+        navigateFallbackDenylist: [/^\/api/, /^\/oauth/, /^\/\.well-known/],
         runtimeCaching: [
           {
             urlPattern: ({ url }) => url.pathname.startsWith('/api'),
@@ -60,7 +60,7 @@ export default defineConfig(({ mode }) => {
           },
           {
             urlPattern: ({ url }) =>
-              url.pathname.startsWith('/oauth/') || url.pathname.startsWith('/.well-known/'),
+              url.pathname.startsWith('/oauth') || url.pathname.startsWith('/.well-known'),
             handler: 'NetworkOnly',
           },
         ],
