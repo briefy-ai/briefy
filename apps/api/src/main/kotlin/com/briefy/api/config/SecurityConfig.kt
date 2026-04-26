@@ -42,6 +42,8 @@ class SecurityConfig(
                     .requestMatchers("/api/health").permitAll()
                     .requestMatchers("/api/public/**").permitAll()
                     .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                    .requestMatchers("/oauth/authorize", "/oauth/token", "/oauth/revoke").permitAll()
+                    .requestMatchers("/.well-known/oauth-authorization-server").permitAll()
                     .anyRequest().authenticated()
             }
             .exceptionHandling {
