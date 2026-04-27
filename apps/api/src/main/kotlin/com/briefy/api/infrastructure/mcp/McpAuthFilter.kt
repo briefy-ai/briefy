@@ -38,6 +38,15 @@ class McpAuthFilter(
         val authentication = UsernamePasswordAuthenticationToken(principal, null, authorities)
         SecurityContextHolder.getContext().authentication = authentication
 
+        // Disable nginx/Fastly buffering on the SSE stream so MCP tool-call
+        // responses flush to the client immediately. Without this, some
+        // edge proxies hold the response until the stream closes, hanging
+        // the client on every tool invocation.
+        if (request.requestURI.startsWith("/mcp/sse")) {
+            response.setHeader("X-Accel-Buffering", "no")
+            response.setHeader("Cache-Control", "no-cache, no-store, no-transform")
+        }
+
         filterChain.doFilter(request, response)
     }
 
