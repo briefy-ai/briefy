@@ -22,7 +22,10 @@ class McpSecurityConfig(private val mcpAuthFilter: McpAuthFilter) {
             .authorizeHttpRequests { it.anyRequest().authenticated() }
             .addFilterBefore(mcpAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
             .exceptionHandling {
-                it.authenticationEntryPoint { _, response, _ -> response.status = 401 }
+                it.authenticationEntryPoint { _, response, _ ->
+                    response.setHeader("WWW-Authenticate", "Bearer realm=\"briefy-mcp\"")
+                    response.status = 401
+                }
             }
         return http.build()
     }

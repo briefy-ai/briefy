@@ -107,25 +107,30 @@ class GetByTopicTool(
     }
 
     private fun briefingsForTopic(userId: UUID, topicId: UUID, limit: Int): List<BriefingItem> {
-        val links = topicLinkRepository.findByUserIdAndTopicIdAndTargetTypeAndStatusOrderByAssignedAtDesc(
-            userId, topicId, TopicLinkTargetType.BRIEFING, TopicLinkStatus.ACTIVE
-        ).take(limit)
+        val links = topicLinkRepository
+            .findByUserIdAndTopicIdAndTargetTypeAndStatusAndBriefingStatusOrderByAssignedAtDesc(
+                userId, topicId, TopicLinkTargetType.BRIEFING, TopicLinkStatus.ACTIVE, BriefingStatus.READY
+            )
+            .take(limit)
         if (links.isEmpty()) return emptyList()
         val ids = links.map { it.targetId }
+        val byId = ids.mapNotNull { briefingRepository.findByIdAndUserId(it, userId) }.associateBy { it.id }
+
+        val sourcesByBriefing = briefingSourceRepository.findByBriefingIdInOrderByCreatedAtAsc(ids)
+            .groupBy({ it.briefingId }, { it.sourceId })
+        val refsByBriefing = briefingReferenceRepository
+            .findByBriefingIdInAndStatusOrderByCreatedAtAsc(ids, BriefingReferenceStatus.ACTIVE)
+            .groupBy { it.briefingId }
 
         return ids.mapNotNull { id ->
-            val b = briefingRepository.findByIdAndUserId(id, userId) ?: return@mapNotNull null
-            if (b.status != BriefingStatus.READY) return@mapNotNull null
-            val sourceIds = briefingSourceRepository.findByBriefingIdOrderByCreatedAtAsc(b.id).map { it.sourceId }
-            val refs = briefingReferenceRepository.findByBriefingIdOrderByCreatedAtAsc(b.id)
-                .filter { it.status == BriefingReferenceStatus.ACTIVE }
-                .map { Reference(url = it.url, title = it.title, snippet = it.snippet) }
+            val b = byId[id] ?: return@mapNotNull null
             BriefingItem(
                 id = b.id,
                 title = b.title,
                 synthesizedText = mcpJson.excerpt(b.contentMarkdown, 500),
-                sourceIds = sourceIds,
-                references = refs,
+                sourceIds = sourcesByBriefing[b.id].orEmpty(),
+                references = refsByBriefing[b.id].orEmpty()
+                    .map { Reference(url = it.url, title = it.title, snippet = it.snippet) },
                 createdAt = b.createdAt,
             )
         }

@@ -50,26 +50,35 @@ class SearchBriefingsTool(
     private fun execute(input: Input): String {
         val userId = CurrentMcpUser.userId()
         val limit = (input.limit ?: 5).coerceIn(1, 10)
-        val topicId = input.topicId?.takeIf { it.isNotBlank() }?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        val rawTopicId = input.topicId?.trim()?.takeIf { it.isNotEmpty() }
+        val topicId = rawTopicId?.let {
+            runCatching { UUID.fromString(it) }.getOrElse {
+                return mcpJson.stringify(mapOf("error" to "Invalid topicId"))
+            }
+        }
         val query = input.query.trim()
         if (query.isEmpty()) return mcpJson.stringify(emptyList<Item>())
 
         val hits = briefingSearchRepository.searchReady(userId, query, topicId, limit)
         if (hits.isEmpty()) return mcpJson.stringify(emptyList<Item>())
 
+        val ids = hits.map { it.id }
+        val sourcesByBriefing = briefingSourceRepository.findByBriefingIdInOrderByCreatedAtAsc(ids)
+            .groupBy({ it.briefingId }, { it.sourceId })
+        val refsByBriefing = briefingReferenceRepository
+            .findByBriefingIdInAndStatusOrderByCreatedAtAsc(ids, BriefingReferenceStatus.ACTIVE)
+            .groupBy { it.briefingId }
+        val topicNamesByBriefing = batchTopicNamesForBriefings(userId, ids)
+
         val items = hits.map { hit ->
-            val sourceIds = briefingSourceRepository.findByBriefingIdOrderByCreatedAtAsc(hit.id).map { it.sourceId }
-            val references = briefingReferenceRepository.findByBriefingIdOrderByCreatedAtAsc(hit.id)
-                .filter { it.status == BriefingReferenceStatus.ACTIVE }
-                .map { Reference(url = it.url, title = it.title, snippet = it.snippet) }
-            val topicNames = topicNamesForBriefing(userId, hit.id)
             Item(
                 id = hit.id,
                 title = hit.title,
                 synthesizedText = mcpJson.excerpt(hit.contentMarkdown, 500),
-                sourceIds = sourceIds,
-                references = references,
-                topics = topicNames,
+                sourceIds = sourcesByBriefing[hit.id].orEmpty(),
+                references = refsByBriefing[hit.id].orEmpty()
+                    .map { Reference(url = it.url, title = it.title, snippet = it.snippet) },
+                topics = topicNamesByBriefing[hit.id].orEmpty(),
                 createdAt = hit.createdAt,
             )
         }
@@ -77,12 +86,24 @@ class SearchBriefingsTool(
         return mcpJson.stringify(items)
     }
 
-    private fun topicNamesForBriefing(userId: UUID, briefingId: UUID): List<String> {
-        val links = topicLinkRepository.findByUserIdAndTargetTypeAndTargetIdAndStatusOrderByAssignedAtDesc(
-            userId, TopicLinkTargetType.BRIEFING, briefingId, TopicLinkStatus.ACTIVE
-        )
-        if (links.isEmpty()) return emptyList()
-        val topicIds = links.map { it.topicId }.distinct()
-        return topicRepository.findAllByIdInAndUserId(topicIds, userId).map { it.name }
+    private fun batchTopicNamesForBriefings(userId: UUID, briefingIds: List<UUID>): Map<UUID, List<String>> {
+        if (briefingIds.isEmpty()) return emptyMap()
+        val result = mutableMapOf<UUID, MutableList<String>>()
+        val topicIdsByBriefing = mutableMapOf<UUID, MutableList<UUID>>()
+        for (briefingId in briefingIds) {
+            val links = topicLinkRepository.findByUserIdAndTargetTypeAndTargetIdAndStatusOrderByAssignedAtDesc(
+                userId, TopicLinkTargetType.BRIEFING, briefingId, TopicLinkStatus.ACTIVE
+            )
+            if (links.isNotEmpty()) {
+                topicIdsByBriefing[briefingId] = links.map { it.topicId }.distinct().toMutableList()
+            }
+        }
+        val allTopicIds = topicIdsByBriefing.values.flatten().distinct()
+        if (allTopicIds.isEmpty()) return emptyMap()
+        val topicsById = topicRepository.findAllByIdInAndUserId(allTopicIds, userId).associateBy({ it.id }, { it.name })
+        for ((briefingId, topicIds) in topicIdsByBriefing) {
+            result[briefingId] = topicIds.mapNotNull { topicsById[it] }.toMutableList()
+        }
+        return result
     }
 }

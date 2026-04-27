@@ -1,6 +1,7 @@
 package com.briefy.api.infrastructure.mcp.tools
 
 import com.briefy.api.domain.knowledgegraph.briefing.BriefingSourceRepository
+import com.briefy.api.domain.knowledgegraph.briefing.BriefingStatus
 import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
 import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkRepository
@@ -59,7 +60,8 @@ class GetSourceTool(
         val topics = topicLinkRepository.findActiveTopicsBySourceIds(userId, listOf(source.id))
             .map { it.topicName }
 
-        val briefingIds = briefingSourceRepository.findByUserIdAndSourceId(userId, source.id)
+        val briefingIds = briefingSourceRepository
+            .findBriefingIdsByUserAndSourceAndStatus(userId, source.id, BriefingStatus.READY)
             .map { it.briefingId }
             .distinct()
 

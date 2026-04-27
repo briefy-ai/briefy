@@ -1,10 +1,8 @@
 package com.briefy.api.infrastructure.mcp.tools
 
-import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.source.SourceEmbeddingRepository
+import com.briefy.api.domain.knowledgegraph.source.SourceRepository
 import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkRepository
-import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkStatus
-import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkTargetType
 import com.briefy.api.infrastructure.ai.EmbeddingAdapter
 import com.briefy.api.infrastructure.mcp.CurrentMcpUser
 import com.briefy.api.infrastructure.mcp.McpJson
@@ -48,37 +46,35 @@ class SearchSourcesTool(
     private fun execute(input: Input): String {
         val userId = CurrentMcpUser.userId()
         val limit = (input.limit ?: 5).coerceIn(1, 20)
-        val topicId = input.topicId?.takeIf { it.isNotBlank() }?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        val rawTopicId = input.topicId?.trim()?.takeIf { it.isNotEmpty() }
+        val topicId = rawTopicId?.let {
+            runCatching { UUID.fromString(it) }.getOrElse {
+                return mcpJson.stringify(mapOf("error" to "Invalid topicId"))
+            }
+        }
 
         val query = input.query.trim()
         if (query.isEmpty()) return mcpJson.stringify(emptyList<Item>())
 
         val embedding = embeddingAdapter.embed(query)
-        val fetchLimit = if (topicId != null) (limit * 4).coerceAtMost(80) else limit
-        val matches = sourceEmbeddingRepository.findSimilar(userId, embedding, fetchLimit)
+
+        val matches = if (topicId != null) {
+            val allowedIds = topicLinkRepository.findActiveSourceIdsByTopic(userId, topicId)
+            if (allowedIds.isEmpty()) return mcpJson.stringify(emptyList<Item>())
+            sourceEmbeddingRepository.findSimilarRestrictedToSources(userId, embedding, allowedIds, limit)
+        } else {
+            sourceEmbeddingRepository.findSimilar(userId, embedding, limit)
+        }
 
         if (matches.isEmpty()) return mcpJson.stringify(emptyList<Item>())
 
-        val candidateIds = matches.map { it.sourceId }
-        val filteredIds: List<UUID> = if (topicId != null) {
-            val allowed = topicLinkRepository.findByUserIdAndTopicIdAndTargetTypeAndStatusOrderByAssignedAtDesc(
-                userId, topicId, TopicLinkTargetType.SOURCE, TopicLinkStatus.ACTIVE
-            ).mapTo(mutableSetOf()) { it.targetId }
-            candidateIds.filter { it in allowed }
-        } else {
-            candidateIds
-        }.take(limit)
-
-        if (filteredIds.isEmpty()) return mcpJson.stringify(emptyList<Item>())
-
-        val sourcesById = sourceRepository.findAllByUserIdAndIdIn(userId, filteredIds).associateBy { it.id }
-        val topicNamesBySource = topicLinkRepository.findActiveTopicsBySourceIds(userId, filteredIds)
+        val ids = matches.map { it.sourceId }
+        val sourcesById = sourceRepository.findAllByUserIdAndIdIn(userId, ids).associateBy { it.id }
+        val topicNamesBySource = topicLinkRepository.findActiveTopicsBySourceIds(userId, ids)
             .groupBy({ it.sourceId }, { it.topicName })
 
-        val scoreById = matches.associate { it.sourceId to it.score }
-
-        val items = filteredIds.mapNotNull { id ->
-            val s = sourcesById[id] ?: return@mapNotNull null
+        val items = matches.mapNotNull { match ->
+            val s = sourcesById[match.sourceId] ?: return@mapNotNull null
             Item(
                 id = s.id,
                 title = s.metadata?.title,
@@ -88,7 +84,7 @@ class SearchSourcesTool(
                 excerpt = mcpJson.excerpt(s.content?.text, 300),
                 publishedDate = s.metadata?.publishedDate,
                 topics = topicNamesBySource[s.id].orEmpty(),
-                score = scoreById[s.id] ?: 0.0,
+                score = match.score,
             )
         }
 

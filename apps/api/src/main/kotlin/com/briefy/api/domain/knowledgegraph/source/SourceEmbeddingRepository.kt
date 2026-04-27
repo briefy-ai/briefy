@@ -19,4 +19,11 @@ interface SourceEmbeddingRepository {
         limit: Int,
         excludeSourceIds: Set<UUID> = emptySet()
     ): List<SourceSimilarityMatch>
+
+    fun findSimilarRestrictedToSources(
+        userId: UUID,
+        queryEmbedding: List<Double>,
+        allowedSourceIds: Collection<UUID>,
+        limit: Int
+    ): List<SourceSimilarityMatch>
 }

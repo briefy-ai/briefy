@@ -1,5 +1,6 @@
 package com.briefy.api.infrastructure.mcp.tools
 
+import com.briefy.api.domain.knowledgegraph.briefing.BriefingStatus
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
 import com.briefy.api.domain.knowledgegraph.topic.Topic
 import com.briefy.api.domain.knowledgegraph.topic.TopicRepository
@@ -58,8 +59,8 @@ class GetTopicsTool(
         val sourceCounts = topicLinkRepository.countByTopicIdsAndStatusAndSourceStatus(
             userId, topicIds, TopicLinkTargetType.SOURCE, TopicLinkStatus.ACTIVE, SourceStatus.ACTIVE
         ).associate { it.topicId to it.linkCount }
-        val briefingCounts = topicLinkRepository.countByTopicIdsAndStatus(
-            userId, topicIds, TopicLinkTargetType.BRIEFING, TopicLinkStatus.ACTIVE
+        val briefingCounts = topicLinkRepository.countByTopicIdsAndStatusAndBriefingStatus(
+            userId, topicIds, TopicLinkTargetType.BRIEFING, TopicLinkStatus.ACTIVE, BriefingStatus.READY
         ).associate { it.topicId to it.linkCount }
 
         val items = topics.map { topic ->

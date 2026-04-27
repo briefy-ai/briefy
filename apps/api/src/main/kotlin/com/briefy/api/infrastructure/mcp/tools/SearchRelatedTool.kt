@@ -115,12 +115,16 @@ class SearchRelatedTool(
     private fun briefingHits(userId: UUID, query: String, fetchLimit: Int): List<Hit> {
         val results = briefingSearchRepository.searchReady(userId, query, null, fetchLimit)
         if (results.isEmpty()) return emptyList()
+        val ids = results.map { it.id }
+        val sourcesByBriefing = briefingSourceRepository.findByBriefingIdInOrderByCreatedAtAsc(ids)
+            .groupBy({ it.briefingId }, { it.sourceId })
+        val refsByBriefing = briefingReferenceRepository
+            .findByBriefingIdInAndStatusOrderByCreatedAtAsc(ids, BriefingReferenceStatus.ACTIVE)
+            .groupBy { it.briefingId }
         return results.mapIndexed { index, hit ->
-            val sourceIds = briefingSourceRepository.findByBriefingIdOrderByCreatedAtAsc(hit.id).map { it.sourceId }
-            val refs = briefingReferenceRepository.findByBriefingIdOrderByCreatedAtAsc(hit.id)
-                .filter { it.status == BriefingReferenceStatus.ACTIVE }
-                .map { Reference(url = it.url, title = it.title, snippet = it.snippet) }
-            val score = 0.7 - (index * 0.05).coerceAtMost(0.5)
+            // Cap briefing scores below typical strong-match cosine similarity (~0.7+) so
+            // semantically relevant sources rank above briefings that only matched a substring.
+            val score = (0.55 - index * 0.04).coerceAtLeast(0.2)
             Hit(
                 type = "briefing",
                 score = score,
@@ -128,8 +132,9 @@ class SearchRelatedTool(
                     id = hit.id,
                     title = hit.title,
                     synthesizedText = mcpJson.excerpt(hit.contentMarkdown, 500),
-                    sourceIds = sourceIds,
-                    references = refs,
+                    sourceIds = sourcesByBriefing[hit.id].orEmpty(),
+                    references = refsByBriefing[hit.id].orEmpty()
+                        .map { Reference(url = it.url, title = it.title, snippet = it.snippet) },
                     createdAt = hit.createdAt,
                 )
             )
