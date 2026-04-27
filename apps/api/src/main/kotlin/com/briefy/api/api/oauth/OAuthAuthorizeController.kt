@@ -21,7 +21,7 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
 @RestController
-@RequestMapping("/oauth/authorize")
+@RequestMapping(value = ["/oauth/authorize", "/authorize"])
 class OAuthAuthorizeController(
     private val oauthServerService: OAuthServerService,
     @param:Value("\${oauth.server.web-base-url:http://localhost:3000}") private val webBaseUrl: String
