@@ -141,6 +141,50 @@ class SourceEmbeddingJdbcRepository(
         }
     }
 
+    override fun findSimilarRestrictedToSources(
+        userId: UUID,
+        queryEmbedding: List<Double>,
+        allowedSourceIds: Collection<UUID>,
+        limit: Int
+    ): List<SourceSimilarityMatch> {
+        if (limit <= 0 || allowedSourceIds.isEmpty()) {
+            return emptyList()
+        }
+
+        val sql = """
+            SELECT
+                s.id AS source_id,
+                (1 - (se.embedding <=> CAST(:queryEmbedding AS vector))) AS similarity_score,
+                s.metadata_title AS metadata_title,
+                s.url_normalized AS url_normalized,
+                COALESCE(s.content_word_count, 0) AS content_word_count
+            FROM source_embeddings se
+            JOIN sources s ON s.id = se.source_id
+            WHERE se.user_id = :userId
+              AND s.user_id = :userId
+              AND s.status = 'ACTIVE'
+              AND s.id IN (:allowedSourceIds)
+            ORDER BY se.embedding <=> CAST(:queryEmbedding AS vector)
+            LIMIT :limit
+        """.trimIndent()
+
+        val params = MapSqlParameterSource()
+            .addValue("userId", userId)
+            .addValue("queryEmbedding", toVectorLiteral(queryEmbedding))
+            .addValue("allowedSourceIds", allowedSourceIds)
+            .addValue("limit", limit)
+
+        return jdbcTemplate.query(sql, params) { rs, _ ->
+            mapSimilarityMatch(
+                sourceId = rs.getString("source_id"),
+                similarityScore = rs.getDouble("similarity_score"),
+                title = rs.getString("metadata_title"),
+                urlNormalized = rs.getString("url_normalized"),
+                wordCount = rs.getInt("content_word_count")
+            )
+        }
+    }
+
     private fun toVectorLiteral(values: List<Double>): String {
         require(values.isNotEmpty()) { "embedding must not be empty" }
         require(values.all { it.isFinite() }) { "embedding contains non-finite values" }

@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import java.util.UUID
+import com.briefy.api.domain.knowledgegraph.briefing.BriefingStatus
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
 
 @Repository
@@ -166,6 +167,65 @@ interface TopicLinkRepository : JpaRepository<TopicLink, UUID> {
         @Param("userId") userId: UUID,
         @Param("sourceIds") sourceIds: Collection<UUID>
     ): List<SourceActiveTopicProjection>
+
+    @Query(
+        """
+        select tl
+        from TopicLink tl
+        join Briefing b on b.id = tl.targetId and b.userId = tl.userId
+        where tl.userId = :userId
+          and tl.topicId = :topicId
+          and tl.targetType = :targetType
+          and tl.status = :topicLinkStatus
+          and b.status = :briefingStatus
+        order by tl.assignedAt desc
+        """
+    )
+    fun findByUserIdAndTopicIdAndTargetTypeAndStatusAndBriefingStatusOrderByAssignedAtDesc(
+        @Param("userId") userId: UUID,
+        @Param("topicId") topicId: UUID,
+        @Param("targetType") targetType: TopicLinkTargetType,
+        @Param("topicLinkStatus") topicLinkStatus: TopicLinkStatus,
+        @Param("briefingStatus") briefingStatus: BriefingStatus
+    ): List<TopicLink>
+
+    @Query(
+        """
+        select tl.topicId as topicId, count(tl.id) as linkCount
+        from TopicLink tl
+        join Briefing b on b.id = tl.targetId and b.userId = tl.userId
+        where tl.userId = :userId
+          and tl.topicId in :topicIds
+          and tl.targetType = :targetType
+          and tl.status = :topicLinkStatus
+          and b.status = :briefingStatus
+        group by tl.topicId
+        """
+    )
+    fun countByTopicIdsAndStatusAndBriefingStatus(
+        @Param("userId") userId: UUID,
+        @Param("topicIds") topicIds: Collection<UUID>,
+        @Param("targetType") targetType: TopicLinkTargetType,
+        @Param("topicLinkStatus") topicLinkStatus: TopicLinkStatus,
+        @Param("briefingStatus") briefingStatus: BriefingStatus
+    ): List<TopicLinkCountProjection>
+
+    @Query(
+        """
+        select tl.targetId
+        from TopicLink tl
+        join Source s on s.id = tl.targetId and s.userId = tl.userId
+        where tl.userId = :userId
+          and tl.topicId = :topicId
+          and tl.targetType = 'SOURCE'
+          and tl.status = 'ACTIVE'
+          and s.status = 'ACTIVE'
+        """
+    )
+    fun findActiveSourceIdsByTopic(
+        @Param("userId") userId: UUID,
+        @Param("topicId") topicId: UUID
+    ): List<UUID>
 }
 
 interface TopicLinkCountProjection {

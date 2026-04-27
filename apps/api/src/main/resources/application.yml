@@ -53,6 +53,16 @@ spring:
     embedding:
       observations:
         log-query-response: ${SPRING_AI_EMBEDDING_OBSERVATIONS_LOG_QUERY_RESPONSE:true}
+    mcp:
+      server:
+        name: briefy-mcp
+        version: 1.0.0
+        type: SYNC
+        sse-endpoint: /mcp/sse
+        sse-message-endpoint: /mcp/message
+        instructions: "Read-only access to the user's Briefy knowledge graph: sources, briefings, topics."
+        capabilities:
+          tool: true
 
 server:
   port: ${SERVER_PORT:8081}

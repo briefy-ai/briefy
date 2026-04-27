@@ -8,4 +8,8 @@ import java.util.UUID
 interface BriefingReferenceRepository : JpaRepository<BriefingReference, UUID> {
     fun findByBriefingIdOrderByCreatedAtAsc(briefingId: UUID): List<BriefingReference>
     fun deleteByBriefingId(briefingId: UUID)
+    fun findByBriefingIdInAndStatusOrderByCreatedAtAsc(
+        briefingIds: Collection<UUID>,
+        status: BriefingReferenceStatus
+    ): List<BriefingReference>
 }
