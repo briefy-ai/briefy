@@ -146,7 +146,12 @@ function LoginPage() {
 }
 
 function isSafeOAuthNext(next: string): boolean {
-  return next === '/oauth/authorize' || next.startsWith('/oauth/authorize?')
+  return (
+    next === '/oauth/authorize' ||
+    next.startsWith('/oauth/authorize?') ||
+    next === '/authorize' ||
+    next.startsWith('/authorize?')
+  )
 }
 
 function getSafeOAuthNextFromLocation(): string | undefined {
