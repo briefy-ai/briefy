@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
@@ -19,6 +20,7 @@ import java.time.Instant
 class McpAuthFilter(
     private val tokenValidator: OAuthTokenValidator,
     private val objectMapper: ObjectMapper,
+    @Value("\${oauth.server.base-url:http://localhost:8080}") private val authServerBaseUrl: String,
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -41,7 +43,11 @@ class McpAuthFilter(
 
     private fun writeUnauthorized(response: HttpServletResponse) {
         response.status = HttpStatus.UNAUTHORIZED.value()
-        response.setHeader("WWW-Authenticate", "Bearer realm=\"briefy-mcp\", error=\"invalid_token\"")
+        val resourceMetadataUrl = "$authServerBaseUrl/.well-known/oauth-protected-resource"
+        response.setHeader(
+            "WWW-Authenticate",
+            "Bearer realm=\"briefy-mcp\", error=\"invalid_token\", resource_metadata=\"$resourceMetadataUrl\""
+        )
         response.contentType = MediaType.APPLICATION_JSON_VALUE
         val payload = ErrorResponse(
             status = HttpStatus.UNAUTHORIZED.value(),

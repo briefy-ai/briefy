@@ -7,7 +7,8 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 class OAuthMetadataController(
-    @Value("\${oauth.server.base-url:http://localhost:8080}") private val baseUrl: String
+    @Value("\${oauth.server.base-url:http://localhost:8080}") private val baseUrl: String,
+    @Value("\${mcp.resource-base-url:#{null}}") private val mcpResourceBaseUrl: String?,
 ) {
 
     @GetMapping("/.well-known/oauth-authorization-server")
@@ -24,6 +25,16 @@ class OAuthMetadataController(
             tokenEndpointAuthMethodsSupported = listOf("none")
         )
     }
+
+    @GetMapping(value = ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/**"])
+    fun protectedResource(): OAuthProtectedResourceMetadata {
+        return OAuthProtectedResourceMetadata(
+            resource = (mcpResourceBaseUrl ?: baseUrl),
+            authorizationServers = listOf(baseUrl),
+            scopesSupported = listOf("mcp:read"),
+            bearerMethodsSupported = listOf("header"),
+        )
+    }
 }
 
 data class OAuthServerMetadata(
@@ -36,4 +47,11 @@ data class OAuthServerMetadata(
     @JsonProperty("code_challenge_methods_supported") val codeChallengeMethodsSupported: List<String>,
     @JsonProperty("scopes_supported") val scopesSupported: List<String>,
     @JsonProperty("token_endpoint_auth_methods_supported") val tokenEndpointAuthMethodsSupported: List<String>
+)
+
+data class OAuthProtectedResourceMetadata(
+    @JsonProperty("resource") val resource: String,
+    @JsonProperty("authorization_servers") val authorizationServers: List<String>,
+    @JsonProperty("scopes_supported") val scopesSupported: List<String>,
+    @JsonProperty("bearer_methods_supported") val bearerMethodsSupported: List<String>,
 )

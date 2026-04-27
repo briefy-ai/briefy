@@ -17,7 +17,7 @@ class OAuthTokenController(
 ) {
     private val logger = LoggerFactory.getLogger(OAuthTokenController::class.java)
 
-    @PostMapping("/oauth/token", consumes = [MediaType.APPLICATION_FORM_URLENCODED_VALUE])
+    @PostMapping(value = ["/oauth/token", "/token"], consumes = [MediaType.APPLICATION_FORM_URLENCODED_VALUE])
     fun token(
         @RequestParam("grant_type") grantType: String,
         @RequestParam("client_id") clientId: String,
@@ -45,7 +45,7 @@ class OAuthTokenController(
         }
     }
 
-    @PostMapping("/oauth/revoke", consumes = [MediaType.APPLICATION_FORM_URLENCODED_VALUE])
+    @PostMapping(value = ["/oauth/revoke", "/revoke"], consumes = [MediaType.APPLICATION_FORM_URLENCODED_VALUE])
     fun revoke(
         @RequestParam("token") token: String
     ): ResponseEntity<Void> {

@@ -26,7 +26,7 @@ class McpAuthFilterTest {
 
     private val tokenValidator: OAuthTokenValidator = mock()
     private val objectMapper = ObjectMapper().findAndRegisterModules()
-    private val filter = McpAuthFilter(tokenValidator, objectMapper)
+    private val filter = McpAuthFilter(tokenValidator, objectMapper, "http://localhost:8081")
 
     @AfterEach
     fun tearDown() {
