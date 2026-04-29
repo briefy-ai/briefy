@@ -5,6 +5,7 @@ import com.briefy.api.domain.knowledgegraph.source.SourceSimilarityMatch
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
+import org.springframework.transaction.annotation.Transactional
 import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
@@ -35,6 +36,7 @@ class SourceEmbeddingJdbcRepository(
         jdbcTemplate.update(sql, params)
     }
 
+    @Transactional(readOnly = true)
     override fun findSimilar(
         userId: UUID,
         queryEmbedding: List<Double>,
@@ -44,6 +46,8 @@ class SourceEmbeddingJdbcRepository(
         if (limit <= 0) {
             return emptyList()
         }
+
+        tunePgvectorProbes()
 
         val sql = buildString {
             appendLine("""
@@ -87,6 +91,7 @@ class SourceEmbeddingJdbcRepository(
         }
     }
 
+    @Transactional(readOnly = true)
     override fun findSimilarBySourceId(
         userId: UUID,
         sourceId: UUID,
@@ -96,6 +101,8 @@ class SourceEmbeddingJdbcRepository(
         if (limit <= 0) {
             return emptyList()
         }
+
+        tunePgvectorProbes()
 
         val sql = buildString {
             appendLine("""
@@ -141,6 +148,7 @@ class SourceEmbeddingJdbcRepository(
         }
     }
 
+    @Transactional(readOnly = true)
     override fun findSimilarRestrictedToSources(
         userId: UUID,
         queryEmbedding: List<Double>,
@@ -150,6 +158,8 @@ class SourceEmbeddingJdbcRepository(
         if (limit <= 0 || allowedSourceIds.isEmpty()) {
             return emptyList()
         }
+
+        tunePgvectorProbes()
 
         val sql = """
             SELECT
@@ -183,6 +193,17 @@ class SourceEmbeddingJdbcRepository(
                 wordCount = rs.getInt("content_word_count")
             )
         }
+    }
+
+    /**
+     * The ivfflat index on `source_embeddings` uses lists=100. With the default
+     * probes=1, similarity searches scan a single inverted list, which often
+     * holds zero rows matching the user_id + status WHERE clause — yielding
+     * empty results despite plenty of valid candidates. probes=10 (≈ √lists)
+     * is the recommended baseline for acceptable recall on this list count.
+     */
+    private fun tunePgvectorProbes() {
+        jdbcTemplate.jdbcTemplate.execute("SET LOCAL ivfflat.probes = 10")
     }
 
     private fun toVectorLiteral(values: List<Double>): String {

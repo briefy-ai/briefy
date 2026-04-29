@@ -6,7 +6,6 @@ import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkRepository
 import com.briefy.api.infrastructure.ai.EmbeddingAdapter
 import com.briefy.api.infrastructure.mcp.CurrentMcpUser
 import com.briefy.api.infrastructure.mcp.McpJson
-import org.slf4j.LoggerFactory
 import org.springframework.ai.tool.ToolCallback
 import org.springframework.ai.tool.function.FunctionToolCallback
 import org.springframework.stereotype.Component
@@ -22,7 +21,6 @@ class SearchSourcesTool(
     private val topicLinkRepository: TopicLinkRepository,
     private val mcpJson: McpJson,
 ) {
-    private val log = LoggerFactory.getLogger(SearchSourcesTool::class.java)
 
     data class Input(val query: String, val topicId: String? = null, val limit: Int? = null)
 
@@ -69,17 +67,10 @@ class SearchSourcesTool(
             sourceEmbeddingRepository.findSimilar(userId, embedding, limit)
         }
 
-        if (matches.isEmpty()) {
-            log.info("[mcp.search_sources] userId={} limit={} matches=0", userId, limit)
-            return mcpJson.stringify(emptyList<Item>())
-        }
+        if (matches.isEmpty()) return mcpJson.stringify(emptyList<Item>())
 
         val ids = matches.map { it.sourceId }
         val sourcesById = sourceRepository.findAllByUserIdAndIdIn(userId, ids).associateBy { it.id }
-        log.info(
-            "[mcp.search_sources] userId={} limit={} matches={} hydrated={} ids={}",
-            userId, limit, matches.size, sourcesById.size, ids
-        )
         val topicNamesBySource = topicLinkRepository.findActiveTopicsBySourceIds(userId, ids)
             .groupBy({ it.sourceId }, { it.topicName })
 
@@ -101,3 +92,4 @@ class SearchSourcesTool(
         return mcpJson.stringify(items)
     }
 }
+
