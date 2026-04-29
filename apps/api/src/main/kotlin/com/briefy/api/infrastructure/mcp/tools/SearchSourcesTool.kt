@@ -21,6 +21,7 @@ class SearchSourcesTool(
     private val topicLinkRepository: TopicLinkRepository,
     private val mcpJson: McpJson,
 ) {
+
     data class Input(val query: String, val topicId: String? = null, val limit: Int? = null)
 
     data class Item(
@@ -91,3 +92,4 @@ class SearchSourcesTool(
         return mcpJson.stringify(items)
     }
 }
+
