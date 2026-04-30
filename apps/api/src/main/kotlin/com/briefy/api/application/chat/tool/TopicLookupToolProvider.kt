@@ -29,9 +29,11 @@ class TopicLookupToolProvider(
         val status = parseStatus(request.status) ?: return TopicLookupError(
             "Invalid 'status' argument for topic_lookup. Expected ACTIVE, SUGGESTED, or ARCHIVED."
         )
-        val sort = TopicSort.from(request.orderBy) ?: return TopicLookupError(
-            "Invalid 'orderBy' argument for topic_lookup. Expected one of: ${TopicSort.valuesForPrompt}."
-        )
+        val sort = request.orderBy?.takeIf { it.isNotBlank() }?.let {
+            TopicSort.fromOrNull(it) ?: return TopicLookupError(
+                "Invalid 'orderBy' argument for topic_lookup. Expected one of: ${TopicSort.valuesForPrompt}."
+            )
+        } ?: TopicSort.DEFAULT
         val topics = topicService.listTopics(status, request.filter, sort)
         val truncated = topics.size > MAX_TOPICS
         val limitedTopics = topics.take(MAX_TOPICS)

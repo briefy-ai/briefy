@@ -18,6 +18,7 @@ import com.briefy.api.application.chat.ChatReferenceAccessException
 import com.briefy.api.application.chat.InvalidChatRequestException
 import com.briefy.api.application.source.*
 import com.briefy.api.application.topic.InvalidTopicLinkStateException
+import com.briefy.api.application.topic.InvalidTopicSortException
 import com.briefy.api.application.topic.TopicAlreadyExistsException
 import com.briefy.api.application.topic.TopicAlreadyLinkedToSourceException
 import com.briefy.api.application.topic.TopicLinkNotFoundException
@@ -319,6 +320,18 @@ class GlobalExceptionHandler {
                     status = HttpStatus.BAD_REQUEST.value(),
                     error = "Bad Request",
                     message = ex.message ?: "Invalid topic link state"
+                )
+            )
+    }
+
+    @ExceptionHandler(InvalidTopicSortException::class)
+    fun handleInvalidTopicSort(ex: InvalidTopicSortException): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(
+                ErrorResponse(
+                    status = HttpStatus.BAD_REQUEST.value(),
+                    error = "Bad Request",
+                    message = ex.message ?: "Invalid topic sort"
                 )
             )
     }

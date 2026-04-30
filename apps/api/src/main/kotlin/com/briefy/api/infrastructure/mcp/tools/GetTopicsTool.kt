@@ -62,9 +62,15 @@ class GetTopicsTool(
             topicRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, TopicStatus.ACTIVE)
         }
 
-        if (topics.isEmpty()) return mcpJson.stringify(emptyList<Item>())
+        val candidateTopics = if (sort == TopicSort.MOST_RECENT) {
+            topics.take(limit)
+        } else {
+            topics
+        }
 
-        val topicIds = topics.map { it.id }
+        if (candidateTopics.isEmpty()) return mcpJson.stringify(emptyList<Item>())
+
+        val topicIds = candidateTopics.map { it.id }
         val sourceCounts = topicLinkRepository.countByTopicIdsAndStatusAndSourceStatus(
             userId, topicIds, TopicLinkTargetType.SOURCE, TopicLinkStatus.ACTIVE, SourceStatus.ACTIVE
         ).associate { it.topicId to it.linkCount }
@@ -72,7 +78,7 @@ class GetTopicsTool(
             userId, topicIds, TopicLinkTargetType.BRIEFING, TopicLinkStatus.ACTIVE, BriefingStatus.READY
         ).associate { it.topicId to it.linkCount }
 
-        val items = topics.map { topic ->
+        val items = candidateTopics.map { topic ->
             Item(
                 id = topic.id,
                 name = topic.name,
@@ -90,7 +96,6 @@ class GetTopicsTool(
         return when (sort) {
             TopicSort.MOST_FREQUENT -> sortedWith(
                 compareByDescending<Item> { it.sourceCount }
-                    .thenByDescending { it.briefingCount }
                     .thenByDescending { it.updatedAt }
                     .thenBy { it.name.lowercase() }
             )

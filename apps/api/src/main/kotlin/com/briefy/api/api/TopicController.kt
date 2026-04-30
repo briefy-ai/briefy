@@ -1,6 +1,7 @@
 package com.briefy.api.api
 
 import com.briefy.api.application.topic.TopicDetailResponse
+import com.briefy.api.application.topic.InvalidTopicSortException
 import com.briefy.api.application.topic.TopicService
 import com.briefy.api.application.topic.TopicSort
 import com.briefy.api.application.topic.TopicSummaryResponse
@@ -47,8 +48,9 @@ class TopicController(
         @RequestParam(required = false) sort: String?
     ): ResponseEntity<List<TopicSummaryResponse>> {
         val topicStatus = status?.let { TopicStatus.valueOf(it.uppercase()) } ?: TopicStatus.ACTIVE
-        val topicSort = TopicSort.from(sort)
-            ?: throw IllegalArgumentException("Invalid 'sort'. Expected one of: ${TopicSort.valuesForPrompt}.")
+        val topicSort = sort?.takeIf { it.isNotBlank() }?.let {
+            TopicSort.fromOrNull(it) ?: throw InvalidTopicSortException()
+        } ?: TopicSort.DEFAULT
         logger.info("[controller] List topics request received status={} q={} sort={}", topicStatus, q ?: "", topicSort)
         val topics = topicService.listTopics(topicStatus, q, topicSort)
         logger.info("[controller] List topics request completed count={}", topics.size)

@@ -13,20 +13,16 @@ enum class TopicSort(val value: String) {
         val DEFAULT = MOST_RECENT
         val valuesForPrompt = entries.joinToString(", ") { it.value }
 
+        fun fromOrNull(raw: String?): TopicSort? {
+            val value = raw?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+            return entries.firstOrNull { it.value == value }
+        }
+
         @JvmStatic
         @JsonCreator
-        fun from(raw: String?): TopicSort? {
-            if (raw.isNullOrBlank()) {
-                return DEFAULT
-            }
-
-            return when (raw.trim().lowercase().replace("-", "_")) {
-                "most_frequent", "more_frequent", "frequent", "frequency", "source_count", "most_read" -> MOST_FREQUENT
-                "most_recent", "recent", "recently_updated", "updated", "updated_desc" -> MOST_RECENT
-                "newly_created", "newest", "new", "created_desc" -> NEWLY_CREATED
-                "oldest", "older", "oldest_created", "created_asc" -> OLDEST
-                else -> null
-            }
+        fun fromJson(raw: String): TopicSort {
+            return fromOrNull(raw)
+                ?: throw IllegalArgumentException("Invalid topic sort '$raw'. Expected one of: $valuesForPrompt.")
         }
     }
 
