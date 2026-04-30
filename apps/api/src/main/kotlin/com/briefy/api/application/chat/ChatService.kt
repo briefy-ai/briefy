@@ -448,6 +448,7 @@ class ChatService(
             appendLine("The user saves sources and organizes them into topics inside Briefy.")
             appendLine("Answer clearly and directly.")
             appendLine("When the user asks about their library, topics, sources, reading habits, or interests, use your tools to look up real data before answering. Never ask the user for permission to use a tool — just use it.")
+            appendLine("When the user asks which topics they read most or more about, list topics with `topic_lookup` using `orderBy=most_frequent`.")
             appendLine("If referenced content is provided below, prioritize it and say when the answer depends on that context.")
             if (isWebSearchAvailable) {
                 appendLine("For current or external factual questions, use `web_search` before answering.")
@@ -599,6 +600,7 @@ class ChatService(
         .description(
             "Browse the user's topics and the sources within them. " +
                 "Without topicId: lists topics filtered by status (ACTIVE/SUGGESTED/ARCHIVED, default ACTIVE) and optional name filter. " +
+                "In list mode, set orderBy to one of most_frequent, most_recent, newly_created, oldest. Use most_frequent for questions about what the user reads most. " +
                 "With topicId: returns the topic details and its linked sources with title, URL, type, read status, and word count. " +
                 "Set includeSourceIds=true in list mode to also get source IDs per topic."
         )
@@ -666,7 +668,8 @@ class ChatService(
                     topicId = topicId,
                     filter = request.filter?.trim()?.takeIf { it.isNotBlank() },
                     includeSourceIds = request.includeSourceIds ?: false,
-                    status = request.status
+                    status = request.status,
+                    orderBy = request.orderBy
                 )
             )
         )
@@ -840,7 +843,8 @@ class ChatService(
         val topicId: String? = null,
         val filter: String? = null,
         val includeSourceIds: Boolean? = null,
-        val status: String? = null
+        val status: String? = null,
+        val orderBy: String? = null
     )
 
     private data class SourceLookupToolRequest(

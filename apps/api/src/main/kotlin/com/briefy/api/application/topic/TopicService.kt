@@ -199,7 +199,11 @@ class TopicService(
     }
 
     @Transactional(readOnly = true)
-    fun listTopics(status: TopicStatus, query: String?): List<TopicSummaryResponse> {
+    fun listTopics(
+        status: TopicStatus,
+        query: String?,
+        sort: TopicSort = TopicSort.DEFAULT
+    ): List<TopicSummaryResponse> {
         val userId = currentUserProvider.requireUserId()
         val topics = if (query.isNullOrBlank()) {
             topicRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, status)
@@ -224,9 +228,12 @@ class TopicService(
             sourceStatus = SourceStatus.ACTIVE
         ).associate { it.topicId to it.linkCount }
 
-        return topics.map { topic ->
-            topic.toSummaryResponse(linkedSourcesCount = countsWithActiveSources[topic.id] ?: 0L)
-        }
+        return sortTopicSummaries(
+            topics.map { topic ->
+                topic.toSummaryResponse(linkedSourcesCount = countsWithActiveSources[topic.id] ?: 0L)
+            },
+            sort
+        )
     }
 
     @Transactional(readOnly = true)
@@ -312,6 +319,31 @@ class TopicService(
             "Only active sources can be linked to a topic"
         }
         return sources
+    }
+
+    private fun sortTopicSummaries(
+        topics: List<TopicSummaryResponse>,
+        sort: TopicSort
+    ): List<TopicSummaryResponse> {
+        return when (sort) {
+            TopicSort.MOST_FREQUENT -> topics.sortedWith(
+                compareByDescending<TopicSummaryResponse> { it.linkedSourcesCount }
+                    .thenByDescending { it.updatedAt }
+                    .thenBy { it.name.lowercase() }
+            )
+            TopicSort.MOST_RECENT -> topics.sortedWith(
+                compareByDescending<TopicSummaryResponse> { it.updatedAt }
+                    .thenBy { it.name.lowercase() }
+            )
+            TopicSort.NEWLY_CREATED -> topics.sortedWith(
+                compareByDescending<TopicSummaryResponse> { it.createdAt }
+                    .thenBy { it.name.lowercase() }
+            )
+            TopicSort.OLDEST -> topics.sortedWith(
+                compareBy<TopicSummaryResponse> { it.createdAt }
+                    .thenBy { it.name.lowercase() }
+            )
+        }
     }
 
     private fun upsertActiveTopicLinks(userId: UUID, topic: Topic, sourceIds: List<UUID>) {

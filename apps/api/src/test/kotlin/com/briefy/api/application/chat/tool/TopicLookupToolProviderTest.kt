@@ -2,6 +2,7 @@ package com.briefy.api.application.chat.tool
 
 import com.briefy.api.application.topic.TopicNotFoundException
 import com.briefy.api.application.topic.TopicService
+import com.briefy.api.application.topic.TopicSort
 import com.briefy.api.application.topic.TopicSummaryResponse
 import com.briefy.api.application.topic.TopicWithSources
 import com.briefy.api.domain.knowledgegraph.source.Content
@@ -45,7 +46,7 @@ class TopicLookupToolProviderTest {
     fun `list mode defaults to active topics`() {
         val userId = UUID.randomUUID()
         whenever(currentUserProvider.requireUserId()).thenReturn(userId)
-        whenever(topicService.listTopics(TopicStatus.ACTIVE, null)).thenReturn(
+        whenever(topicService.listTopics(TopicStatus.ACTIVE, null, TopicSort.MOST_RECENT)).thenReturn(
             listOf(topicSummary(name = "AI policy", sourceCount = 2))
         )
 
@@ -58,18 +59,41 @@ class TopicLookupToolProviderTest {
         assertEquals(2, list.topics.first().sourceCount)
         assertNull(list.topics.first().sourceIds)
         assertFalse(list.truncated)
-        verify(topicService).listTopics(TopicStatus.ACTIVE, null)
+        verify(topicService).listTopics(TopicStatus.ACTIVE, null, TopicSort.MOST_RECENT)
         verify(topicLinkRepository, never()).findSourceIdsByTopicIds(any(), any(), any(), any(), any())
     }
 
     @Test
     fun `list mode forwards filter`() {
-        whenever(topicService.listTopics(TopicStatus.ACTIVE, "health")).thenReturn(emptyList())
+        whenever(topicService.listTopics(TopicStatus.ACTIVE, "health", TopicSort.MOST_RECENT)).thenReturn(emptyList())
 
         val result = tool.lookup(TopicLookupRequest(filter = "health"))
 
         assertTrue(result is TopicList)
-        verify(topicService).listTopics(TopicStatus.ACTIVE, "health")
+        verify(topicService).listTopics(TopicStatus.ACTIVE, "health", TopicSort.MOST_RECENT)
+    }
+
+    @Test
+    fun `list mode forwards requested order`() {
+        whenever(topicService.listTopics(TopicStatus.ACTIVE, null, TopicSort.MOST_FREQUENT)).thenReturn(
+            listOf(topicSummary(name = "High count", sourceCount = 12))
+        )
+
+        val result = tool.lookup(TopicLookupRequest(orderBy = "most_frequent"))
+
+        assertTrue(result is TopicList)
+        verify(topicService).listTopics(TopicStatus.ACTIVE, null, TopicSort.MOST_FREQUENT)
+    }
+
+    @Test
+    fun `invalid order returns structured error`() {
+        val result = tool.lookup(TopicLookupRequest(orderBy = "random"))
+
+        assertTrue(result is TopicLookupError)
+        assertEquals(
+            "Invalid 'orderBy' argument for topic_lookup. Expected one of: most_frequent, most_recent, newly_created, oldest.",
+            (result as TopicLookupError).message
+        )
     }
 
     @Test
@@ -79,7 +103,7 @@ class TopicLookupToolProviderTest {
         val sourceA = UUID.randomUUID()
         val sourceB = UUID.randomUUID()
         whenever(currentUserProvider.requireUserId()).thenReturn(userId)
-        whenever(topicService.listTopics(TopicStatus.ACTIVE, null)).thenReturn(
+        whenever(topicService.listTopics(TopicStatus.ACTIVE, null, TopicSort.MOST_RECENT)).thenReturn(
             listOf(topicSummary(id = topicId, name = "AI policy", sourceCount = 2))
         )
         whenever(
@@ -150,7 +174,7 @@ class TopicLookupToolProviderTest {
 
     @Test
     fun `empty list mode returns empty results`() {
-        whenever(topicService.listTopics(TopicStatus.SUGGESTED, null)).thenReturn(emptyList())
+        whenever(topicService.listTopics(TopicStatus.SUGGESTED, null, TopicSort.MOST_RECENT)).thenReturn(emptyList())
 
         val result = tool.lookup(TopicLookupRequest(status = "suggested"))
 
@@ -160,7 +184,7 @@ class TopicLookupToolProviderTest {
 
     @Test
     fun `list mode truncates to fifty topics and adds hint`() {
-        whenever(topicService.listTopics(TopicStatus.ACTIVE, null)).thenReturn(
+        whenever(topicService.listTopics(TopicStatus.ACTIVE, null, TopicSort.MOST_RECENT)).thenReturn(
             (1..51).map { index -> topicSummary(name = "Topic $index", sourceCount = index.toLong()) }
         )
 

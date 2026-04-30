@@ -10,7 +10,8 @@ data class TopicLookupRequest(
     val topicId: UUID? = null,
     val filter: String? = null,
     val includeSourceIds: Boolean = false,
-    val status: String? = null
+    val status: String? = null,
+    val orderBy: String? = null
 )
 
 sealed interface TopicLookupResult
