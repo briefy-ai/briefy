@@ -45,7 +45,7 @@ class TopicSuggestionService(
                 ?: return@execute null
             if (source.status != SourceStatus.ACTIVE || source.content == null)
                 return@execute null
-            source to topicRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, TopicStatus.ACTIVE)
+            source to topicRepository.findByUserIdAndStatusOrderByUpdatedAtDescNameAsc(userId, TopicStatus.ACTIVE)
         } ?: return
         val (source, existingActiveTopics) = loaded
         val existingTopicsById = existingActiveTopics.associateBy { it.id }

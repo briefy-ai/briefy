@@ -1,7 +1,9 @@
 package com.briefy.api.api
 
 import com.briefy.api.application.topic.TopicDetailResponse
+import com.briefy.api.application.topic.InvalidTopicSortException
 import com.briefy.api.application.topic.TopicService
+import com.briefy.api.application.topic.TopicSort
 import com.briefy.api.application.topic.TopicSummaryResponse
 import com.briefy.api.domain.knowledgegraph.topic.TopicStatus
 import jakarta.validation.Valid
@@ -42,11 +44,15 @@ class TopicController(
     @GetMapping
     fun listTopics(
         @RequestParam(required = false) status: String?,
-        @RequestParam(required = false) q: String?
+        @RequestParam(required = false) q: String?,
+        @RequestParam(required = false) sort: String?
     ): ResponseEntity<List<TopicSummaryResponse>> {
         val topicStatus = status?.let { TopicStatus.valueOf(it.uppercase()) } ?: TopicStatus.ACTIVE
-        logger.info("[controller] List topics request received status={} q={}", topicStatus, q ?: "")
-        val topics = topicService.listTopics(topicStatus, q)
+        val topicSort = sort?.takeIf { it.isNotBlank() }?.let {
+            TopicSort.fromOrNull(it) ?: throw InvalidTopicSortException()
+        } ?: TopicSort.DEFAULT
+        logger.info("[controller] List topics request received status={} q={} sort={}", topicStatus, q ?: "", topicSort)
+        val topics = topicService.listTopics(topicStatus, q, topicSort)
         logger.info("[controller] List topics request completed count={}", topics.size)
         return ResponseEntity.ok(topics)
     }

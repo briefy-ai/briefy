@@ -9,8 +9,8 @@ interface TopicRepository : JpaRepository<Topic, UUID> {
     fun findByIdAndUserId(id: UUID, userId: UUID): Topic?
     fun findByUserIdAndNameNormalized(userId: UUID, nameNormalized: String): Topic?
     fun findAllByIdInAndUserId(ids: Collection<UUID>, userId: UUID): List<Topic>
-    fun findByUserIdAndStatusOrderByUpdatedAtDesc(userId: UUID, status: TopicStatus): List<Topic>
-    fun findByUserIdAndStatusAndNameContainingIgnoreCaseOrderByUpdatedAtDesc(
+    fun findByUserIdAndStatusOrderByUpdatedAtDescNameAsc(userId: UUID, status: TopicStatus): List<Topic>
+    fun findByUserIdAndStatusAndNameContainingIgnoreCaseOrderByUpdatedAtDescNameAsc(
         userId: UUID,
         status: TopicStatus,
         name: String

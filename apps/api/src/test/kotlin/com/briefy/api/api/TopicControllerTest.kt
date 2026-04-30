@@ -170,6 +170,41 @@ class TopicControllerTest {
     }
 
     @Test
+    fun `GET topics can order by most frequent`() {
+        val sourceA = createSource("https://topic-frequency-sort-a.com/article")
+        val sourceB = createSource("https://topic-frequency-sort-b.com/article")
+        val sourceC = createSource("https://topic-frequency-sort-c.com/article")
+        val sparseTopic = topicRepository.save(
+            Topic.activeUser(idGenerator.newId(), testUserId, "Frequency Sort Sparse")
+        )
+        val denseTopic = topicRepository.save(
+            Topic.activeUser(idGenerator.newId(), testUserId, "Frequency Sort Dense")
+        )
+
+        linkTopicToSource(sparseTopic.id, sourceA)
+        linkTopicToSource(denseTopic.id, sourceB)
+        linkTopicToSource(denseTopic.id, sourceC)
+
+        mockMvc.perform(
+            get("/api/topics")
+                .param("q", "Frequency Sort")
+                .param("sort", "most_frequent")
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$[0].name").value("Frequency Sort Dense"))
+            .andExpect(jsonPath("$[0].linkedSourcesCount").value(2))
+            .andExpect(jsonPath("$[1].name").value("Frequency Sort Sparse"))
+            .andExpect(jsonPath("$[1].linkedSourcesCount").value(1))
+    }
+
+    @Test
+    fun `GET topics rejects invalid sort`() {
+        mockMvc.perform(get("/api/topics").param("sort", "random"))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.message").value("Invalid 'sort'. Expected one of: most_frequent, most_recent, newly_created, oldest."))
+    }
+
+    @Test
     fun `POST topics returns conflict for duplicate active topic name`() {
         val topicName = "Economics ${UUID.randomUUID()}"
         mockMvc.perform(
@@ -322,6 +357,17 @@ class TopicControllerTest {
         )
 
         return link.id
+    }
+
+    private fun linkTopicToSource(topicId: UUID, sourceIdRaw: String) {
+        topicLinkRepository.save(
+            TopicLink.activeUserForSource(
+                id = idGenerator.newId(),
+                topicId = topicId,
+                sourceId = UUID.fromString(sourceIdRaw),
+                userId = testUserId
+            )
+        )
     }
 
     private fun findTopicIdByName(topicName: String, topicStatus: String): String {

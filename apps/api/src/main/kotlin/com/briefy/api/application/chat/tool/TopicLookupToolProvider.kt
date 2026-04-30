@@ -2,6 +2,7 @@ package com.briefy.api.application.chat.tool
 
 import com.briefy.api.application.topic.TopicNotFoundException
 import com.briefy.api.application.topic.TopicService
+import com.briefy.api.application.topic.TopicSort
 import com.briefy.api.domain.knowledgegraph.source.SourceStatus
 import com.briefy.api.domain.knowledgegraph.topic.TopicStatus
 import com.briefy.api.domain.knowledgegraph.topiclink.TopicLinkRepository
@@ -28,7 +29,12 @@ class TopicLookupToolProvider(
         val status = parseStatus(request.status) ?: return TopicLookupError(
             "Invalid 'status' argument for topic_lookup. Expected ACTIVE, SUGGESTED, or ARCHIVED."
         )
-        val topics = topicService.listTopics(status, request.filter)
+        val sort = request.orderBy?.takeIf { it.isNotBlank() }?.let {
+            TopicSort.fromOrNull(it) ?: return TopicLookupError(
+                "Invalid 'orderBy' argument for topic_lookup. Expected one of: ${TopicSort.valuesForPrompt}."
+            )
+        } ?: TopicSort.DEFAULT
+        val topics = topicService.listTopics(status, request.filter, sort)
         val truncated = topics.size > MAX_TOPICS
         val limitedTopics = topics.take(MAX_TOPICS)
         val sourceIdsByTopicId = if (request.includeSourceIds && limitedTopics.isNotEmpty()) {
