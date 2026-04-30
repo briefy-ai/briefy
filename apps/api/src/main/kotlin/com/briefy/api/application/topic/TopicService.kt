@@ -206,9 +206,13 @@ class TopicService(
     ): List<TopicSummaryResponse> {
         val userId = currentUserProvider.requireUserId()
         val topics = if (query.isNullOrBlank()) {
-            topicRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, status)
+            topicRepository.findByUserIdAndStatusOrderByUpdatedAtDescNameAsc(userId, status)
         } else {
-            topicRepository.findByUserIdAndStatusAndNameContainingIgnoreCaseOrderByUpdatedAtDesc(userId, status, query.trim())
+            topicRepository.findByUserIdAndStatusAndNameContainingIgnoreCaseOrderByUpdatedAtDescNameAsc(
+                userId,
+                status,
+                query.trim()
+            )
         }
         if (topics.isEmpty()) {
             return emptyList()

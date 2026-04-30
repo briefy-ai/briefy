@@ -16,7 +16,6 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -52,7 +51,7 @@ class GetTopicsToolTest {
         val newest = topic("Newest", updatedAt = "2026-01-03T00:00:00Z")
         val middle = topic("Middle", updatedAt = "2026-01-02T00:00:00Z")
         val oldest = topic("Oldest", updatedAt = "2026-01-01T00:00:00Z")
-        whenever(topicRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, TopicStatus.ACTIVE))
+        whenever(topicRepository.findByUserIdAndStatusOrderByUpdatedAtDescNameAsc(userId, TopicStatus.ACTIVE))
             .thenReturn(listOf(newest, middle, oldest))
         whenever(countSources(listOf(newest.id, middle.id))).thenReturn(emptyList())
         whenever(countBriefings(listOf(newest.id, middle.id))).thenReturn(emptyList())
@@ -74,7 +73,7 @@ class GetTopicsToolTest {
     fun `most frequent tiebreaks by updated date not briefing count`() {
         val newer = topic("Newer", updatedAt = "2026-01-03T00:00:00Z")
         val olderWithBriefings = topic("Older with briefings", updatedAt = "2026-01-02T00:00:00Z")
-        whenever(topicRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, TopicStatus.ACTIVE))
+        whenever(topicRepository.findByUserIdAndStatusOrderByUpdatedAtDescNameAsc(userId, TopicStatus.ACTIVE))
             .thenReturn(listOf(newer, olderWithBriefings))
         whenever(countSources(listOf(newer.id, olderWithBriefings.id))).thenReturn(
             listOf(

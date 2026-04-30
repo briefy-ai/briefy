@@ -55,11 +55,11 @@ class GetTopicsTool(
         val sort = input.orderBy ?: TopicSort.DEFAULT
 
         val topics: List<Topic> = if (query != null) {
-            topicRepository.findByUserIdAndStatusAndNameContainingIgnoreCaseOrderByUpdatedAtDesc(
+            topicRepository.findByUserIdAndStatusAndNameContainingIgnoreCaseOrderByUpdatedAtDescNameAsc(
                 userId, TopicStatus.ACTIVE, query
             )
         } else {
-            topicRepository.findByUserIdAndStatusOrderByUpdatedAtDesc(userId, TopicStatus.ACTIVE)
+            topicRepository.findByUserIdAndStatusOrderByUpdatedAtDescNameAsc(userId, TopicStatus.ACTIVE)
         }
 
         val candidateTopics = if (sort == TopicSort.MOST_RECENT) {
