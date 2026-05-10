@@ -100,6 +100,35 @@ class AuthControllerTest {
     }
 
     @Test
+    fun `second login does not revoke first session's refresh token`() {
+        val email = "concurrent@example.com"
+        val first = signUp(email)
+
+        val secondLogin = mockMvc.perform(
+            post("/api/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"email":"$email","password":"password123"}""")
+        )
+            .andExpect(status().isOk)
+            .andReturn()
+
+        val secondCookies = secondLogin.response.getHeaders("Set-Cookie")
+        val secondRefresh = parseCookie(secondCookies, "briefy_refresh_token")
+
+        mockMvc.perform(
+            post("/api/auth/refresh")
+                .cookie(first.refreshCookie)
+        )
+            .andExpect(status().isOk)
+
+        mockMvc.perform(
+            post("/api/auth/refresh")
+                .cookie(secondRefresh)
+        )
+            .andExpect(status().isOk)
+    }
+
+    @Test
     fun `protected routes return 401 without auth`() {
         mockMvc.perform(get("/api/sources"))
             .andExpect(status().isUnauthorized)
