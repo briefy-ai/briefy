@@ -156,11 +156,6 @@ class AuthService(
 
     private fun issueTokens(user: User): AuthResult {
         val now = Instant.now()
-        val revokedCount = refreshSessionRepository.revokeActiveByUserId(user.id, now)
-        if (revokedCount > 0) {
-            logger.info("[service] Revoked {} active refresh session(s) on login userId={}", revokedCount, user.id)
-        }
-
         val refreshToken = generateOpaqueToken()
         val refreshSession = RefreshSession(
             id = idGenerator.newId(),
