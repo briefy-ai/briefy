@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       injectRegister: false,
       includeAssets: [
         'pwa/apple-touch-icon.png',
@@ -51,8 +51,6 @@ export default defineConfig(({ mode }) => {
         ],
       },
       workbox: {
-        clientsClaim: true,
-        skipWaiting: true,
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [
           /^\/api/,
