@@ -23,6 +23,7 @@ import {
 import { ChatEngineProvider } from '@/features/chat/ChatEngineProvider'
 import { ChatPanelProvider, useChatPanel } from '@/features/chat/ChatPanelProvider'
 import { AudioPlayerProvider, useHasAudioPlayer } from '@/features/audio/AudioPlayerProvider'
+import { PWAPrompt } from '@/components/pwa/pwa-prompt'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth/useAuth'
 
@@ -189,6 +190,7 @@ function RootLayoutContent() {
           <ChatLauncherButton onClick={openPanelWithDefaultContext} />
         </>
       )}
+      <PWAPrompt />
       <TanStackRouterDevtools />
     </div>
   )
