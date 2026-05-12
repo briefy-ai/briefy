@@ -25,11 +25,9 @@ export function PWAPrompt() {
   useEffect(() => {
     if (typeof window === 'undefined') return
 
-    const dismissed = window.localStorage.getItem(INSTALL_DISMISSED_KEY) === '1'
-
     const onBeforeInstall = (event: Event) => {
       event.preventDefault()
-      if (dismissed) return
+      if (window.localStorage.getItem(INSTALL_DISMISSED_KEY) === '1') return
       setInstallEvent(event as BeforeInstallPromptEvent)
     }
 
@@ -53,12 +51,17 @@ export function PWAPrompt() {
 
   const handleInstall = async () => {
     if (!installEvent) return
-    await installEvent.prompt()
-    const { outcome } = await installEvent.userChoice
-    if (outcome === 'accepted') {
-      window.localStorage.removeItem(INSTALL_DISMISSED_KEY)
+    try {
+      await installEvent.prompt()
+      const { outcome } = await installEvent.userChoice
+      if (outcome === 'accepted') {
+        window.localStorage.removeItem(INSTALL_DISMISSED_KEY)
+      }
+    } catch {
+      // prompt() can throw if the event is stale or already consumed
+    } finally {
+      setInstallEvent(null)
     }
-    setInstallEvent(null)
   }
 
   const handleInstallDismiss = () => {
