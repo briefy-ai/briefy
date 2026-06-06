@@ -21,9 +21,15 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.util.HtmlUtils
+import java.awt.AlphaComposite
+import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Font
+import java.awt.GradientPaint
+import java.awt.MultipleGradientPaint
+import java.awt.RadialGradientPaint
 import java.awt.RenderingHints
+import java.awt.geom.Point2D
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.time.Instant
@@ -394,50 +400,37 @@ class ShareLinkService(
         }
     }
 
+    private val soraFont: Font by lazy { loadBundledFont("fonts/Sora-VF.ttf", fallback = "SansSerif") }
+    private val monoFont: Font by lazy { loadBundledFont("fonts/JetBrainsMono-VF.ttf", fallback = "Monospaced") }
+
+    private fun loadBundledFont(resourcePath: String, fallback: String): Font {
+        return try {
+            javaClass.classLoader.getResourceAsStream(resourcePath)?.use { stream ->
+                Font.createFont(Font.TRUETYPE_FONT, stream)
+            } ?: Font(fallback, Font.PLAIN, 12)
+        } catch (ex: Exception) {
+            logger.warn("[service] Failed to load bundled font {} — falling back to {}", resourcePath, fallback, ex)
+            Font(fallback, Font.PLAIN, 12)
+        }
+    }
+
     private fun renderOgImage(source: Source): ByteArray {
         val image = BufferedImage(OG_IMAGE_WIDTH, OG_IMAGE_HEIGHT, BufferedImage.TYPE_INT_RGB)
-        val graphics = image.createGraphics()
+        val g = image.createGraphics()
         try {
-            graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-            graphics.color = Color(0x0A, 0x0A, 0x0A)
-            graphics.fillRect(0, 0, OG_IMAGE_WIDTH, OG_IMAGE_HEIGHT)
+            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+            g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+            g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON)
 
-            graphics.font = Font("SansSerif", Font.PLAIN, 28)
-            graphics.color = Color(0x80, 0x80, 0x80)
-            graphics.drawString("Briefy AI", 72, 72)
-
-            val title = source.metadata?.title?.trim()?.ifBlank { null } ?: source.url.raw
-            graphics.font = Font("SansSerif", Font.BOLD, 48)
-            graphics.color = Color(0xFF, 0xFF, 0xFF)
-            val titleLines = TextLayoutHelper.wrapText(
-                text = title,
-                fontMetrics = graphics.fontMetrics,
-                maxWidth = OG_IMAGE_WIDTH - (OG_IMAGE_HORIZONTAL_PADDING * 2),
-                maxLines = 3
-            )
-
-            val lineHeight = graphics.fontMetrics.height + 8
-            val blockHeight = titleLines.size * lineHeight
-            var y = ((OG_IMAGE_HEIGHT - blockHeight) / 2) + graphics.fontMetrics.ascent
-            for (line in titleLines) {
-                val x = (OG_IMAGE_WIDTH - graphics.fontMetrics.stringWidth(line)) / 2
-                graphics.drawString(line, x, y)
-                y += lineHeight
-            }
-
-            val subtitleParts = listOfNotNull(
-                source.metadata?.author?.trim()?.ifBlank { null },
-                source.sourceType.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-            )
-            val subtitle = subtitleParts.joinToString(" • ").ifBlank { "Briefy AI" }
-
-            graphics.font = Font("SansSerif", Font.PLAIN, 30)
-            graphics.color = Color(0xA0, 0xA0, 0xA0)
-            val subtitleX = (OG_IMAGE_WIDTH - graphics.fontMetrics.stringWidth(subtitle)) / 2
-            val subtitleY = (y + 28).coerceAtMost(OG_IMAGE_HEIGHT - 56)
-            graphics.drawString(subtitle, subtitleX, subtitleY)
+            paintBackground(g)
+            paintGrid(g)
+            paintGrain(g)
+            paintBrandRow(g, source)
+            val titleEndY = paintTitle(g, source)
+            paintMeta(g, source, titleEndY)
         } finally {
-            graphics.dispose()
+            g.dispose()
         }
 
         return ByteArrayOutputStream().use { output ->
@@ -445,6 +438,126 @@ class ShareLinkService(
             output.toByteArray()
         }
     }
+
+    private fun paintBackground(g: java.awt.Graphics2D) {
+        g.paint = GradientPaint(
+            0f, 0f, Color(0x1A, 0x0E, 0x0E),
+            OG_IMAGE_WIDTH.toFloat(), OG_IMAGE_HEIGHT.toFloat(), Color(0x2C, 0x14, 0x14)
+        )
+        g.fillRect(0, 0, OG_IMAGE_WIDTH, OG_IMAGE_HEIGHT)
+
+        g.paint = RadialGradientPaint(
+            Point2D.Float(0f, 0f),
+            OG_IMAGE_WIDTH * 0.9f,
+            floatArrayOf(0f, 1f),
+            arrayOf(Color(0x60, 0x30, 0x2E, 178), Color(0x60, 0x30, 0x2E, 0)),
+            MultipleGradientPaint.CycleMethod.NO_CYCLE
+        )
+        g.fillRect(0, 0, OG_IMAGE_WIDTH, OG_IMAGE_HEIGHT)
+
+        g.paint = RadialGradientPaint(
+            Point2D.Float(OG_IMAGE_WIDTH * 0.85f, OG_IMAGE_HEIGHT * 1.1f),
+            OG_IMAGE_WIDTH * 1.1f,
+            floatArrayOf(0f, 0.55f),
+            arrayOf(Color(0xBC, 0x67, 0x53, 140), Color(0xBC, 0x67, 0x53, 0)),
+            MultipleGradientPaint.CycleMethod.NO_CYCLE
+        )
+        g.fillRect(0, 0, OG_IMAGE_WIDTH, OG_IMAGE_HEIGHT)
+    }
+
+    private fun paintGrid(g: java.awt.Graphics2D) {
+        g.color = Color(0xFA, 0xF4, 0xF2, 10)
+        g.stroke = BasicStroke(1f)
+        var x = OG_GRID_SIZE
+        while (x < OG_IMAGE_WIDTH) { g.drawLine(x, 0, x, OG_IMAGE_HEIGHT); x += OG_GRID_SIZE }
+        var y = OG_GRID_SIZE
+        while (y < OG_IMAGE_HEIGHT) { g.drawLine(0, y, OG_IMAGE_WIDTH, y); y += OG_GRID_SIZE }
+    }
+
+    private fun paintGrain(g: java.awt.Graphics2D) {
+        val grain = BufferedImage(OG_IMAGE_WIDTH, OG_IMAGE_HEIGHT, BufferedImage.TYPE_INT_ARGB)
+        val rnd = java.util.Random(0x6B1EFC)
+        for (y in 0 until OG_IMAGE_HEIGHT) {
+            for (x in 0 until OG_IMAGE_WIDTH) {
+                val v = rnd.nextInt(256)
+                grain.setRGB(x, y, (0xFF shl 24) or (v shl 16) or (v shl 8) or v)
+            }
+        }
+        val prev = g.composite
+        g.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.06f)
+        g.drawImage(grain, 0, 0, null)
+        g.composite = prev
+    }
+
+    private fun paintBrandRow(g: java.awt.Graphics2D, source: Source) {
+        g.font = soraFont.deriveFont(Font.BOLD, 28f)
+        val brandFm = g.fontMetrics
+        val rowTop = OG_VERTICAL_PADDING
+        val brandBaseline = rowTop + brandFm.ascent
+        val rowCenter = rowTop + brandFm.height / 2
+
+        val dotSize = 14
+        g.color = Color(0xBC, 0x67, 0x53)
+        g.fillOval(OG_IMAGE_HORIZONTAL_PADDING, rowCenter - dotSize / 2, dotSize, dotSize)
+
+        g.color = Color(0xFA, 0xF4, 0xF2)
+        g.drawString("Briefy AI", OG_IMAGE_HORIZONTAL_PADDING + dotSize + 14, brandBaseline)
+
+        val tagText = source.sourceType.name.uppercase()
+        g.font = monoFont.deriveFont(Font.BOLD, 18f)
+        val tagFm = g.fontMetrics
+        val tagPadX = 16
+        val tagPadY = 9
+        val tagW = tagFm.stringWidth(tagText) + tagPadX * 2
+        val tagH = tagFm.ascent + tagPadY * 2
+        val tagX = OG_IMAGE_WIDTH - OG_IMAGE_HORIZONTAL_PADDING - tagW
+        val tagY = rowCenter - tagH / 2
+        g.color = Color(0xD8, 0xAB, 0x99, 90)
+        g.stroke = BasicStroke(1f)
+        g.drawRoundRect(tagX, tagY, tagW, tagH, 10, 10)
+        g.color = Color(0xD8, 0xAB, 0x99)
+        g.drawString(tagText, tagX + tagPadX, tagY + tagPadY + tagFm.ascent)
+    }
+
+    private fun paintTitle(g: java.awt.Graphics2D, source: Source): Int {
+        val title = source.metadata?.title?.trim()?.ifBlank { null } ?: source.url.raw
+        g.font = soraFont.deriveFont(Font.BOLD, 70f)
+        g.color = Color(0xFA, 0xF4, 0xF2)
+        val fm = g.fontMetrics
+        val titleLines = TextLayoutHelper.wrapText(
+            text = title,
+            fontMetrics = fm,
+            maxWidth = OG_IMAGE_WIDTH - (OG_IMAGE_HORIZONTAL_PADDING * 2),
+            maxLines = 3
+        )
+        val lineHeight = (fm.height * 0.95).toInt()
+        val blockHeight = titleLines.size * lineHeight
+        val startY = (OG_IMAGE_HEIGHT - blockHeight) / 2 + fm.ascent - 20
+        var y = startY
+        for (line in titleLines) {
+            g.drawString(line, OG_IMAGE_HORIZONTAL_PADDING, y)
+            y += lineHeight
+        }
+        return y
+    }
+
+    private fun paintMeta(g: java.awt.Graphics2D, source: Source, titleEndY: Int) {
+        val author = source.metadata?.author?.trim()?.ifBlank { null }
+        val metaText = when {
+            author != null -> if (author.startsWith("@")) author else "@$author"
+            else -> hostnameOf(source.url.raw)
+        } ?: return
+
+        g.font = monoFont.deriveFont(Font.PLAIN, 20f)
+        g.color = Color(0xD8, 0xAB, 0x99)
+        val fm = g.fontMetrics
+        val y = OG_IMAGE_HEIGHT - OG_VERTICAL_PADDING + fm.ascent - fm.height
+        g.drawString(metaText, OG_IMAGE_HORIZONTAL_PADDING, y.coerceAtLeast(titleEndY + 40))
+    }
+
+    private fun hostnameOf(raw: String): String? = try {
+        java.net.URI(raw).host?.removePrefix("www.")
+    } catch (_: Exception) { null }
 
     private fun loadDefaultOgImage(): ByteArray {
         val resourcePaths = listOf(
@@ -477,5 +590,7 @@ class ShareLinkService(
         private const val OG_IMAGE_WIDTH = 1200
         private const val OG_IMAGE_HEIGHT = 630
         private const val OG_IMAGE_HORIZONTAL_PADDING = 96
+        private const val OG_VERTICAL_PADDING = 80
+        private const val OG_GRID_SIZE = 56
     }
 }
