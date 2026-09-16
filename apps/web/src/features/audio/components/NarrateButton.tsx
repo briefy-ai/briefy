@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Headphones, Loader2, Pause, RotateCcw } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { Headphones, Loader2, Pause, RotateCcw, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { narrateSource, retryNarration, getNarrationEstimate } from '@/lib/api/sources'
@@ -26,7 +27,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   } = useAudioPlayer()
 
   const [triggering, setTriggering] = useState(false)
-  const [requestError, setRequestError] = useState<string | null>(null)
+  const [requestError, setRequestError] = useState<{ sourceId: string; message: string } | null>(null)
   const [costDialogOpen, setCostDialogOpen] = useState(false)
   const [estimate, setEstimate] = useState<{
     characterCount: number
@@ -40,6 +41,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   const narrationState = source.narrationState
   const title = source.metadata?.title ?? source.url.normalized
   const isYouTubeSource = source.url.platform === 'youtube'
+  const currentRequestError = requestError?.sourceId === source.id ? requestError.message : null
 
   const executeNarrate = async () => {
     setTriggering(true)
@@ -48,7 +50,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
       const updated = await narrateSource(source.id)
       onSourceUpdate(updated)
     } catch (e) {
-      setRequestError(extractErrorMessage(e, 'Narration failed'))
+      setRequestError({ sourceId: source.id, message: extractErrorMessage(e, 'Narration failed') })
     } finally {
       setTriggering(false)
     }
@@ -61,7 +63,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
       const updated = await retryNarration(source.id)
       onSourceUpdate(updated)
     } catch (e) {
-      setRequestError(extractErrorMessage(e, 'Retry failed'))
+      setRequestError({ sourceId: source.id, message: extractErrorMessage(e, 'Retry failed') })
     } finally {
       setTriggering(false)
     }
@@ -90,7 +92,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
       }
     } catch (e) {
       // Estimate failed — surface the settings/configuration error here and stop.
-      setRequestError(extractErrorMessage(e, 'Narration failed'))
+      setRequestError({ sourceId: source.id, message: extractErrorMessage(e, 'Narration failed') })
       setTriggering(false)
       return
     }
@@ -156,7 +158,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   // Narration failed
   if (narrationState === 'failed') {
     const retryable = source.narrationFailureRetryable !== false
-    const message = requestError ?? source.narrationFailureMessage
+    const message = currentRequestError ?? source.narrationFailureMessage
 
     if (isYouTubeSource && !retryable) {
       return (
@@ -173,6 +175,14 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
 
     return (
       <>
+        {!retryable && !isYouTubeSource && (
+          <Button type="button" variant="ghost" size="sm" asChild>
+            <Link to="/settings" aria-label="Update TTS settings">
+              <Settings className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Update TTS</span>
+            </Link>
+          </Button>
+        )}
         <MessageTooltip message={message}>
           <Button
             type="button"
@@ -219,7 +229,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   // Not generated — trigger narration
   return (
     <>
-      <MessageTooltip message={requestError}>
+      <MessageTooltip message={currentRequestError}>
         <Button
           type="button"
           variant="ghost"
