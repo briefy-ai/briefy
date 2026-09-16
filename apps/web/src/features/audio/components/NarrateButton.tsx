@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { Link } from '@tanstack/react-router'
-import { Headphones, Loader2, Pause, RotateCcw, Settings } from 'lucide-react'
+import { Headphones, Loader2, Pause, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { narrateSource, retryNarration, getNarrationEstimate } from '@/lib/api/sources'
@@ -154,41 +153,12 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
     )
   }
 
-  // Narration failed — branch on retryable
+  // Narration failed
   if (narrationState === 'failed') {
     const retryable = source.narrationFailureRetryable !== false
-    const message = source.narrationFailureMessage
+    const message = requestError ?? source.narrationFailureMessage
 
-    if (retryable) {
-      return (
-        <>
-          <MessageTooltip message={message}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => void handleNarrateOrRetry('retry')}
-              aria-label="Retry narration"
-            >
-              <RotateCcw className="size-4" aria-hidden="true" />
-              <span className="hidden sm:inline">Retry</span>
-            </Button>
-          </MessageTooltip>
-          <NarrationCostDialog
-            open={costDialogOpen}
-            onOpenChange={setCostDialogOpen}
-            characterCount={estimate?.characterCount ?? 0}
-            provider={estimate?.provider ?? 'elevenlabs'}
-            modelId={estimate?.modelId}
-            estimatedCostUsd={estimate?.estimatedCostUsd ?? 0}
-            onConfirm={handleCostConfirm}
-          />
-        </>
-      )
-    }
-
-    // Non-retryable — configuration issue, point user to settings
-    if (isYouTubeSource) {
+    if (isYouTubeSource && !retryable) {
       return (
         <MessageTooltip message={message ?? 'Original audio is unavailable for this video.'}>
           <span className="inline-flex">
@@ -202,14 +172,29 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
     }
 
     return (
-      <MessageTooltip message={message ?? 'Check your TTS configuration in Settings.'}>
-        <Button type="button" variant="ghost" size="sm" asChild>
-          <Link to="/settings" aria-label="Update TTS settings">
-            <Settings className="size-4" aria-hidden="true" />
-            <span className="hidden sm:inline">Update TTS</span>
-          </Link>
-        </Button>
-      </MessageTooltip>
+      <>
+        <MessageTooltip message={message}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => void handleNarrateOrRetry('retry')}
+            aria-label="Retry narration"
+          >
+            <RotateCcw className="size-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Retry</span>
+          </Button>
+        </MessageTooltip>
+        <NarrationCostDialog
+          open={costDialogOpen}
+          onOpenChange={setCostDialogOpen}
+          characterCount={estimate?.characterCount ?? 0}
+          provider={estimate?.provider ?? 'elevenlabs'}
+          modelId={estimate?.modelId}
+          estimatedCostUsd={estimate?.estimatedCostUsd ?? 0}
+          onConfirm={handleCostConfirm}
+        />
+      </>
     )
   }
 
