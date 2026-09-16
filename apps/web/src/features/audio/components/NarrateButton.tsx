@@ -27,7 +27,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   } = useAudioPlayer()
 
   const [triggering, setTriggering] = useState(false)
-  const [requestError, setRequestError] = useState<string | null>(null)
+  const [requestError, setRequestError] = useState<{ sourceId: string; message: string } | null>(null)
   const [costDialogOpen, setCostDialogOpen] = useState(false)
   const [estimate, setEstimate] = useState<{
     characterCount: number
@@ -41,6 +41,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   const narrationState = source.narrationState
   const title = source.metadata?.title ?? source.url.normalized
   const isYouTubeSource = source.url.platform === 'youtube'
+  const currentRequestError = requestError?.sourceId === source.id ? requestError.message : null
 
   const executeNarrate = async () => {
     setTriggering(true)
@@ -49,7 +50,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
       const updated = await narrateSource(source.id)
       onSourceUpdate(updated)
     } catch (e) {
-      setRequestError(extractErrorMessage(e, 'Narration failed'))
+      setRequestError({ sourceId: source.id, message: extractErrorMessage(e, 'Narration failed') })
     } finally {
       setTriggering(false)
     }
@@ -62,7 +63,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
       const updated = await retryNarration(source.id)
       onSourceUpdate(updated)
     } catch (e) {
-      setRequestError(extractErrorMessage(e, 'Retry failed'))
+      setRequestError({ sourceId: source.id, message: extractErrorMessage(e, 'Retry failed') })
     } finally {
       setTriggering(false)
     }
@@ -91,7 +92,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
       }
     } catch (e) {
       // Estimate failed — surface the settings/configuration error here and stop.
-      setRequestError(extractErrorMessage(e, 'Narration failed'))
+      setRequestError({ sourceId: source.id, message: extractErrorMessage(e, 'Narration failed') })
       setTriggering(false)
       return
     }
@@ -154,41 +155,12 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
     )
   }
 
-  // Narration failed — branch on retryable
+  // Narration failed
   if (narrationState === 'failed') {
     const retryable = source.narrationFailureRetryable !== false
-    const message = source.narrationFailureMessage
+    const message = currentRequestError ?? source.narrationFailureMessage
 
-    if (retryable) {
-      return (
-        <>
-          <MessageTooltip message={message}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => void handleNarrateOrRetry('retry')}
-              aria-label="Retry narration"
-            >
-              <RotateCcw className="size-4" aria-hidden="true" />
-              <span className="hidden sm:inline">Retry</span>
-            </Button>
-          </MessageTooltip>
-          <NarrationCostDialog
-            open={costDialogOpen}
-            onOpenChange={setCostDialogOpen}
-            characterCount={estimate?.characterCount ?? 0}
-            provider={estimate?.provider ?? 'elevenlabs'}
-            modelId={estimate?.modelId}
-            estimatedCostUsd={estimate?.estimatedCostUsd ?? 0}
-            onConfirm={handleCostConfirm}
-          />
-        </>
-      )
-    }
-
-    // Non-retryable — configuration issue, point user to settings
-    if (isYouTubeSource) {
+    if (isYouTubeSource && !retryable) {
       return (
         <MessageTooltip message={message ?? 'Original audio is unavailable for this video.'}>
           <span className="inline-flex">
@@ -202,14 +174,37 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
     }
 
     return (
-      <MessageTooltip message={message ?? 'Check your TTS configuration in Settings.'}>
-        <Button type="button" variant="ghost" size="sm" asChild>
-          <Link to="/settings" aria-label="Update TTS settings">
-            <Settings className="size-4" aria-hidden="true" />
-            <span className="hidden sm:inline">Update TTS</span>
-          </Link>
-        </Button>
-      </MessageTooltip>
+      <>
+        {!retryable && !isYouTubeSource && (
+          <Button type="button" variant="ghost" size="sm" asChild>
+            <Link to="/settings" aria-label="Update TTS settings">
+              <Settings className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Update TTS</span>
+            </Link>
+          </Button>
+        )}
+        <MessageTooltip message={message}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => void handleNarrateOrRetry('retry')}
+            aria-label="Retry narration"
+          >
+            <RotateCcw className="size-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Retry</span>
+          </Button>
+        </MessageTooltip>
+        <NarrationCostDialog
+          open={costDialogOpen}
+          onOpenChange={setCostDialogOpen}
+          characterCount={estimate?.characterCount ?? 0}
+          provider={estimate?.provider ?? 'elevenlabs'}
+          modelId={estimate?.modelId}
+          estimatedCostUsd={estimate?.estimatedCostUsd ?? 0}
+          onConfirm={handleCostConfirm}
+        />
+      </>
     )
   }
 
@@ -234,7 +229,7 @@ export function NarrateButton({ source, onSourceUpdate }: NarrateButtonProps) {
   // Not generated — trigger narration
   return (
     <>
-      <MessageTooltip message={requestError}>
+      <MessageTooltip message={currentRequestError}>
         <Button
           type="button"
           variant="ghost"
